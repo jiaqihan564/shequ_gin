@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 
 	"gin/internal/models"
@@ -25,6 +26,7 @@ func NewAuthHandler(authService *services.AuthService) *AuthHandler {
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req models.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		fmt.Printf("请求参数绑定失败: %v\n", err)
 		c.JSON(http.StatusBadRequest, models.CommonResponse{
 			Code:    400,
 			Message: "请求参数错误: " + err.Error(),
@@ -32,9 +34,15 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	fmt.Printf("收到登录请求: 用户名=%s, 密码长度=%d\n", req.Username, len(req.Password))
+
+	// 获取客户端IP
+	clientIP := c.ClientIP()
+
 	// 调用服务层进行登录验证
-	response, err := h.authService.Login(req.Username, req.Password)
+	response, err := h.authService.Login(req.Username, req.Password, clientIP)
 	if err != nil {
+		fmt.Printf("登录验证失败: %v\n", err)
 		c.JSON(http.StatusUnauthorized, models.CommonResponse{
 			Code:    401,
 			Message: err.Error(),
@@ -42,6 +50,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	fmt.Printf("登录成功: 用户ID=%d\n", response.Data.User.ID)
 	c.JSON(http.StatusOK, response)
 }
 

@@ -13,27 +13,44 @@ import (
 
 // AuthService 认证服务
 type AuthService struct {
-	config *config.Config
+	config   *config.Config
+	userRepo *UserRepository
 }
 
 // NewAuthService 创建认证服务
-func NewAuthService(cfg *config.Config) *AuthService {
+func NewAuthService(cfg *config.Config, userRepo *UserRepository) *AuthService {
 	return &AuthService{
-		config: cfg,
+		config:   cfg,
+		userRepo: userRepo,
 	}
 }
 
 // Login 用户登录
-func (s *AuthService) Login(username, password string) (*models.LoginResponse, error) {
+func (s *AuthService) Login(username, password, clientIP string) (*models.LoginResponse, error) {
 	// 获取用户信息
-	user, err := getUserByUsername(username)
+	user, err := s.userRepo.GetUserByUsername(username)
 	if err != nil {
 		return nil, fmt.Errorf("用户名或密码错误")
 	}
 
+	// 检查账户状态
+	if user.AccountStatus != 1 {
+		return nil, fmt.Errorf("账户已被禁用")
+	}
+
 	// 验证密码
-	if !utils.CheckPasswordHash(password, user.Password) {
+	if !utils.CheckPasswordHash(password, user.PasswordHash) {
+		// 增加登录失败次数
+		s.userRepo.IncrementFailedLoginCount(user.ID)
 		return nil, fmt.Errorf("用户名或密码错误")
+	}
+
+	// 更新登录信息
+	now := time.Now()
+	err = s.userRepo.UpdateLoginInfo(user.ID, now, clientIP)
+	if err != nil {
+		// 登录信息更新失败不影响登录流程，只记录错误
+		fmt.Printf("更新登录信息失败: %v\n", err)
 	}
 
 	// 生成JWT token
@@ -52,11 +69,16 @@ func (s *AuthService) Login(username, password string) (*models.LoginResponse, e
 		}{
 			Token: token,
 			User: models.User{
-				ID:        user.ID,
-				Username:  user.Username,
-				Email:     user.Email,
-				CreatedAt: user.CreatedAt,
-				UpdatedAt: user.UpdatedAt,
+				ID:               user.ID,
+				Username:         user.Username,
+				Email:            user.Email,
+				AuthStatus:       user.AuthStatus,
+				AccountStatus:    user.AccountStatus,
+				LastLoginTime:    user.LastLoginTime,
+				LastLoginIP:      user.LastLoginIP,
+				FailedLoginCount: user.FailedLoginCount,
+				CreatedAt:        user.CreatedAt,
+				UpdatedAt:        user.UpdatedAt,
 			},
 		},
 	}
@@ -67,14 +89,20 @@ func (s *AuthService) Login(username, password string) (*models.LoginResponse, e
 // Register 用户注册
 func (s *AuthService) Register(username, password, email string) (*models.LoginResponse, error) {
 	// 检查用户名是否已存在
-	existingUser, _ := getUserByUsername(username)
-	if existingUser != nil {
+	usernameExists, err := s.userRepo.CheckUsernameExists(username)
+	if err != nil {
+		return nil, fmt.Errorf("检查用户名失败")
+	}
+	if usernameExists {
 		return nil, fmt.Errorf("用户名已存在")
 	}
 
 	// 检查邮箱是否已存在
-	existingUserByEmail, _ := getUserByEmail(email)
-	if existingUserByEmail != nil {
+	emailExists, err := s.userRepo.CheckEmailExists(email)
+	if err != nil {
+		return nil, fmt.Errorf("检查邮箱失败")
+	}
+	if emailExists {
 		return nil, fmt.Errorf("邮箱已被注册")
 	}
 
@@ -85,17 +113,28 @@ func (s *AuthService) Register(username, password, email string) (*models.LoginR
 	}
 
 	// 创建新用户
+	now := time.Now()
 	user := &models.User{
-		Username:  username,
-		Password:  hashedPassword,
-		Email:     email,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		Username:      username,
+		PasswordHash:  hashedPassword,
+		Email:         email,
+		AuthStatus:    1, // 已验证
+		AccountStatus: 1, // 正常
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 
 	// 保存用户到数据库
-	user.ID = uint(time.Now().Unix()) // 模拟ID生成
-	saveUser(user)
+	err = s.userRepo.CreateUser(user)
+	if err != nil {
+		return nil, fmt.Errorf("创建用户失败")
+	}
+
+	// 重新获取用户信息以获取生成的ID
+	user, err = s.userRepo.GetUserByUsername(username)
+	if err != nil {
+		return nil, fmt.Errorf("获取用户信息失败")
+	}
 
 	// 生成JWT token
 	token, err := s.generateJWT(user.ID, user.Username)
@@ -113,11 +152,16 @@ func (s *AuthService) Register(username, password, email string) (*models.LoginR
 		}{
 			Token: token,
 			User: models.User{
-				ID:        user.ID,
-				Username:  user.Username,
-				Email:     user.Email,
-				CreatedAt: user.CreatedAt,
-				UpdatedAt: user.UpdatedAt,
+				ID:               user.ID,
+				Username:         user.Username,
+				Email:            user.Email,
+				AuthStatus:       user.AuthStatus,
+				AccountStatus:    user.AccountStatus,
+				LastLoginTime:    user.LastLoginTime,
+				LastLoginIP:      user.LastLoginIP,
+				FailedLoginCount: user.FailedLoginCount,
+				CreatedAt:        user.CreatedAt,
+				UpdatedAt:        user.UpdatedAt,
 			},
 		},
 	}
@@ -140,48 +184,4 @@ func (s *AuthService) generateJWT(userID uint, username string) (string, error) 
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(s.config.JWT.SecretKey))
-}
-
-// getUserByUsername 根据用户名获取用户信息（示例实现）
-func getUserByUsername(username string) (*models.User, error) {
-	// 实际应用中应该从数据库查询用户信息
-	// 这里使用示例数据
-	if username == "admin" {
-		// admin用户的密码是"password"的哈希值
-		hashedPassword, _ := utils.HashPassword("password")
-		return &models.User{
-			ID:        1,
-			Username:  "admin",
-			Password:  hashedPassword,
-			Email:     "admin@example.com",
-			CreatedAt: time.Now().Add(-24 * time.Hour),
-			UpdatedAt: time.Now().Add(-1 * time.Hour),
-		}, nil
-	}
-	return nil, fmt.Errorf("用户不存在")
-}
-
-// getUserByEmail 根据邮箱获取用户信息（示例实现）
-func getUserByEmail(email string) (*models.User, error) {
-	// 实际应用中应该从数据库查询用户信息
-	// 这里使用示例数据
-	if email == "admin@example.com" {
-		hashedPassword, _ := utils.HashPassword("password")
-		return &models.User{
-			ID:        1,
-			Username:  "admin",
-			Password:  hashedPassword,
-			Email:     "admin@example.com",
-			CreatedAt: time.Now().Add(-24 * time.Hour),
-			UpdatedAt: time.Now().Add(-1 * time.Hour),
-		}, nil
-	}
-	return nil, fmt.Errorf("用户不存在")
-}
-
-// saveUser 保存用户到数据库（示例实现）
-func saveUser(user *models.User) {
-	// 实际应用中应该保存到数据库
-	// 这里只是模拟保存操作
-	fmt.Printf("用户已保存: %+v\n", user)
 }

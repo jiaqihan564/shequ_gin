@@ -68,6 +68,8 @@ tmp/
 # Local configuration files
 config.local.yaml
 config.local.json
+config.prod.yaml
+config.dev.yaml
 
 # JetBrains IDEs
 .idea/

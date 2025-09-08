@@ -10,19 +10,22 @@ import (
 )
 
 // SetupRoutes 设置路由
-func SetupRoutes(cfg *config.Config) *gin.Engine {
+func SetupRoutes(cfg *config.Config, db *services.Database) *gin.Engine {
 	// 设置Gin模式
-	gin.SetMode(gin.ReleaseMode)
+	gin.SetMode(cfg.Server.Mode)
 
 	r := gin.Default()
 
 	// 添加中间件
-	r.Use(middleware.CORSMiddleware())
+	r.Use(middleware.CORSMiddleware(cfg))
 	r.Use(middleware.LoggerMiddleware())
 
+	// 初始化数据访问层
+	userRepo := services.NewUserRepository(db)
+
 	// 初始化服务
-	authService := services.NewAuthService(cfg)
-	userService := services.NewUserService()
+	authService := services.NewAuthService(cfg, userRepo)
+	userService := services.NewUserService(userRepo)
 
 	// 初始化处理器
 	authHandler := handlers.NewAuthHandler(authService)
