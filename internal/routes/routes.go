@@ -59,11 +59,11 @@ func SetupRoutes(cfg *config.Config, db *services.Database) *gin.Engine {
 	r.GET("/metrics", middleware.MetricsHandler)
 
 	// API路由组
-	api := r.Group("/api/v1")
+	api := r.Group("/api")
 	{
 		// 用户认证相关路由（使用专门的限流）
-		api.POST("/register", middleware.RegisterRateLimitMiddleware(), authHandler.Register)
-		api.POST("/login", middleware.LoginRateLimitMiddleware(), authHandler.Login)
+		api.POST("/auth/register", middleware.RegisterRateLimitMiddleware(), authHandler.Register)
+		api.POST("/auth/login", middleware.LoginRateLimitMiddleware(), authHandler.Login)
 
 		// 需要认证的路由
 		auth := api.Group("/")

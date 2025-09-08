@@ -46,10 +46,20 @@ func CORSMiddleware(cfg *config.Config) gin.HandlerFunc {
 			utils.GetLogger().Debug("处理CORS预检请求",
 				"origin", origin,
 				"method", c.Request.Method,
-				"ip", c.ClientIP())
+				"ip", c.ClientIP(),
+				"allowOrigin", c.GetHeader("Access-Control-Allow-Origin"),
+				"allowMethods", c.GetHeader("Access-Control-Allow-Methods"),
+				"allowHeaders", c.GetHeader("Access-Control-Allow-Headers"))
 			c.AbortWithStatus(204)
 			return
 		}
+
+		// 对于非OPTIONS请求，也要确保CORS头信息存在
+		utils.GetLogger().Debug("处理CORS请求",
+			"origin", origin,
+			"method", c.Request.Method,
+			"ip", c.ClientIP(),
+			"allowOrigin", c.GetHeader("Access-Control-Allow-Origin"))
 
 		c.Next()
 	}

@@ -78,21 +78,16 @@ func (s *AuthService) Login(ctx context.Context, username, password, clientIP st
 		Code:    200,
 		Message: "登录成功",
 		Data: struct {
-			Token string      `json:"token"`
-			User  models.User `json:"user"`
+			Token string             `json:"token"`
+			User  models.UserProfile `json:"user"`
 		}{
 			Token: token,
-			User: models.User{
-				ID:               user.ID,
-				Username:         user.Username,
-				Email:            user.Email,
-				AuthStatus:       user.AuthStatus,
-				AccountStatus:    user.AccountStatus,
-				LastLoginTime:    user.LastLoginTime,
-				LastLoginIP:      user.LastLoginIP,
-				FailedLoginCount: user.FailedLoginCount,
-				CreatedAt:        user.CreatedAt,
-				UpdatedAt:        user.UpdatedAt,
+			User: models.UserProfile{
+				ID:            user.ID,
+				Username:      user.Username,
+				Email:         user.Email,
+				AuthStatus:    user.AuthStatus,
+				AccountStatus: user.AccountStatus,
 			},
 		},
 	}
@@ -170,21 +165,16 @@ func (s *AuthService) Register(ctx context.Context, username, password, email st
 		Code:    201,
 		Message: "注册成功",
 		Data: struct {
-			Token string      `json:"token"`
-			User  models.User `json:"user"`
+			Token string             `json:"token"`
+			User  models.UserProfile `json:"user"`
 		}{
 			Token: token,
-			User: models.User{
-				ID:               user.ID,
-				Username:         user.Username,
-				Email:            user.Email,
-				AuthStatus:       user.AuthStatus,
-				AccountStatus:    user.AccountStatus,
-				LastLoginTime:    user.LastLoginTime,
-				LastLoginIP:      user.LastLoginIP,
-				FailedLoginCount: user.FailedLoginCount,
-				CreatedAt:        user.CreatedAt,
-				UpdatedAt:        user.UpdatedAt,
+			User: models.UserProfile{
+				ID:            user.ID,
+				Username:      user.Username,
+				Email:         user.Email,
+				AuthStatus:    user.AuthStatus,
+				AccountStatus: user.AccountStatus,
 			},
 		},
 	}

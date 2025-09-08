@@ -32,8 +32,8 @@ func ValidateUsername(username string) bool {
 
 // ValidatePassword 验证密码强度
 func ValidatePassword(password string) bool {
-	// 密码长度至少8位，最多50位
-	if len(password) < 8 || len(password) > 50 {
+	// 密码长度至少6位，最多50位
+	if len(password) < 6 || len(password) > 50 {
 		return false
 	}
 

@@ -17,6 +17,15 @@ type User struct {
 	UpdatedAt        time.Time  `json:"updated_at" db:"updated_at"`
 }
 
+// UserProfile 用户基本信息（用于登录注册响应）
+type UserProfile struct {
+	ID            uint   `json:"id"`
+	Username      string `json:"username"`
+	Email         string `json:"email"`
+	AuthStatus    int    `json:"auth_status"`
+	AccountStatus int    `json:"account_status"`
+}
+
 // LoginRequest 登录请求结构体
 type LoginRequest struct {
 	Username string `json:"username" binding:"required"`
@@ -35,8 +44,8 @@ type LoginResponse struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
 	Data    struct {
-		Token string `json:"token"`
-		User  User   `json:"user"`
+		Token string      `json:"token"`
+		User  UserProfile `json:"user"`
 	} `json:"data"`
 }
 
