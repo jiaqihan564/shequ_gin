@@ -130,20 +130,29 @@ APP_ENV=prod go run main.go
 
 ### 5. 测试接口
 
-#### 健康检查
-```bash
-curl http://localhost:8080/health
-```
+#### 方式一：使用HTML测试页面（推荐）
+1. 在浏览器中打开 `test.html` 文件
+2. 点击"检查服务状态"确认服务正常运行
+3. 使用预设的admin用户登录测试
+4. 或注册新用户进行测试
 
-#### 用户登录
+#### 方式二：使用Postman
+1. 导入 `postman_collection.json` 到Postman
+2. 设置环境变量 `baseUrl` 为 `http://localhost:8080`
+3. 运行"用户登录"请求自动保存token
+4. 测试其他需要认证的接口
+
+#### 方式三：使用命令行
 ```bash
+# 健康检查
+curl http://localhost:8080/health
+
+# 用户登录
 curl -X POST http://localhost:8080/api/v1/login \
   -H "Content-Type: application/json" \
   -d '{"username": "admin", "password": "password"}'
-```
 
-#### 用户注册
-```bash
+# 用户注册
 curl -X POST http://localhost:8080/api/v1/register \
   -H "Content-Type: application/json" \
   -d '{"username": "newuser", "password": "password123", "email": "newuser@example.com"}'
@@ -159,7 +168,11 @@ curl -X POST http://localhost:8080/api/v1/register \
 
 ## API文档
 
-详细的API文档请查看 [API_DOCS.md](./API_DOCS.md)
+- **API接口文档**: [API_DOCS.md](./API_DOCS.md) - 详细的API接口说明
+- **前后端交互文档**: [API_INTERACTION.md](./API_INTERACTION.md) - 完整的前后端交互指南
+- **前端示例代码**: [FRONTEND_EXAMPLES.md](./FRONTEND_EXAMPLES.md) - 前端集成示例
+- **Postman集合**: [postman_collection.json](./postman_collection.json) - 可直接导入Postman的API测试集合
+- **HTML测试页面**: [test.html](./test.html) - 浏览器测试页面
 
 ## 项目结构
 

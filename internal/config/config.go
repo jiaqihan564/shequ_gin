@@ -58,12 +58,15 @@ type LogConfig struct {
 
 // SecurityConfig 安全配置
 type SecurityConfig struct {
-	PasswordMinLength int           `yaml:"password_min_length" json:"password_min_length"`
-	PasswordMaxLength int           `yaml:"password_max_length" json:"password_max_length"`
-	UsernameMinLength int           `yaml:"username_min_length" json:"username_min_length"`
-	UsernameMaxLength int           `yaml:"username_max_length" json:"username_max_length"`
-	MaxLoginAttempts  int           `yaml:"max_login_attempts" json:"max_login_attempts"`
-	LockoutDuration   time.Duration `yaml:"lockout_duration" json:"lockout_duration"`
+	PasswordMinLength     int           `yaml:"password_min_length" json:"password_min_length"`
+	PasswordMaxLength     int           `yaml:"password_max_length" json:"password_max_length"`
+	UsernameMinLength     int           `yaml:"username_min_length" json:"username_min_length"`
+	UsernameMaxLength     int           `yaml:"username_max_length" json:"username_max_length"`
+	MaxLoginAttempts      int           `yaml:"max_login_attempts" json:"max_login_attempts"`
+	LockoutDuration       time.Duration `yaml:"lockout_duration" json:"lockout_duration"`
+	EnablePasswordHistory bool          `yaml:"enable_password_history" json:"enable_password_history"`
+	PasswordHistoryCount  int           `yaml:"password_history_count" json:"password_history_count"`
+	SessionTimeout        time.Duration `yaml:"session_timeout" json:"session_timeout"`
 }
 
 // CORSConfig CORS配置
@@ -124,16 +127,16 @@ func getDefaultConfig() *Config {
 			Mode: "release",
 		},
 		JWT: JWTConfig{
-			SecretKey:   "your_secret_key_change_this_in_production",
+			SecretKey:   getEnv("JWT_SECRET", "default_secret_key_change_in_production"),
 			ExpireHours: 24,
 			Issuer:      "community-api",
 		},
 		Database: DatabaseConfig{
-			Host:            "192.168.200.131",
-			Port:            "3306",
-			Username:        "root",
-			Password:        "mysql_F7KJNF",
-			Database:        "hub",
+			Host:            getEnv("DB_HOST", "localhost"),
+			Port:            getEnv("DB_PORT", "3306"),
+			Username:        getEnv("DB_USERNAME", "root"),
+			Password:        getEnv("DB_PASSWORD", ""),
+			Database:        getEnv("DB_DATABASE", "community"),
 			Charset:         "utf8mb4",
 			MaxOpenConns:    100,
 			MaxIdleConns:    10,
@@ -149,12 +152,15 @@ func getDefaultConfig() *Config {
 			MaxAge:     28,
 		},
 		Security: SecurityConfig{
-			PasswordMinLength: 6,
-			PasswordMaxLength: 50,
-			UsernameMinLength: 3,
-			UsernameMaxLength: 20,
-			MaxLoginAttempts:  5,
-			LockoutDuration:   30 * time.Minute,
+			PasswordMinLength:     8,
+			PasswordMaxLength:     50,
+			UsernameMinLength:     3,
+			UsernameMaxLength:     20,
+			MaxLoginAttempts:      5,
+			LockoutDuration:       30 * time.Minute,
+			EnablePasswordHistory: false,
+			PasswordHistoryCount:  5,
+			SessionTimeout:        24 * time.Hour,
 		},
 		CORS: CORSConfig{
 			AllowOrigins:     []string{"*"},

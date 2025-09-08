@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"gin/internal/config"
+	"gin/internal/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -34,7 +35,18 @@ func CORSMiddleware(cfg *config.Config) gin.HandlerFunc {
 			c.Header("Access-Control-Allow-Credentials", "true")
 		}
 
+		// 设置预检请求的缓存时间
+		c.Header("Access-Control-Max-Age", "86400") // 24小时
+
+		// 设置暴露的头部
+		c.Header("Access-Control-Expose-Headers", "Content-Length, Access-Control-Allow-Origin, Access-Control-Allow-Headers, Content-Type")
+
+		// 处理预检请求
 		if c.Request.Method == "OPTIONS" {
+			utils.GetLogger().Debug("处理CORS预检请求",
+				"origin", origin,
+				"method", c.Request.Method,
+				"ip", c.ClientIP())
 			c.AbortWithStatus(204)
 			return
 		}
