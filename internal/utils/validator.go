@@ -6,13 +6,18 @@ import (
 	"unicode"
 )
 
+var (
+	emailRegex    = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+	usernameRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
+	phoneRegex    = regexp.MustCompile(`^1[3-9]\d{9}$`)
+	urlRegex      = regexp.MustCompile(`^https?://[^\s/$.?#].[^\s]*$`)
+)
+
 // ValidateEmail 验证邮箱格式
 func ValidateEmail(email string) bool {
 	if email == "" {
 		return false
 	}
-	// 更严格的邮箱验证正则表达式
-	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
 	return emailRegex.MatchString(email)
 }
 
@@ -26,7 +31,6 @@ func ValidateUsername(username string) bool {
 	if unicode.IsDigit(rune(username[0])) {
 		return false
 	}
-	usernameRegex := regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 	return usernameRegex.MatchString(username)
 }
 
@@ -107,8 +111,6 @@ func ValidatePhone(phone string) bool {
 	if phone == "" {
 		return false
 	}
-	// 中国大陆手机号正则表达式
-	phoneRegex := regexp.MustCompile(`^1[3-9]\d{9}$`)
 	return phoneRegex.MatchString(phone)
 }
 
@@ -117,6 +119,5 @@ func ValidateURL(url string) bool {
 	if url == "" {
 		return false
 	}
-	urlRegex := regexp.MustCompile(`^https?://[^\s/$.?#].[^\s]*$`)
 	return urlRegex.MatchString(url)
 }

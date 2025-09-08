@@ -10,16 +10,7 @@ import (
 )
 
 // ResponseHandler 响应处理器
-type ResponseHandler struct {
-	logger Logger
-}
-
-// NewResponseHandler 创建响应处理器
-func NewResponseHandler() *ResponseHandler {
-	return &ResponseHandler{
-		logger: GetLogger(),
-	}
-}
+type ResponseHandler struct{}
 
 // SuccessResponse 成功响应
 func (rh *ResponseHandler) SuccessResponse(c *gin.Context, code int, message string, data interface{}) {
@@ -28,8 +19,6 @@ func (rh *ResponseHandler) SuccessResponse(c *gin.Context, code int, message str
 		Message: message,
 		Data:    data,
 	}
-
-	rh.logger.Info("API响应成功", "path", c.Request.URL.Path, "method", c.Request.Method, "status", code)
 	c.JSON(code, response)
 }
 
@@ -39,8 +28,6 @@ func (rh *ResponseHandler) ErrorResponse(c *gin.Context, code int, message strin
 		Code:    code,
 		Message: message,
 	}
-
-	rh.logger.Error("API响应错误", "path", c.Request.URL.Path, "method", c.Request.Method, "status", code, "error", message)
 	c.JSON(code, response)
 }
 
@@ -89,13 +76,13 @@ var globalResponseHandler *ResponseHandler
 
 // InitResponseHandler 初始化全局响应处理器
 func InitResponseHandler() {
-	globalResponseHandler = NewResponseHandler()
+	globalResponseHandler = &ResponseHandler{}
 }
 
 // GetResponseHandler 获取全局响应处理器
 func GetResponseHandler() *ResponseHandler {
 	if globalResponseHandler == nil {
-		globalResponseHandler = NewResponseHandler()
+		globalResponseHandler = &ResponseHandler{}
 	}
 	return globalResponseHandler
 }

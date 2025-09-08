@@ -57,8 +57,11 @@ func LoggerMiddleware() gin.HandlerFunc {
 			logger.Error("HTTP请求", fields)
 		case status >= 400:
 			logger.Warn("HTTP请求", fields)
-		default:
-			logger.Info("HTTP请求", fields)
+		case status >= 200 && status < 300:
+			// 只记录2xx状态码的慢请求
+			if latency > 500*time.Millisecond {
+				logger.Info("慢请求", fields)
+			}
 		}
 	}
 }

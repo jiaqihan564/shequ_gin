@@ -58,15 +58,12 @@ type LogConfig struct {
 
 // SecurityConfig 安全配置
 type SecurityConfig struct {
-	PasswordMinLength     int           `yaml:"password_min_length" json:"password_min_length"`
-	PasswordMaxLength     int           `yaml:"password_max_length" json:"password_max_length"`
-	UsernameMinLength     int           `yaml:"username_min_length" json:"username_min_length"`
-	UsernameMaxLength     int           `yaml:"username_max_length" json:"username_max_length"`
-	MaxLoginAttempts      int           `yaml:"max_login_attempts" json:"max_login_attempts"`
-	LockoutDuration       time.Duration `yaml:"lockout_duration" json:"lockout_duration"`
-	EnablePasswordHistory bool          `yaml:"enable_password_history" json:"enable_password_history"`
-	PasswordHistoryCount  int           `yaml:"password_history_count" json:"password_history_count"`
-	SessionTimeout        time.Duration `yaml:"session_timeout" json:"session_timeout"`
+	PasswordMinLength int           `yaml:"password_min_length" json:"password_min_length"`
+	PasswordMaxLength int           `yaml:"password_max_length" json:"password_max_length"`
+	UsernameMinLength int           `yaml:"username_min_length" json:"username_min_length"`
+	UsernameMaxLength int           `yaml:"username_max_length" json:"username_max_length"`
+	MaxLoginAttempts  int           `yaml:"max_login_attempts" json:"max_login_attempts"`
+	LockoutDuration   time.Duration `yaml:"lockout_duration" json:"lockout_duration"`
 }
 
 // CORSConfig CORS配置
@@ -152,15 +149,12 @@ func getDefaultConfig() *Config {
 			MaxAge:     28,
 		},
 		Security: SecurityConfig{
-			PasswordMinLength:     8,
-			PasswordMaxLength:     50,
-			UsernameMinLength:     3,
-			UsernameMaxLength:     20,
-			MaxLoginAttempts:      5,
-			LockoutDuration:       30 * time.Minute,
-			EnablePasswordHistory: false,
-			PasswordHistoryCount:  5,
-			SessionTimeout:        24 * time.Hour,
+			PasswordMinLength: 8,
+			PasswordMaxLength: 50,
+			UsernameMinLength: 3,
+			UsernameMaxLength: 20,
+			MaxLoginAttempts:  5,
+			LockoutDuration:   30 * time.Minute,
 		},
 		CORS: CORSConfig{
 			AllowOrigins:     []string{"*"},

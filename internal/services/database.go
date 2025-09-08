@@ -24,7 +24,7 @@ func NewDatabase(cfg *config.Config) (*Database, error) {
 	logger := utils.GetLogger()
 
 	// 构建数据库连接字符串
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=%s&parseTime=True&loc=Local&timeout=10s&readTimeout=30s&writeTimeout=30s",
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=%s&parseTime=True&loc=Local&timeout=10s&readTimeout=30s&writeTimeout=30s&interpolateParams=true",
 		cfg.Database.Username,
 		cfg.Database.Password,
 		cfg.Database.Host,
@@ -47,6 +47,22 @@ func NewDatabase(cfg *config.Config) (*Database, error) {
 
 	// 设置连接超时
 	db.SetConnMaxIdleTime(5 * time.Minute)
+
+	// 启动连接池监控
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			stats := db.Stats()
+			if stats.OpenConnections > int(float64(cfg.Database.MaxOpenConns)*0.8) {
+				logger.Warn("数据库连接池使用率过高",
+					"openConnections", stats.OpenConnections,
+					"maxOpenConns", cfg.Database.MaxOpenConns,
+					"inUse", stats.InUse,
+					"idle", stats.Idle)
+			}
+		}
+	}()
 
 	// 测试连接
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

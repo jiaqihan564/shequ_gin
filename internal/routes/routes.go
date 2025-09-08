@@ -12,11 +12,6 @@ import (
 
 // SetupRoutes 设置路由
 func SetupRoutes(cfg *config.Config, db *services.Database) *gin.Engine {
-	// 初始化日志系统
-	if err := utils.InitLogger(&cfg.Log); err != nil {
-		utils.GetLogger().Error("初始化日志系统失败", "error", err.Error())
-	}
-
 	// 初始化响应处理器
 	utils.InitResponseHandler()
 

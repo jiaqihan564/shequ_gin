@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"gin/internal/models"
@@ -52,16 +51,4 @@ func (s *UserService) UpdateUser(ctx context.Context, id uint, email string) (*m
 
 	s.logger.Info("用户信息更新成功", "userID", id, "email", email)
 	return user, nil
-}
-
-// GetAllUsers 获取所有用户（管理员功能）
-func (s *UserService) GetAllUsers() ([]*models.User, error) {
-	// TODO: 实现获取所有用户的功能
-	return nil, fmt.Errorf("功能暂未实现")
-}
-
-// DeleteUser 删除用户（管理员功能）
-func (s *UserService) DeleteUser(id uint) error {
-	// TODO: 实现删除用户的功能
-	return fmt.Errorf("功能暂未实现")
 }

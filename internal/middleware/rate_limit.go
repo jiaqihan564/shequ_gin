@@ -121,7 +121,7 @@ var globalIPRateLimiter *IPRateLimiter
 func InitRateLimiter(cfg *config.Config) {
 	// 默认配置：每分钟100个请求，每秒补充1.67个令牌
 	capacity := 100
-	refillRate := time.Second * 100 / 167 // 避免浮点数截断
+	refillRate := time.Second * 60 / 100 // 每分钟100个请求
 
 	// 如果配置中有限流设置，使用配置值
 	if cfg != nil {
