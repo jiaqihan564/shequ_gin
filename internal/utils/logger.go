@@ -204,22 +204,12 @@ func GetLogger() Logger {
 }
 
 // 便捷函数
-func Info(msg string, fields ...interface{}) {
-	GetLogger().Info(msg, fields...)
-}
+func Info(msg string, fields ...interface{}) {}
 
-func Warn(msg string, fields ...interface{}) {
-	GetLogger().Warn(msg, fields...)
-}
+func Warn(msg string, fields ...interface{}) {}
 
-func Error(msg string, fields ...interface{}) {
-	GetLogger().Error(msg, fields...)
-}
+func Error(msg string, fields ...interface{}) {}
 
-func Debug(msg string, fields ...interface{}) {
-	GetLogger().Debug(msg, fields...)
-}
+func Debug(msg string, fields ...interface{}) {}
 
-func Fatal(msg string, fields ...interface{}) {
-	GetLogger().Fatal(msg, fields...)
-}
+func Fatal(msg string, fields ...interface{}) {}

@@ -26,13 +26,7 @@ func (g *RequestIDGenerator) Generate() string {
 	return fmt.Sprintf("%d-%s", timestamp, randomStr)
 }
 
-// GenerateShort 生成短请求ID
-func (g *RequestIDGenerator) GenerateShort() string {
-	// 生成8字节的随机字符串
-	randomBytes := make([]byte, 4)
-	rand.Read(randomBytes)
-	return hex.EncodeToString(randomBytes)
-}
+//
 
 // 全局请求ID生成器
 var globalRequestIDGenerator *RequestIDGenerator
@@ -55,7 +49,4 @@ func GenerateRequestID() string {
 	return GetRequestIDGenerator().Generate()
 }
 
-// GenerateShortRequestID 生成短请求ID的便捷函数
-func GenerateShortRequestID() string {
-	return GetRequestIDGenerator().GenerateShort()
-}
+//

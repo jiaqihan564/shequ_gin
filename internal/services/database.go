@@ -104,10 +104,7 @@ func (d *Database) Ping() error {
 	return d.DB.PingContext(ctx)
 }
 
-// GetStats 获取数据库连接池统计信息
-func (d *Database) GetStats() sql.DBStats {
-	return d.DB.Stats()
-}
+//
 
 // HealthCheck 健康检查
 func (d *Database) HealthCheck() error {

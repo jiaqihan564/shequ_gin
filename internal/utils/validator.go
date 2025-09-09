@@ -9,8 +9,6 @@ import (
 var (
 	emailRegex    = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
 	usernameRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
-	phoneRegex    = regexp.MustCompile(`^1[3-9]\d{9}$`)
-	urlRegex      = regexp.MustCompile(`^https?://[^\s/$.?#].[^\s]*$`)
 )
 
 // ValidateEmail 验证邮箱格式
@@ -59,38 +57,7 @@ func ValidatePassword(password string) bool {
 	return hasLetter && hasDigit
 }
 
-// ValidatePasswordStrong 验证强密码
-func ValidatePasswordStrong(password string) bool {
-	// 密码长度至少12位，最多50位
-	if len(password) < 12 || len(password) > 50 {
-		return false
-	}
-
-	// 检查是否包含至少一个数字
-	hasDigit := false
-	// 检查是否包含至少一个大写字母
-	hasUpper := false
-	// 检查是否包含至少一个小写字母
-	hasLower := false
-	// 检查是否包含至少一个特殊字符
-	hasSpecial := false
-
-	for _, char := range password {
-		switch {
-		case unicode.IsUpper(char):
-			hasUpper = true
-		case unicode.IsLower(char):
-			hasLower = true
-		case unicode.IsDigit(char):
-			hasDigit = true
-		case unicode.IsPunct(char) || unicode.IsSymbol(char):
-			hasSpecial = true
-		}
-	}
-
-	// 必须包含大写字母、小写字母、数字和特殊字符
-	return hasUpper && hasLower && hasDigit && hasSpecial
-}
+//
 
 // SanitizeString 清理字符串
 func SanitizeString(input string) string {
@@ -106,18 +73,6 @@ func SanitizeString(input string) string {
 	return input
 }
 
-// ValidatePhone 验证手机号格式（中国大陆）
-func ValidatePhone(phone string) bool {
-	if phone == "" {
-		return false
-	}
-	return phoneRegex.MatchString(phone)
-}
+//
 
-// ValidateURL 验证URL格式
-func ValidateURL(url string) bool {
-	if url == "" {
-		return false
-	}
-	return urlRegex.MatchString(url)
-}
+//
