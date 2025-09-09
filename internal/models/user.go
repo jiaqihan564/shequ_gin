@@ -24,6 +24,7 @@ type UserProfile struct {
 	Email         string `json:"email"`
 	AuthStatus    int    `json:"auth_status"`
 	AccountStatus int    `json:"account_status"`
+	AvatarURL     string `json:"avatar_url"`
 }
 
 // LoginRequest 登录请求结构体

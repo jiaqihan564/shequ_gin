@@ -16,6 +16,7 @@ type Config struct {
 	Log      LogConfig      `yaml:"log" json:"log"`
 	Security SecurityConfig `yaml:"security" json:"security"`
 	CORS     CORSConfig     `yaml:"cors" json:"cors"`
+	Assets   AssetsConfig   `yaml:"assets" json:"assets"`
 }
 
 // ServerConfig 服务器配置
@@ -72,6 +73,12 @@ type CORSConfig struct {
 	AllowMethods     []string `yaml:"allow_methods" json:"allow_methods"`
 	AllowHeaders     []string `yaml:"allow_headers" json:"allow_headers"`
 	AllowCredentials bool     `yaml:"allow_credentials" json:"allow_credentials"`
+}
+
+// AssetsConfig 静态资源/对象存储配置
+type AssetsConfig struct {
+	// PublicBaseURL 是指向桶根目录的可公开访问的基础 URL，例如: http://192.168.200.131:9000/community-assets
+	PublicBaseURL string `yaml:"public_base_url" json:"public_base_url"`
 }
 
 // Load 加载配置
@@ -142,8 +149,8 @@ func getDefaultConfig() *Config {
 		Log: LogConfig{
 			Level:      "info",
 			Format:     "json",
-			Output:     "stdout",
-			FilePath:   "logs/app.log",
+			Output:     "file",
+			FilePath:   "log/app.log",
 			MaxSize:    100,
 			MaxBackups: 3,
 			MaxAge:     28,
@@ -161,6 +168,9 @@ func getDefaultConfig() *Config {
 			AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 			AllowHeaders:     []string{"Origin", "Content-Type", "Content-Length", "Accept-Encoding", "X-CSRF-Token", "Authorization"},
 			AllowCredentials: true,
+		},
+		Assets: AssetsConfig{
+			PublicBaseURL: getEnv("ASSETS_PUBLIC_BASE_URL", "http://localhost:9000/community-assets"),
 		},
 	}
 }
@@ -224,6 +234,11 @@ func overrideWithEnvVars(config *Config) {
 	}
 	if val := getEnv("LOG_OUTPUT", ""); val != "" {
 		config.Log.Output = val
+	}
+
+	// 静态资源配置
+	if val := getEnv("ASSETS_PUBLIC_BASE_URL", ""); val != "" {
+		config.Assets.PublicBaseURL = val
 	}
 }
 

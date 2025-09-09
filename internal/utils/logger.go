@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"time"
 
 	"gin/internal/config"
@@ -30,6 +31,53 @@ type AppLogger struct {
 	config      *config.LogConfig
 }
 
+// dailyRotateWriter 按日期切割写入 log 目录
+type dailyRotateWriter struct {
+	directory string
+	file      *os.File
+	current   string
+	mu        sync.Mutex
+}
+
+func newDailyRotateWriter(directory string) (*dailyRotateWriter, error) {
+	if err := os.MkdirAll(directory, 0755); err != nil {
+		return nil, err
+	}
+	w := &dailyRotateWriter{directory: directory}
+	if err := w.rotateIfNeeded(); err != nil {
+		return nil, err
+	}
+	return w, nil
+}
+
+func (w *dailyRotateWriter) rotateIfNeeded() error {
+	dateStr := time.Now().Format("2006.1.2")
+	if w.file != nil && dateStr == w.current {
+		return nil
+	}
+	if w.file != nil {
+		_ = w.file.Close()
+		w.file = nil
+	}
+	filename := filepath.Join(w.directory, dateStr+".log")
+	f, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		return err
+	}
+	w.file = f
+	w.current = dateStr
+	return nil
+}
+
+func (w *dailyRotateWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if err := w.rotateIfNeeded(); err != nil {
+		return 0, err
+	}
+	return w.file.Write(p)
+}
+
 // NewLogger 创建新的日志器
 func NewLogger(cfg *config.LogConfig) (*AppLogger, error) {
 	logger := &AppLogger{
@@ -38,18 +86,24 @@ func NewLogger(cfg *config.LogConfig) (*AppLogger, error) {
 
 	// 设置日志输出
 	var output *os.File
-	var err error
 
 	switch cfg.Output {
 	case "file":
-		// 确保日志目录存在
-		if err := os.MkdirAll(filepath.Dir(cfg.FilePath), 0755); err != nil {
-			return nil, err
+		// 输出到与 internal 同级的工作目录下 log 目录，按日期切割
+		w, werr := newDailyRotateWriter("log")
+		if werr != nil {
+			return nil, werr
 		}
-		output, err = os.OpenFile(cfg.FilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-		if err != nil {
-			return nil, err
+		flags := log.LstdFlags | log.Lshortfile
+		if cfg.Format == "json" {
+			flags = 0
 		}
+		logger.infoLogger = log.New(w, "[INFO] ", flags)
+		logger.warnLogger = log.New(w, "[WARN] ", flags)
+		logger.errorLogger = log.New(w, "[ERROR] ", flags)
+		logger.debugLogger = log.New(w, "[DEBUG] ", flags)
+		logger.fatalLogger = log.New(w, "[FATAL] ", flags)
+		return logger, nil
 	default:
 		output = os.Stdout
 	}
@@ -131,12 +185,16 @@ func (l *AppLogger) logJSON(level, msg string, fields ...interface{}) {
 
 	// 添加额外字段
 	if len(fields) > 0 {
-		for i := 0; i < len(fields); i += 2 {
-			if i+1 < len(fields) {
-				key, ok := fields[i].(string)
-				if ok {
-					entry[key] = fields[i+1]
+		if len(fields) == 1 {
+			if m, ok := fields[0].(map[string]interface{}); ok {
+				for k, v := range m {
+					entry[k] = v
 				}
+			}
+		}
+		for i := 0; i < len(fields)-1; i += 2 {
+			if key, ok := fields[i].(string); ok {
+				entry[key] = fields[i+1]
 			}
 		}
 	}
@@ -150,7 +208,20 @@ func (l *AppLogger) logJSON(level, msg string, fields ...interface{}) {
 	}
 	jsonStr += "}"
 
-	l.infoLogger.Println(jsonStr)
+	switch level {
+	case "DEBUG":
+		l.debugLogger.Println(jsonStr)
+	case "INFO":
+		l.infoLogger.Println(jsonStr)
+	case "WARN":
+		l.warnLogger.Println(jsonStr)
+	case "ERROR":
+		l.errorLogger.Println(jsonStr)
+	case "FATAL":
+		l.fatalLogger.Println(jsonStr)
+	default:
+		l.infoLogger.Println(jsonStr)
+	}
 }
 
 // toString 将值转换为字符串
@@ -204,12 +275,12 @@ func GetLogger() Logger {
 }
 
 // 便捷函数
-func Info(msg string, fields ...interface{}) {}
+func Info(msg string, fields ...interface{}) { GetLogger().Info(msg, fields...) }
 
-func Warn(msg string, fields ...interface{}) {}
+func Warn(msg string, fields ...interface{}) { GetLogger().Warn(msg, fields...) }
 
-func Error(msg string, fields ...interface{}) {}
+func Error(msg string, fields ...interface{}) { GetLogger().Error(msg, fields...) }
 
-func Debug(msg string, fields ...interface{}) {}
+func Debug(msg string, fields ...interface{}) { GetLogger().Debug(msg, fields...) }
 
-func Fatal(msg string, fields ...interface{}) {}
+func Fatal(msg string, fields ...interface{}) { GetLogger().Fatal(msg, fields...) }

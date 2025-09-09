@@ -8,6 +8,9 @@ import (
 	"gin/internal/models"
 	"gin/internal/utils"
 
+	"fmt"
+	"strings"
+
 	"github.com/golang-jwt/jwt/v4"
 )
 
@@ -88,6 +91,7 @@ func (s *AuthService) Login(ctx context.Context, username, password, clientIP st
 				Email:         user.Email,
 				AuthStatus:    user.AuthStatus,
 				AccountStatus: user.AccountStatus,
+				AvatarURL:     s.buildAvatarURL(user.Username),
 			},
 		},
 	}
@@ -175,6 +179,7 @@ func (s *AuthService) Register(ctx context.Context, username, password, email st
 				Email:         user.Email,
 				AuthStatus:    user.AuthStatus,
 				AccountStatus: user.AccountStatus,
+				AvatarURL:     s.buildAvatarURL(user.Username),
 			},
 		},
 	}
@@ -189,4 +194,14 @@ func (s *AuthService) generateJWT(userID uint, username string) (string, error) 
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(s.config.JWT.SecretKey))
+}
+
+// buildAvatarURL 根据用户名生成头像URL: {base}/{username}/avatar.png
+func (s *AuthService) buildAvatarURL(username string) string {
+	base := s.config.Assets.PublicBaseURL
+	if base == "" {
+		return ""
+	}
+	base = strings.TrimRight(base, "/")
+	return fmt.Sprintf("%s/%s/avatar.png", base, username)
 }
