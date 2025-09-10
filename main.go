@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"gin/internal/bootstrap"
 	"gin/internal/config"
 	"gin/internal/routes"
 	"gin/internal/services"
@@ -51,8 +52,14 @@ func main() {
 
 	logger.Info("数据库连接成功")
 
+	// 组装容器
+	container, err := bootstrap.New(cfg, db)
+	if err != nil {
+		logger.Error("装配容器失败", "error", err.Error())
+	}
+
 	// 设置路由
-	r := routes.SetupRoutes(cfg, db)
+	r := routes.SetupRoutes(cfg, container)
 
 	// 创建HTTP服务器
 	server := &http.Server{

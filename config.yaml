@@ -76,3 +76,12 @@ assets:
   # 指向桶根目录的可访问 URL（不要带尾部斜杠）
   # 例如针对 MinIO： http://192.168.200.131:9000/community-assets
   public_base_url: "http://192.168.200.131:9000/community-assets"
+  max_avatar_size_mb: 5
+
+# MinIO 对象存储配置
+minio:
+  endpoint: "192.168.200.131:9000"
+  access_key_id: "minio_8yFeSH"
+  secret_access_key: "minio_Yfh6Gb"
+  use_ssl: false
+  bucket: "community-assets"

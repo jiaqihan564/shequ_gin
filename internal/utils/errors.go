@@ -52,6 +52,14 @@ var (
 	ErrConfigNotFound = errors.New("配置文件不存在")
 )
 
+// 标准错误码字符串（与文档一致）
+const (
+	ErrCodeAuthRequired      = "AUTH_REQUIRED"
+	ErrCodeUploadInvalidType = "UPLOAD_INVALID_TYPE"
+	ErrCodeUploadTooLarge    = "UPLOAD_TOO_LARGE"
+	ErrCodeUploadFailed      = "UPLOAD_FAILED"
+)
+
 // ErrorCode 错误代码类型
 type ErrorCode int
 

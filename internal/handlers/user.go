@@ -4,6 +4,7 @@ import (
 	"gin/internal/models"
 	"gin/internal/services"
 	"gin/internal/utils"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -84,6 +85,56 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 
 	h.logger.Info("更新用户信息成功", "userID", userID, "username", user.Username, "ip", c.ClientIP())
 	utils.SuccessResponse(c, 200, "用户信息更新成功", user)
+}
+
+// UpdateAvatar 使用 JSON 提交的头像 URL 更新用户头像（兼容前端协议）
+func (h *UserHandler) UpdateAvatar(c *gin.Context) {
+	userID, err := utils.GetUserIDFromContext(c)
+	if err != nil {
+		h.logger.Warn("更新头像失败：用户未认证", "ip", c.ClientIP())
+		utils.UnauthorizedResponse(c, err.Error())
+		return
+	}
+
+	var req models.UpdateAvatarRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.logger.Warn("更新头像请求参数绑定失败", "userID", userID, "error", err.Error(), "ip", c.ClientIP())
+		utils.ValidationErrorResponse(c, "请求参数错误: "+err.Error())
+		return
+	}
+
+	// 额外校验：URL中应包含用户名路径，减少误用
+	if usernameVal, exists := c.Get("username"); exists {
+		if username, ok := usernameVal.(string); ok && username != "" {
+			if !strings.Contains(req.Avatar, "/"+username+"/") {
+				h.logger.Warn("更新头像失败：URL不属于当前用户", "userID", userID, "username", username, "avatar", req.Avatar)
+				utils.ValidationErrorResponse(c, "头像URL不合法")
+				return
+			}
+		}
+	}
+
+	// 读取当前用户，构造返回的用户摘要
+	ctx := c.Request.Context()
+	user, err := h.userService.GetUserByID(ctx, userID)
+	if err != nil {
+		h.logger.Warn("获取用户信息失败", "userID", userID, "error", err.Error(), "ip", c.ClientIP())
+		statusCode := utils.GetHTTPStatusCode(err)
+		utils.ErrorResponse(c, statusCode, err.Error())
+		return
+	}
+
+	profile := models.UserProfile{
+		ID:            user.ID,
+		Username:      user.Username,
+		Email:         user.Email,
+		AuthStatus:    user.AuthStatus,
+		AccountStatus: user.AccountStatus,
+		AvatarURL:     req.Avatar,
+	}
+
+	h.logger.Info("更新头像成功", "userID", userID, "avatar", req.Avatar)
+	utils.SuccessResponse(c, 200, "头像更新成功", profile)
 }
 
 // GetUserByID 根据ID获取用户信息（管理员功能）

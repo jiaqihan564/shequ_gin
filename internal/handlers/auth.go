@@ -93,6 +93,16 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	utils.SuccessResponse(c, 201, "注册成功", response.Data)
 }
 
+// Logout 处理退出登录请求
+func (h *AuthHandler) Logout(c *gin.Context) {
+	// 对于基于JWT的无状态认证，服务端无法强制使现有token失效
+	// 此处仅返回成功，客户端应删除本地保存的token
+	userID, _ := utils.GetUserIDFromContext(c)
+	h.logger.Info("收到退出登录请求", "userID", userID, "ip", c.ClientIP())
+
+	utils.SuccessResponse(c, 200, "退出登录成功", gin.H{"ok": true})
+}
+
 // validateLoginRequest 验证登录请求
 func (h *AuthHandler) validateLoginRequest(req *models.LoginRequest) error {
 	if req.Username == "" {

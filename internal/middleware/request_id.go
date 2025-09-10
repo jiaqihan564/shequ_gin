@@ -1,10 +1,22 @@
 package middleware
 
 import (
-	"gin/internal/utils"
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
+
+// genRequestID 生成请求ID
+func genRequestID() string {
+	timestamp := time.Now().UnixNano()
+	randomBytes := make([]byte, 8)
+	_, _ = rand.Read(randomBytes)
+	randomStr := hex.EncodeToString(randomBytes)
+	return fmt.Sprintf("%d-%s", timestamp, randomStr)
+}
 
 // RequestIDMiddleware 请求ID中间件
 func RequestIDMiddleware() gin.HandlerFunc {
@@ -14,7 +26,7 @@ func RequestIDMiddleware() gin.HandlerFunc {
 
 		// 如果没有请求ID，生成一个新的
 		if requestID == "" {
-			requestID = utils.GenerateRequestID()
+			requestID = genRequestID()
 		}
 
 		// 将请求ID设置到上下文中

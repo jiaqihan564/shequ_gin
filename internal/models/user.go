@@ -61,3 +61,8 @@ type CommonResponse struct {
 type UpdateUserRequest struct {
 	Email string `json:"email" binding:"omitempty,email"`
 }
+
+// UpdateAvatarRequest 更新头像请求结构体
+type UpdateAvatarRequest struct {
+	Avatar string `json:"avatar" binding:"required,url"`
+}

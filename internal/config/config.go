@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -17,6 +18,7 @@ type Config struct {
 	Security SecurityConfig `yaml:"security" json:"security"`
 	CORS     CORSConfig     `yaml:"cors" json:"cors"`
 	Assets   AssetsConfig   `yaml:"assets" json:"assets"`
+	MinIO    MinIOConfig    `yaml:"minio" json:"minio"`
 }
 
 // ServerConfig 服务器配置
@@ -79,6 +81,17 @@ type CORSConfig struct {
 type AssetsConfig struct {
 	// PublicBaseURL 是指向桶根目录的可公开访问的基础 URL，例如: http://192.168.200.131:9000/community-assets
 	PublicBaseURL string `yaml:"public_base_url" json:"public_base_url"`
+	// MaxAvatarSizeMB 头像上传大小上限（MB）
+	MaxAvatarSizeMB int `yaml:"max_avatar_size_mb" json:"max_avatar_size_mb"`
+}
+
+// MinIOConfig MinIO 对象存储连接配置
+type MinIOConfig struct {
+	Endpoint        string `yaml:"endpoint" json:"endpoint"`
+	AccessKeyID     string `yaml:"access_key_id" json:"access_key_id"`
+	SecretAccessKey string `yaml:"secret_access_key" json:"secret_access_key"`
+	UseSSL          bool   `yaml:"use_ssl" json:"use_ssl"`
+	Bucket          string `yaml:"bucket" json:"bucket"`
 }
 
 // Load 加载配置
@@ -171,6 +184,22 @@ func getDefaultConfig() *Config {
 		},
 		Assets: AssetsConfig{
 			PublicBaseURL: getEnv("ASSETS_PUBLIC_BASE_URL", "http://localhost:9000/community-assets"),
+			MaxAvatarSizeMB: func() int {
+				if v := getEnv("ASSETS_MAX_AVATAR_MB", ""); v != "" {
+					n := parseInt(v)
+					if n > 0 {
+						return n
+					}
+				}
+				return 5
+			}(),
+		},
+		MinIO: MinIOConfig{
+			Endpoint:        getEnv("MINIO_ENDPOINT", "localhost:9000"),
+			AccessKeyID:     getEnv("MINIO_ACCESS_KEY", "minioadmin"),
+			SecretAccessKey: getEnv("MINIO_SECRET_KEY", "minioadmin"),
+			UseSSL:          strings.ToLower(getEnv("MINIO_USE_SSL", "false")) == "true" || getEnv("MINIO_USE_SSL", "false") == "1",
+			Bucket:          getEnv("MINIO_BUCKET", "community-assets"),
 		},
 	}
 }
@@ -239,6 +268,28 @@ func overrideWithEnvVars(config *Config) {
 	// 静态资源配置
 	if val := getEnv("ASSETS_PUBLIC_BASE_URL", ""); val != "" {
 		config.Assets.PublicBaseURL = val
+	}
+	if val := getEnv("ASSETS_MAX_AVATAR_MB", ""); val != "" {
+		if n := parseInt(val); n > 0 {
+			config.Assets.MaxAvatarSizeMB = n
+		}
+	}
+
+	// MinIO 配置
+	if val := getEnv("MINIO_ENDPOINT", ""); val != "" {
+		config.MinIO.Endpoint = val
+	}
+	if val := getEnv("MINIO_ACCESS_KEY", ""); val != "" {
+		config.MinIO.AccessKeyID = val
+	}
+	if val := getEnv("MINIO_SECRET_KEY", ""); val != "" {
+		config.MinIO.SecretAccessKey = val
+	}
+	if val := getEnv("MINIO_USE_SSL", ""); val != "" {
+		config.MinIO.UseSSL = strings.ToLower(val) == "true" || val == "1"
+	}
+	if val := getEnv("MINIO_BUCKET", ""); val != "" {
+		config.MinIO.Bucket = val
 	}
 }
 

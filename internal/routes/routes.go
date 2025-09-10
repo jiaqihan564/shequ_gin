@@ -1,17 +1,17 @@
 package routes
 
 import (
+	"gin/internal/bootstrap"
 	"gin/internal/config"
 	"gin/internal/handlers"
 	"gin/internal/middleware"
-	"gin/internal/services"
 	"gin/internal/utils"
 
 	"github.com/gin-gonic/gin"
 )
 
 // SetupRoutes 设置路由
-func SetupRoutes(cfg *config.Config, db *services.Database) *gin.Engine {
+func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 	// 初始化响应处理器
 	utils.InitResponseHandler()
 
@@ -33,17 +33,12 @@ func SetupRoutes(cfg *config.Config, db *services.Database) *gin.Engine {
 	r.Use(middleware.MetricsMiddleware())   // 性能监控中间件
 	r.Use(middleware.RateLimitMiddleware()) // 添加全局限流
 
-	// 初始化数据访问层
-	userRepo := services.NewUserRepository(db)
-
-	// 初始化服务
-	authService := services.NewAuthService(cfg, userRepo)
-	userService := services.NewUserService(userRepo)
-
 	// 初始化处理器
-	authHandler := handlers.NewAuthHandler(authService)
-	userHandler := handlers.NewUserHandler(userService)
-	healthHandler := handlers.NewHealthHandler(db)
+	uploadMaxBytes := int64(cfg.Assets.MaxAvatarSizeMB) * 1024 * 1024
+	authHandler := handlers.NewAuthHandler(ctn.Auth)
+	userHandler := handlers.NewUserHandler(ctn.UserSvc)
+	healthHandler := handlers.NewHealthHandler(ctn.DB)
+	uploadHandler := handlers.NewUploadHandler(ctn.Storage, uploadMaxBytes)
 
 	// 健康检查路由
 	r.GET("/health", healthHandler.Check)
@@ -67,7 +62,17 @@ func SetupRoutes(cfg *config.Config, db *services.Database) *gin.Engine {
 			// 用户相关路由
 			auth.GET("/user/profile", userHandler.GetProfile)
 			auth.PUT("/user/profile", userHandler.UpdateProfile)
+			// 兼容别名：PUT /api/auth/me -> UpdateProfile
+			auth.PUT("/auth/me", userHandler.UpdateProfile)
 			auth.GET("/user/:id", userHandler.GetUserByID)
+
+			// 退出登录（JWT无状态，主要用于客户端清除token）
+			auth.POST("/auth/logout", authHandler.Logout)
+
+			// 文件上传（头像）仅保留兼容别名
+			auth.POST("/files/upload", uploadHandler.UploadAvatar)
+			// 兼容别名：PUT /api/auth/me/avatar -> JSON 更新头像URL
+			auth.PUT("/auth/me/avatar", userHandler.UpdateAvatar)
 		}
 	}
 
