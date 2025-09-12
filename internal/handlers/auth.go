@@ -10,12 +10,12 @@ import (
 
 // AuthHandler 认证处理器
 type AuthHandler struct {
-	authService *services.AuthService
+	authService services.AuthServiceInterface
 	logger      utils.Logger
 }
 
 // NewAuthHandler 创建认证处理器
-func NewAuthHandler(authService *services.AuthService) *AuthHandler {
+func NewAuthHandler(authService services.AuthServiceInterface) *AuthHandler {
 	return &AuthHandler{
 		authService: authService,
 		logger:      utils.GetLogger(),

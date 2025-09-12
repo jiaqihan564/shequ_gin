@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sort"
 	"time"
 
 	"gin/internal/config"
@@ -116,4 +117,28 @@ func (s *StorageService) RemoveObject(ctx context.Context, objectPath string) er
 		return err
 	}
 	return nil
+}
+
+// ListObjects 列举指定前缀下的对象（非递归）
+func (s *StorageService) ListObjects(ctx context.Context, prefix string) ([]ObjectInfo, error) {
+	ops := minio.ListObjectsOptions{Prefix: prefix, Recursive: false}
+	ch := s.client.ListObjects(ctx, s.cfg.MinIO.Bucket, ops)
+	var list []ObjectInfo
+	for obj := range ch {
+		if obj.Err != nil {
+			s.logger.Error("列举对象失败", "prefix", prefix, "error", obj.Err.Error())
+			return nil, obj.Err
+		}
+		if len(obj.Key) > 0 && obj.Key[len(obj.Key)-1] == '/' {
+			continue
+		}
+		list = append(list, ObjectInfo{Key: obj.Key, Size: obj.Size, LastModified: obj.LastModified})
+	}
+	sort.Slice(list, func(i, j int) bool { return list[i].LastModified.After(list[j].LastModified) })
+	return list, nil
+}
+
+// GetPublicBaseURL 返回公共访问基地址
+func (s *StorageService) GetPublicBaseURL() string {
+	return s.cfg.Assets.PublicBaseURL
 }

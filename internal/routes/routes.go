@@ -12,15 +12,6 @@ import (
 
 // SetupRoutes 设置路由
 func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
-	// 初始化响应处理器
-	utils.InitResponseHandler()
-
-	// 初始化限流器
-	middleware.InitRateLimiter(cfg)
-
-	// 初始化性能监控
-	middleware.InitMetrics()
-
 	// 设置Gin模式
 	gin.SetMode(cfg.Server.Mode)
 
@@ -71,6 +62,13 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 
 			// 文件上传（头像）仅保留兼容别名
 			auth.POST("/files/upload", uploadHandler.UploadAvatar)
+			// 兼容别名：POST /api/upload -> UploadAvatar
+			auth.POST("/upload", uploadHandler.UploadAvatar)
+
+			// 历史头像查询
+			auth.GET("/user/avatar/history", uploadHandler.ListAvatarHistory)
+			// 兼容别名：GET /api/avatar/history
+			auth.GET("/avatar/history", uploadHandler.ListAvatarHistory)
 			// 兼容别名：PUT /api/auth/me/avatar -> JSON 更新头像URL
 			auth.PUT("/auth/me/avatar", userHandler.UpdateAvatar)
 		}

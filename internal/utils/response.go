@@ -15,9 +15,10 @@ type ResponseHandler struct{}
 // SuccessResponse 成功响应
 func (rh *ResponseHandler) SuccessResponse(c *gin.Context, code int, message string, data interface{}) {
 	response := models.CommonResponse{
-		Code:    code,
-		Message: message,
-		Data:    data,
+		Code:      code,
+		Message:   message,
+		RequestID: getRequestID(c),
+		Data:      data,
 	}
 	c.JSON(code, response)
 }
@@ -25,8 +26,20 @@ func (rh *ResponseHandler) SuccessResponse(c *gin.Context, code int, message str
 // ErrorResponse 错误响应
 func (rh *ResponseHandler) ErrorResponse(c *gin.Context, code int, message string) {
 	response := models.CommonResponse{
-		Code:    code,
-		Message: message,
+		Code:      code,
+		Message:   message,
+		RequestID: getRequestID(c),
+	}
+	c.JSON(code, response)
+}
+
+// CodeErrorResponse 带错误码的错误响应
+func (rh *ResponseHandler) CodeErrorResponse(c *gin.Context, code int, errorCode string, message string) {
+	response := models.CommonResponse{
+		Code:      code,
+		Message:   message,
+		ErrorCode: errorCode,
+		RequestID: getRequestID(c),
 	}
 	c.JSON(code, response)
 }
@@ -74,11 +87,6 @@ func (rh *ResponseHandler) TooManyRequestsResponse(c *gin.Context, message strin
 // 全局响应处理器实例
 var globalResponseHandler *ResponseHandler
 
-// InitResponseHandler 初始化全局响应处理器
-func InitResponseHandler() {
-	globalResponseHandler = &ResponseHandler{}
-}
-
 // GetResponseHandler 获取全局响应处理器
 func GetResponseHandler() *ResponseHandler {
 	if globalResponseHandler == nil {
@@ -94,6 +102,10 @@ func SuccessResponse(c *gin.Context, code int, message string, data interface{})
 
 func ErrorResponse(c *gin.Context, code int, message string) {
 	GetResponseHandler().ErrorResponse(c, code, message)
+}
+
+func CodeErrorResponse(c *gin.Context, code int, errorCode string, message string) {
+	GetResponseHandler().CodeErrorResponse(c, code, errorCode, message)
 }
 
 func BadRequestResponse(c *gin.Context, message string) {
@@ -160,4 +172,14 @@ func GetUserIDFromContext(c *gin.Context) (uint, error) {
 	}
 
 	return 0, ErrInvalidUserID
+}
+
+// 从 gin 上下文获取 request_id
+func getRequestID(c *gin.Context) string {
+	if v, ok := c.Get("requestID"); ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
 }

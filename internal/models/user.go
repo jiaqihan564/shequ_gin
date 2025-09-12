@@ -52,9 +52,11 @@ type LoginResponse struct {
 
 // CommonResponse 通用响应结构体
 type CommonResponse struct {
-	Code    int         `json:"code"`
-	Message string      `json:"message"`
-	Data    interface{} `json:"data,omitempty"`
+	Code      int         `json:"code"`
+	Message   string      `json:"message"`
+	ErrorCode string      `json:"error_code,omitempty"`
+	RequestID string      `json:"request_id,omitempty"`
+	Data      interface{} `json:"data,omitempty"`
 }
 
 // UpdateUserRequest 更新用户信息请求结构体

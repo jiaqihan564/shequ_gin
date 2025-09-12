@@ -1,10 +1,13 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
 	"path"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,13 +19,13 @@ import (
 
 // UploadHandler 处理上传
 type UploadHandler struct {
-	storage            *services.StorageService
+	storage            services.StorageClient
 	logger             utils.Logger
 	maxAvatarSizeBytes int64
 }
 
 // NewUploadHandler 创建上传处理器
-func NewUploadHandler(storage *services.StorageService, maxAvatarSizeBytes int64) *UploadHandler {
+func NewUploadHandler(storage services.StorageClient, maxAvatarSizeBytes int64) *UploadHandler {
 	return &UploadHandler{storage: storage, logger: utils.GetLogger(), maxAvatarSizeBytes: maxAvatarSizeBytes}
 }
 
@@ -30,14 +33,14 @@ func NewUploadHandler(storage *services.StorageService, maxAvatarSizeBytes int64
 // 表单字段：file (multipart/form-data)
 func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 	if h.storage == nil {
-		utils.ErrorResponse(c, http.StatusServiceUnavailable, utils.ErrCodeUploadFailed)
+		utils.CodeErrorResponse(c, http.StatusServiceUnavailable, utils.ErrCodeUploadFailed, "服务不可用")
 		return
 	}
 
 	userID, err := utils.GetUserIDFromContext(c)
 	if err != nil {
 		h.logger.Warn("上传头像失败：未认证", "ip", c.ClientIP())
-		utils.UnauthorizedResponse(c, utils.ErrCodeAuthRequired)
+		utils.CodeErrorResponse(c, http.StatusUnauthorized, utils.ErrCodeAuthRequired, "未认证")
 		return
 	}
 
@@ -59,14 +62,14 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 	if fileHeader.Size > maxSize {
 		h.logger.Warn("上传头像失败：文件过大", "userID", userID, "size", fileHeader.Size)
 		c.Header("Connection", "close")
-		utils.ErrorResponse(c, http.StatusRequestEntityTooLarge, utils.ErrCodeUploadTooLarge)
+		utils.CodeErrorResponse(c, http.StatusRequestEntityTooLarge, utils.ErrCodeUploadTooLarge, "文件过大")
 		return
 	}
 
 	// 只允许 PNG（扩展名校验）
 	if !isPNG(fileHeader.Filename) {
 		h.logger.Warn("上传头像失败：类型不支持", "userID", userID, "filename", fileHeader.Filename)
-		utils.BadRequestResponse(c, utils.ErrCodeUploadInvalidType)
+		utils.CodeErrorResponse(c, http.StatusBadRequest, utils.ErrCodeUploadInvalidType, "类型不支持")
 		return
 	}
 
@@ -74,13 +77,13 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 	probe, err := c.FormFile("file")
 	if err != nil {
 		h.logger.Error("读取上传文件失败(探测)", "userID", userID, "error", err.Error())
-		utils.InternalServerErrorResponse(c, utils.ErrCodeUploadFailed)
+		utils.CodeErrorResponse(c, http.StatusInternalServerError, utils.ErrCodeUploadFailed, "服务器错误")
 		return
 	}
 	pr, err := probe.Open()
 	if err != nil {
 		h.logger.Error("打开上传文件失败(探测)", "userID", userID, "error", err.Error())
-		utils.InternalServerErrorResponse(c, utils.ErrCodeUploadFailed)
+		utils.CodeErrorResponse(c, http.StatusInternalServerError, utils.ErrCodeUploadFailed, "服务器错误")
 		return
 	}
 	buf := make([]byte, 8)
@@ -88,7 +91,7 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 	_ = pr.Close()
 	if n != 8 || !(buf[0] == 0x89 && buf[1] == 0x50 && buf[2] == 0x4E && buf[3] == 0x47 && buf[4] == 0x0D && buf[5] == 0x0A && buf[6] == 0x1A && buf[7] == 0x0A) {
 		h.logger.Warn("上传头像失败：PNG魔数不匹配", "userID", userID)
-		utils.BadRequestResponse(c, utils.ErrCodeUploadInvalidType)
+		utils.CodeErrorResponse(c, http.StatusBadRequest, utils.ErrCodeUploadInvalidType, "PNG签名不匹配")
 		return
 	}
 
@@ -96,7 +99,7 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 	file, err := fileHeader.Open()
 	if err != nil {
 		h.logger.Error("打开上传文件失败", "userID", userID, "error", err.Error())
-		utils.InternalServerErrorResponse(c, utils.ErrCodeUploadFailed)
+		utils.CodeErrorResponse(c, http.StatusInternalServerError, utils.ErrCodeUploadFailed, "服务器错误")
 		return
 	}
 	defer file.Close()
@@ -121,7 +124,7 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 	url, err := h.storage.PutObject(c.Request.Context(), objectKey, "image/png", file, fileHeader.Size)
 	if err != nil {
 		h.logger.Error("上传到对象存储失败", "userID", userID, "error", err.Error())
-		utils.InternalServerErrorResponse(c, utils.ErrCodeUploadFailed)
+		utils.CodeErrorResponse(c, http.StatusInternalServerError, utils.ErrCodeUploadFailed, "服务器错误")
 		return
 	}
 
@@ -134,10 +137,116 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 		"mime":   "image/png",
 		"size":   fileHeader.Size,
 	})
+
+	// 异步清理历史头像，仅保留最新9个（{username}/{timestamp}.png）
+	go func(username string) {
+		defer func() { _ = recover() }()
+		if h.storage == nil {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		objects, err := h.storage.ListObjects(ctx, fmt.Sprintf("%s/", username))
+		if err != nil {
+			h.logger.Warn("列举历史头像失败", "user", username, "error", err.Error())
+			return
+		}
+
+		// 仅保留历史 PNG（排除 avatar.png）
+		history := make([]services.ObjectInfo, 0, len(objects))
+		for _, obj := range objects {
+			base := path.Base(obj.Key)
+			if strings.EqualFold(base, "avatar.png") {
+				continue
+			}
+			if strings.ToLower(path.Ext(base)) != ".png" {
+				continue
+			}
+			history = append(history, obj)
+		}
+		if len(history) <= 9 {
+			return
+		}
+
+		// 优先按文件名中的时间戳降序排序；解析失败则退化为按 LastModified
+		parseTs := func(key string, fallback time.Time) int64 {
+			base := path.Base(key)
+			name := strings.TrimSuffix(base, path.Ext(base))
+			if v, err := strconv.ParseInt(name, 10, 64); err == nil {
+				return v
+			}
+			return fallback.Unix()
+		}
+		sort.Slice(history, func(i, j int) bool {
+			ti := parseTs(history[i].Key, history[i].LastModified)
+			tj := parseTs(history[j].Key, history[j].LastModified)
+			if ti == tj {
+				return history[i].LastModified.After(history[j].LastModified)
+			}
+			return ti > tj
+		})
+
+		// 删除第 10 个之后的历史（仅保留 9 个）
+		for _, obj := range history[9:] {
+			key := obj.Key
+			if err := h.storage.RemoveObject(ctx, key); err != nil {
+				h.logger.Warn("删除历史头像失败", "key", key, "error", err.Error())
+			}
+		}
+	}(username)
 }
 
 func isPNG(filename string) bool {
 	name := strings.ToLower(filename)
 	ext := strings.ToLower(path.Ext(name))
 	return ext == ".png"
+}
+
+// ListAvatarHistory 获取历史头像列表（按时间倒序，最多返回50条）
+func (h *UploadHandler) ListAvatarHistory(c *gin.Context) {
+	if h.storage == nil {
+		utils.CodeErrorResponse(c, http.StatusServiceUnavailable, utils.ErrCodeUploadFailed, "服务不可用")
+		return
+	}
+
+	// 需要认证
+	_, err := utils.GetUserIDFromContext(c)
+	if err != nil {
+		utils.CodeErrorResponse(c, http.StatusUnauthorized, utils.ErrCodeAuthRequired, "未认证")
+		return
+	}
+	usernameVal, _ := c.Get("username")
+	username, _ := usernameVal.(string)
+	if username == "" {
+		utils.BadRequestResponse(c, "缺少用户名")
+		return
+	}
+
+	objects, err := h.storage.ListObjects(c.Request.Context(), fmt.Sprintf("%s/", username))
+	if err != nil {
+		utils.InternalServerErrorResponse(c, "列举历史头像失败")
+		return
+	}
+	baseURL := h.storage.GetPublicBaseURL()
+	items := make([]gin.H, 0, len(objects))
+	count := 0
+	for _, obj := range objects {
+		base := path.Base(obj.Key)
+		if strings.EqualFold(base, "avatar.png") || strings.ToLower(path.Ext(base)) != ".png" {
+			continue
+		}
+		url := fmt.Sprintf("%s/%s", baseURL, obj.Key)
+		items = append(items, gin.H{
+			"key":           obj.Key,
+			"url":           url,
+			"size":          obj.Size,
+			"last_modified": obj.LastModified.Unix(),
+		})
+		count++
+		if count >= 50 {
+			break
+		}
+	}
+
+	utils.SuccessResponse(c, 200, "OK", gin.H{"items": items})
 }

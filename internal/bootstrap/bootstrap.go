@@ -8,10 +8,9 @@ import (
 // Container 应用容器（简单装配）
 type Container struct {
 	DB      *services.Database
-	Users   *services.UserRepository
-	Auth    *services.AuthService
-	UserSvc *services.UserService
-	Storage *services.StorageService
+	Auth    services.AuthServiceInterface
+	UserSvc services.UserServiceInterface
+	Storage services.StorageClient
 }
 
 // New 构建容器
@@ -27,7 +26,6 @@ func New(cfg *config.Config, db *services.Database) (*Container, error) {
 
 	return &Container{
 		DB:      db,
-		Users:   userRepo,
 		Auth:    authService,
 		UserSvc: userService,
 		Storage: storageService,

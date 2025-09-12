@@ -37,12 +37,7 @@ log:
 
 # 安全配置
 security:
-  password_min_length: 6
-  password_max_length: 50
-  username_min_length: 3
-  username_max_length: 20
   max_login_attempts: 5
-  lockout_duration: "30m"
 
 # CORS配置
 cors:
@@ -50,26 +45,6 @@ cors:
   allow_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
   allow_headers: ["Origin", "Content-Type", "Content-Length", "Accept-Encoding", "X-CSRF-Token", "Authorization"]
   allow_credentials: true
-
-# 缓存配置（预留）
-cache:
-  enabled: false
-  type: "redis"  # redis, memory
-  redis:
-    host: "localhost"
-    port: "6379"
-    password: ""
-    db: 0
-    pool_size: 10
-
-# 邮件配置（预留）
-email:
-  enabled: false
-  smtp_host: "smtp.gmail.com"
-  smtp_port: 587
-  username: ""
-  password: ""
-  from: "noreply@community.com"
 
 # 静态资源/对象存储配置（用于头像等）
 assets:

@@ -11,12 +11,12 @@ import (
 
 // UserHandler 用户处理器
 type UserHandler struct {
-	userService *services.UserService
+	userService services.UserServiceInterface
 	logger      utils.Logger
 }
 
 // NewUserHandler 创建用户处理器
-func NewUserHandler(userService *services.UserService) *UserHandler {
+func NewUserHandler(userService services.UserServiceInterface) *UserHandler {
 	return &UserHandler{
 		userService: userService,
 		logger:      utils.GetLogger(),

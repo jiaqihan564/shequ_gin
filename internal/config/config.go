@@ -61,12 +61,7 @@ type LogConfig struct {
 
 // SecurityConfig 安全配置
 type SecurityConfig struct {
-	PasswordMinLength int           `yaml:"password_min_length" json:"password_min_length"`
-	PasswordMaxLength int           `yaml:"password_max_length" json:"password_max_length"`
-	UsernameMinLength int           `yaml:"username_min_length" json:"username_min_length"`
-	UsernameMaxLength int           `yaml:"username_max_length" json:"username_max_length"`
-	MaxLoginAttempts  int           `yaml:"max_login_attempts" json:"max_login_attempts"`
-	LockoutDuration   time.Duration `yaml:"lockout_duration" json:"lockout_duration"`
+	MaxLoginAttempts int `yaml:"max_login_attempts" json:"max_login_attempts"`
 }
 
 // CORSConfig CORS配置
@@ -169,12 +164,7 @@ func getDefaultConfig() *Config {
 			MaxAge:     28,
 		},
 		Security: SecurityConfig{
-			PasswordMinLength: 8,
-			PasswordMaxLength: 50,
-			UsernameMinLength: 3,
-			UsernameMaxLength: 20,
-			MaxLoginAttempts:  5,
-			LockoutDuration:   30 * time.Minute,
+			MaxLoginAttempts: 5,
 		},
 		CORS: CORSConfig{
 			AllowOrigins:     []string{"*"},
