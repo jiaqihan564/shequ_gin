@@ -17,7 +17,8 @@ type AuthServiceInterface interface {
 // UserServiceInterface 用户服务接口
 type UserServiceInterface interface {
 	GetUserByID(ctx context.Context, id uint) (*models.User, error)
-	UpdateUser(ctx context.Context, id uint, email string) (*models.User, error)
+	GetUserProfile(ctx context.Context, userID uint) (*models.UserExtraProfile, error)
+	UpsertUserProfile(ctx context.Context, profile *models.UserExtraProfile) error
 }
 
 // StorageClient 存储客户端接口（用于头像上传等场景）

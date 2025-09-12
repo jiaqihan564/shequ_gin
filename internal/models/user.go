@@ -25,6 +25,8 @@ type UserProfile struct {
 	AuthStatus    int    `json:"auth_status"`
 	AccountStatus int    `json:"account_status"`
 	AvatarURL     string `json:"avatar_url"`
+	Nickname      string `json:"nickname"`
+	Bio           string `json:"bio"`
 }
 
 // LoginRequest 登录请求结构体
@@ -59,12 +61,12 @@ type CommonResponse struct {
 	Data      interface{} `json:"data,omitempty"`
 }
 
-// UpdateUserRequest 更新用户信息请求结构体
-type UpdateUserRequest struct {
-	Email string `json:"email" binding:"omitempty,email"`
-}
-
-// UpdateAvatarRequest 更新头像请求结构体
-type UpdateAvatarRequest struct {
-	Avatar string `json:"avatar" binding:"required,url"`
+// UserExtraProfile 对应表 user_profile（扩展资料）
+type UserExtraProfile struct {
+	UserID    uint      `json:"user_id" db:"user_id"`
+	Nickname  string    `json:"nickname" db:"nickname"`
+	Bio       string    `json:"bio" db:"bio"`
+	AvatarURL string    `json:"avatar_url" db:"avatar_url"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }

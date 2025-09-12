@@ -58,28 +58,29 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 		return
 	}
 
-	var req models.UpdateUserRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	var payload struct {
+		Profile struct {
+			Nickname string `json:"nickname"`
+			Bio      string `json:"bio"`
+		} `json:"profile"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
 		h.logger.Warn("更新用户信息请求参数绑定失败", "userID", userID, "error", err.Error(), "ip", c.ClientIP())
 		utils.ValidationErrorResponse(c, "请求参数错误: "+err.Error())
 		return
 	}
 
-	// 验证输入
-	if err := h.validateUpdateRequest(&req); err != nil {
-		h.logger.Warn("更新用户信息请求验证失败", "userID", userID, "error", err.Error(), "ip", c.ClientIP())
-		utils.ValidationErrorResponse(c, err.Error())
-		return
+	// 持久化昵称/简介到 user_profile
+	if payload.Profile.Nickname != "" || payload.Profile.Bio != "" {
+		prof := &models.UserExtraProfile{UserID: userID, Nickname: payload.Profile.Nickname, Bio: payload.Profile.Bio}
+		if err := h.userService.UpsertUserProfile(c.Request.Context(), prof); err != nil {
+			statusCode := utils.GetHTTPStatusCode(err)
+			utils.ErrorResponse(c, statusCode, err.Error())
+			return
+		}
 	}
 
-	// 禁止修改邮箱
-	if req.Email != "" {
-		h.logger.Warn("更新用户信息被拒绝：禁止修改邮箱", "userID", userID, "email", req.Email, "ip", c.ClientIP())
-		utils.ValidationErrorResponse(c, "邮箱不支持修改")
-		return
-	}
-
-	// 没有可更新的字段，返回当前用户信息以保持兼容
+	// 返回当前用户信息与扩展资料
 	ctx := c.Request.Context()
 	user, err := h.userService.GetUserByID(ctx, userID)
 	if err != nil {
@@ -89,8 +90,12 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 		return
 	}
 
-	h.logger.Info("更新用户信息跳过：无可修改字段", "userID", userID, "ip", c.ClientIP())
-	utils.SuccessResponse(c, 200, "暂无可更新字段", user)
+	extra, _ := h.userService.GetUserProfile(ctx, userID)
+	h.logger.Info("更新用户信息成功", "userID", userID, "nickname", payload.Profile.Nickname, "ip", c.ClientIP())
+	utils.SuccessResponse(c, 200, "OK", gin.H{
+		"user":    user,
+		"profile": gin.H{"nickname": extra.Nickname, "bio": extra.Bio},
+	})
 }
 
 // UpdateAvatar 使用 JSON 提交的头像 URL 更新用户头像（兼容前端协议）
@@ -134,17 +139,4 @@ func (h *UserHandler) GetUserByID(c *gin.Context) {
 	utils.SuccessResponse(c, 200, "获取用户信息成功", user)
 }
 
-// validateUpdateRequest 验证更新请求
-func (h *UserHandler) validateUpdateRequest(req *models.UpdateUserRequest) error {
-	if req.Email != "" {
-		// 清理输入
-		req.Email = utils.SanitizeString(req.Email)
-
-		// 验证邮箱格式
-		if !utils.ValidateEmail(req.Email) {
-			return utils.ErrInvalidEmail
-		}
-	}
-
-	return nil
-}
+// 旧的邮箱校验逻辑已移除（邮箱不支持修改）

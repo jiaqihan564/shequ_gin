@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"time"
 
 	"gin/internal/models"
 	"gin/internal/utils"
@@ -27,28 +26,12 @@ func (s *UserService) GetUserByID(ctx context.Context, id uint) (*models.User, e
 	return s.userRepo.GetUserByID(ctx, id)
 }
 
-// UpdateUser 更新用户信息
-func (s *UserService) UpdateUser(ctx context.Context, id uint, email string) (*models.User, error) {
-	// 获取当前用户信息
-	user, err := s.GetUserByID(ctx, id)
-	if err != nil {
-		s.logger.Error("获取用户信息失败", "userID", id, "error", err.Error())
-		return nil, err
-	}
+// GetUserProfile 读取扩展资料
+func (s *UserService) GetUserProfile(ctx context.Context, userID uint) (*models.UserExtraProfile, error) {
+	return s.userRepo.GetUserProfile(ctx, userID)
+}
 
-	// 更新用户信息
-	if email != "" {
-		user.Email = email
-	}
-	user.UpdatedAt = time.Now()
-
-	// 保存到数据库
-	err = s.userRepo.UpdateUser(ctx, user)
-	if err != nil {
-		s.logger.Error("更新用户信息失败", "userID", id, "error", err.Error())
-		return nil, err
-	}
-
-	s.logger.Info("用户信息更新成功", "userID", id, "email", email)
-	return user, nil
+// UpsertUserProfile 创建或更新扩展资料
+func (s *UserService) UpsertUserProfile(ctx context.Context, profile *models.UserExtraProfile) error {
+	return s.userRepo.UpsertUserProfile(ctx, profile)
 }

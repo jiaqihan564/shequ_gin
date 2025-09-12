@@ -76,6 +76,9 @@ func (s *AuthService) Login(ctx context.Context, username, password, clientIP st
 		return nil, utils.ErrInternalServerError
 	}
 
+	// 读取扩展资料（昵称/简介）
+	extra, _ := s.userRepo.GetUserProfile(ctx, user.ID)
+
 	// 返回登录成功响应
 	response := &models.LoginResponse{
 		Code:    200,
@@ -92,6 +95,8 @@ func (s *AuthService) Login(ctx context.Context, username, password, clientIP st
 				AuthStatus:    user.AuthStatus,
 				AccountStatus: user.AccountStatus,
 				AvatarURL:     s.buildAvatarURL(user.Username),
+				Nickname:      extra.Nickname,
+				Bio:           extra.Bio,
 			},
 		},
 	}
@@ -164,6 +169,9 @@ func (s *AuthService) Register(ctx context.Context, username, password, email st
 		return nil, utils.ErrInternalServerError
 	}
 
+	// 读取扩展资料（可能为空）
+	extra, _ := s.userRepo.GetUserProfile(ctx, user.ID)
+
 	// 返回注册成功响应
 	response := &models.LoginResponse{
 		Code:    201,
@@ -180,6 +188,8 @@ func (s *AuthService) Register(ctx context.Context, username, password, email st
 				AuthStatus:    user.AuthStatus,
 				AccountStatus: user.AccountStatus,
 				AvatarURL:     s.buildAvatarURL(user.Username),
+				Nickname:      extra.Nickname,
+				Bio:           extra.Bio,
 			},
 		},
 	}

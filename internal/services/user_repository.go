@@ -206,6 +206,52 @@ func (r *UserRepository) UpdateUser(ctx context.Context, user *models.User) erro
 	return nil
 }
 
+// GetUserProfile 读取扩展资料 user_profile
+func (r *UserRepository) GetUserProfile(ctx context.Context, userID uint) (*models.UserExtraProfile, error) {
+	query := `SELECT user_id, nickname, bio, avatar_url, created_at, updated_at FROM user_profile WHERE user_id = ?`
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	prof := &models.UserExtraProfile{}
+	err := r.db.DB.QueryRowContext(ctx, query, userID).Scan(
+		&prof.UserID,
+		&prof.Nickname,
+		&prof.Bio,
+		&prof.AvatarURL,
+		&prof.CreatedAt,
+		&prof.UpdatedAt,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// 未创建则返回空记录（不视为错误）
+			return &models.UserExtraProfile{UserID: userID}, nil
+		}
+		r.logger.Error("查询用户扩展资料失败", "userID", userID, "error", err.Error())
+		return nil, utils.ErrDatabaseQuery
+	}
+
+	return prof, nil
+}
+
+// UpsertUserProfile 创建或更新扩展资料（昵称/简介）
+func (r *UserRepository) UpsertUserProfile(ctx context.Context, profile *models.UserExtraProfile) error {
+	query := `INSERT INTO user_profile (user_id, nickname, bio, avatar_url, created_at, updated_at)
+              VALUES (?, ?, ?, COALESCE(?, NULL), NOW(), NOW())
+              ON DUPLICATE KEY UPDATE nickname = VALUES(nickname), bio = VALUES(bio), updated_at = NOW()`
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	_, err := r.db.DB.ExecContext(ctx, query, profile.UserID, profile.Nickname, profile.Bio, profile.AvatarURL)
+	if err != nil {
+		r.logger.Error("保存用户扩展资料失败", "userID", profile.UserID, "error", err.Error())
+		return utils.ErrDatabaseUpdate
+	}
+	return nil
+}
+
 // UpdateLoginInfo 更新登录信息
 func (r *UserRepository) UpdateLoginInfo(ctx context.Context, userID uint, loginTime time.Time, loginIP string) error {
 	query := `UPDATE user_auth SET last_login_time = ?, last_login_ip = ?, failed_login_count = 0, updated_at = ? WHERE id = ?`
