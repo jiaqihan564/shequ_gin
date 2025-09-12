@@ -1,10 +1,11 @@
 package handlers
 
 import (
+	"net/http"
+
 	"gin/internal/models"
 	"gin/internal/services"
 	"gin/internal/utils"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -71,50 +72,14 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 		return
 	}
 
-	h.logger.Info("更新用户信息请求", "userID", userID, "email", req.Email, "ip", c.ClientIP())
-
-	// 调用服务层更新用户信息
-	ctx := c.Request.Context()
-	user, err := h.userService.UpdateUser(ctx, userID, req.Email)
-	if err != nil {
-		h.logger.Warn("更新用户信息失败", "userID", userID, "error", err.Error(), "ip", c.ClientIP())
-		statusCode := utils.GetHTTPStatusCode(err)
-		utils.ErrorResponse(c, statusCode, err.Error())
+	// 禁止修改邮箱
+	if req.Email != "" {
+		h.logger.Warn("更新用户信息被拒绝：禁止修改邮箱", "userID", userID, "email", req.Email, "ip", c.ClientIP())
+		utils.ValidationErrorResponse(c, "邮箱不支持修改")
 		return
 	}
 
-	h.logger.Info("更新用户信息成功", "userID", userID, "username", user.Username, "ip", c.ClientIP())
-	utils.SuccessResponse(c, 200, "用户信息更新成功", user)
-}
-
-// UpdateAvatar 使用 JSON 提交的头像 URL 更新用户头像（兼容前端协议）
-func (h *UserHandler) UpdateAvatar(c *gin.Context) {
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		h.logger.Warn("更新头像失败：用户未认证", "ip", c.ClientIP())
-		utils.UnauthorizedResponse(c, err.Error())
-		return
-	}
-
-	var req models.UpdateAvatarRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		h.logger.Warn("更新头像请求参数绑定失败", "userID", userID, "error", err.Error(), "ip", c.ClientIP())
-		utils.ValidationErrorResponse(c, "请求参数错误: "+err.Error())
-		return
-	}
-
-	// 额外校验：URL中应包含用户名路径，减少误用
-	if usernameVal, exists := c.Get("username"); exists {
-		if username, ok := usernameVal.(string); ok && username != "" {
-			if !strings.Contains(req.Avatar, "/"+username+"/") {
-				h.logger.Warn("更新头像失败：URL不属于当前用户", "userID", userID, "username", username, "avatar", req.Avatar)
-				utils.ValidationErrorResponse(c, "头像URL不合法")
-				return
-			}
-		}
-	}
-
-	// 读取当前用户，构造返回的用户摘要
+	// 没有可更新的字段，返回当前用户信息以保持兼容
 	ctx := c.Request.Context()
 	user, err := h.userService.GetUserByID(ctx, userID)
 	if err != nil {
@@ -124,17 +89,15 @@ func (h *UserHandler) UpdateAvatar(c *gin.Context) {
 		return
 	}
 
-	profile := models.UserProfile{
-		ID:            user.ID,
-		Username:      user.Username,
-		Email:         user.Email,
-		AuthStatus:    user.AuthStatus,
-		AccountStatus: user.AccountStatus,
-		AvatarURL:     req.Avatar,
-	}
+	h.logger.Info("更新用户信息跳过：无可修改字段", "userID", userID, "ip", c.ClientIP())
+	utils.SuccessResponse(c, 200, "暂无可更新字段", user)
+}
 
-	h.logger.Info("更新头像成功", "userID", userID, "avatar", req.Avatar)
-	utils.SuccessResponse(c, 200, "头像更新成功", profile)
+// UpdateAvatar 使用 JSON 提交的头像 URL 更新用户头像（兼容前端协议）
+func (h *UserHandler) UpdateAvatar(c *gin.Context) {
+	// 禁止通过编辑页面（JSON）修改头像，提示改用上传接口
+	h.logger.Warn("更新头像被拒绝：不支持通过编辑页面修改", "ip", c.ClientIP(), "path", c.FullPath())
+	utils.ErrorResponse(c, http.StatusMethodNotAllowed, "头像不支持通过编辑页面更改，请使用上传接口")
 }
 
 // GetUserByID 根据ID获取用户信息（管理员功能）
