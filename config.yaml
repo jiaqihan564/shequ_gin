@@ -52,6 +52,8 @@ assets:
   # 例如针对 MinIO： http://192.168.200.131:9000/community-assets
   public_base_url: "http://192.168.200.131:9000/community-assets"
   max_avatar_size_mb: 5
+  # 历史头像最大保留数量（含归档，不含当前 avatar.png）
+  max_avatar_history: 9
 
 # MinIO 对象存储配置
 minio:

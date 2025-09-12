@@ -22,11 +22,12 @@ type UploadHandler struct {
 	storage            services.StorageClient
 	logger             utils.Logger
 	maxAvatarSizeBytes int64
+	maxAvatarHistory   int
 }
 
 // NewUploadHandler 创建上传处理器
-func NewUploadHandler(storage services.StorageClient, maxAvatarSizeBytes int64) *UploadHandler {
-	return &UploadHandler{storage: storage, logger: utils.GetLogger(), maxAvatarSizeBytes: maxAvatarSizeBytes}
+func NewUploadHandler(storage services.StorageClient, maxAvatarSizeBytes int64, maxAvatarHistory int) *UploadHandler {
+	return &UploadHandler{storage: storage, logger: utils.GetLogger(), maxAvatarSizeBytes: maxAvatarSizeBytes, maxAvatarHistory: maxAvatarHistory}
 }
 
 // UploadAvatar 上传头像：仅允许 PNG，并以时间戳覆盖当前头像
@@ -138,7 +139,7 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 		"size":   fileHeader.Size,
 	})
 
-	// 异步清理历史头像，仅保留最新9个（{username}/{timestamp}.png）
+	// 异步清理历史头像，仅保留最新 h.maxAvatarHistory 个（{username}/{timestamp}.png）
 	go func(username string) {
 		defer func() { _ = recover() }()
 		if h.storage == nil {
@@ -164,7 +165,7 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 			}
 			history = append(history, obj)
 		}
-		if len(history) <= 9 {
+		if len(history) <= h.maxAvatarHistory {
 			return
 		}
 
@@ -186,8 +187,8 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 			return ti > tj
 		})
 
-		// 删除第 10 个之后的历史（仅保留 9 个）
-		for _, obj := range history[9:] {
+		// 删除超过上限的历史（仅保留 h.maxAvatarHistory 个）
+		for _, obj := range history[h.maxAvatarHistory:] {
 			key := obj.Key
 			if err := h.storage.RemoveObject(ctx, key); err != nil {
 				h.logger.Warn("删除历史头像失败", "key", key, "error", err.Error())

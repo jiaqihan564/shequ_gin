@@ -78,6 +78,8 @@ type AssetsConfig struct {
 	PublicBaseURL string `yaml:"public_base_url" json:"public_base_url"`
 	// MaxAvatarSizeMB 头像上传大小上限（MB）
 	MaxAvatarSizeMB int `yaml:"max_avatar_size_mb" json:"max_avatar_size_mb"`
+	// MaxAvatarHistory 历史头像最大保留数量
+	MaxAvatarHistory int `yaml:"max_avatar_history" json:"max_avatar_history"`
 }
 
 // MinIOConfig MinIO 对象存储连接配置
@@ -182,6 +184,15 @@ func getDefaultConfig() *Config {
 					}
 				}
 				return 5
+			}(),
+			MaxAvatarHistory: func() int {
+				if v := getEnv("ASSETS_MAX_AVATAR_HISTORY", ""); v != "" {
+					n := parseInt(v)
+					if n > 0 {
+						return n
+					}
+				}
+				return 9
 			}(),
 		},
 		MinIO: MinIOConfig{

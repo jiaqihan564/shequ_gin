@@ -29,7 +29,7 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 	authHandler := handlers.NewAuthHandler(ctn.Auth)
 	userHandler := handlers.NewUserHandler(ctn.UserSvc)
 	healthHandler := handlers.NewHealthHandler(ctn.DB)
-	uploadHandler := handlers.NewUploadHandler(ctn.Storage, uploadMaxBytes)
+	uploadHandler := handlers.NewUploadHandler(ctn.Storage, uploadMaxBytes, cfg.Assets.MaxAvatarHistory)
 
 	// 健康检查路由
 	r.GET("/health", healthHandler.Check)
