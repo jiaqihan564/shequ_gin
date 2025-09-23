@@ -94,4 +94,9 @@ func main() {
 	} else {
 		logger.Info("服务器已优雅关闭")
 	}
+
+	// 关闭日志（flush 异步队列）
+	if err := utils.CloseLogger(); err != nil {
+		fmt.Printf("关闭日志失败: %v\n", err)
+	}
 }

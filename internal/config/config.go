@@ -57,6 +57,9 @@ type LogConfig struct {
 	MaxSize    int    `yaml:"max_size" json:"max_size"`
 	MaxBackups int    `yaml:"max_backups" json:"max_backups"`
 	MaxAge     int    `yaml:"max_age" json:"max_age"`
+	Async      bool   `yaml:"async" json:"async"`
+	Buffer     int    `yaml:"buffer" json:"buffer"`
+	DropPolicy string `yaml:"drop_policy" json:"drop_policy"` // block | drop_new | drop_oldest
 }
 
 // SecurityConfig 安全配置
@@ -164,6 +167,9 @@ func getDefaultConfig() *Config {
 			MaxSize:    100,
 			MaxBackups: 3,
 			MaxAge:     28,
+			Async:      true,
+			Buffer:     1024,
+			DropPolicy: "block",
 		},
 		Security: SecurityConfig{
 			MaxLoginAttempts: 5,
