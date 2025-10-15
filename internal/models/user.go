@@ -24,7 +24,7 @@ type UserProfile struct {
 	Email         string `json:"email"`
 	AuthStatus    int    `json:"auth_status"`
 	AccountStatus int    `json:"account_status"`
-	AvatarURL     string `json:"avatar_url"`
+	AvatarURL     string `json:"avatar"` // 前端期望字段名为 avatar
 	Nickname      string `json:"nickname"`
 	Bio           string `json:"bio"`
 }

@@ -52,8 +52,8 @@ cors:
 # 静态资源/对象存储配置（用于头像等）
 assets:
   # 指向桶根目录的可访问 URL（不要带尾部斜杠）
-  # 例如针对 MinIO： http://192.168.200.131:9000/community-assets
-  public_base_url: "http://192.168.200.131:9000/community-assets"
+  # 例如针对 MinIO： http://127.0.0.1:9000/community-assets
+  public_base_url: "http://127.0.0.1:9000/community-assets"
   max_avatar_size_mb: 5
   # 历史头像最大保留数量（含归档，不含当前 avatar.png）
   max_avatar_history: 9

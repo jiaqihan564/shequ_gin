@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"gin/internal/models"
 	"gin/internal/services"
 	"gin/internal/utils"
 
@@ -20,14 +21,21 @@ import (
 // UploadHandler 处理上传
 type UploadHandler struct {
 	storage            services.StorageClient
+	userService        services.UserServiceInterface
 	logger             utils.Logger
 	maxAvatarSizeBytes int64
 	maxAvatarHistory   int
 }
 
 // NewUploadHandler 创建上传处理器
-func NewUploadHandler(storage services.StorageClient, maxAvatarSizeBytes int64, maxAvatarHistory int) *UploadHandler {
-	return &UploadHandler{storage: storage, logger: utils.GetLogger(), maxAvatarSizeBytes: maxAvatarSizeBytes, maxAvatarHistory: maxAvatarHistory}
+func NewUploadHandler(storage services.StorageClient, userService services.UserServiceInterface, maxAvatarSizeBytes int64, maxAvatarHistory int) *UploadHandler {
+	return &UploadHandler{
+		storage:            storage,
+		userService:        userService,
+		logger:             utils.GetLogger(),
+		maxAvatarSizeBytes: maxAvatarSizeBytes,
+		maxAvatarHistory:   maxAvatarHistory,
+	}
 }
 
 // UploadAvatar 上传头像到对象存储
@@ -83,7 +91,7 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 	objectKey := fmt.Sprintf("%s/avatar.png", username)
 	h.archiveOldAvatar(c.Request.Context(), userID, username, objectKey, timestamp)
 
-	// 6. 上传新头像
+	// 6. 上传新头像（PNG格式）
 	url, err := h.storage.PutObject(c.Request.Context(), objectKey, "image/png", file, fileHeader.Size)
 	if err != nil {
 		h.logger.Error("上传到对象存储失败", "userID", userID, "error", err.Error())
@@ -91,7 +99,21 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 		return
 	}
 
-	// 7. 返回成功响应（URL带时间戳防缓存）
+	// 7. 更新数据库中的头像URL（不带时间戳，因为文件名固定）
+	if h.userService != nil {
+		prof := &models.UserExtraProfile{
+			UserID:    userID,
+			AvatarURL: url, // 使用不带时间戳的URL存储到数据库
+		}
+		if err := h.userService.UpdateUserAvatar(c.Request.Context(), prof); err != nil {
+			// 数据库更新失败不影响上传结果，仅记录日志
+			h.logger.Warn("更新数据库头像URL失败", "userID", userID, "error", err.Error())
+		} else {
+			h.logger.Debug("数据库头像URL已更新", "userID", userID, "url", url)
+		}
+	}
+
+	// 8. 返回成功响应（URL带时间戳防缓存）
 	urlWithTS := fmt.Sprintf("%s?t=%d", url, time.Now().Unix())
 	h.logger.Info("上传头像成功", "userID", userID, "username", username, "size", fileHeader.Size)
 
@@ -103,7 +125,7 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 		"size":   fileHeader.Size,
 	})
 
-	// 8. 异步清理历史头像
+	// 9. 异步清理历史头像
 	go h.cleanupAvatarHistory(username)
 }
 
@@ -144,6 +166,7 @@ func (h *UploadHandler) receiveAndValidateFile(c *gin.Context, userID uint) (*mu
 	}
 
 	// 使用文件验证器（包含大小和魔数验证）
+	// 仅支持 PNG 格式
 	validator := utils.NewFileValidator(maxSize, []string{"image/png"})
 	if err := validator.Validate(fileHeader); err != nil {
 		h.logger.Warn("文件验证失败",

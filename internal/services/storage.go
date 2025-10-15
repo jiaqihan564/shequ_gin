@@ -34,20 +34,46 @@ func NewStorageService(cfg *config.Config) (*StorageService, error) {
 		return nil, err
 	}
 
-	// 确保桶存在
+	// 确保桶存在并设置公开访问权限
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
 	exists, err := cli.BucketExists(ctx, cfg.MinIO.Bucket)
 	if err != nil {
 		logger.Error("检查桶失败", "bucket", cfg.MinIO.Bucket, "error", err.Error())
 		return nil, err
 	}
+
 	if !exists {
 		if err := cli.MakeBucket(ctx, cfg.MinIO.Bucket, minio.MakeBucketOptions{}); err != nil {
 			logger.Error("创建桶失败", "bucket", cfg.MinIO.Bucket, "error", err.Error())
 			return nil, err
 		}
 		logger.Info("已创建桶", "bucket", cfg.MinIO.Bucket)
+	}
+
+	// 设置桶策略为公开只读（允许匿名访问）
+	policy := fmt.Sprintf(`{
+		"Version": "2012-10-17",
+		"Statement": [
+			{
+				"Sid": "PublicReadGetObject",
+				"Effect": "Allow",
+				"Principal": "*",
+				"Action": "s3:GetObject",
+				"Resource": "arn:aws:s3:::%s/*"
+			}
+		]
+	}`, cfg.MinIO.Bucket)
+
+	if err := cli.SetBucketPolicy(ctx, cfg.MinIO.Bucket, policy); err != nil {
+		// 设置策略失败不阻塞服务启动，但要记录警告
+		logger.Warn("设置桶公开访问策略失败",
+			"bucket", cfg.MinIO.Bucket,
+			"error", err.Error(),
+			"suggestion", "请手动在MinIO控制台设置桶为Public访问")
+	} else {
+		logger.Info("桶策略已设置为公开只读", "bucket", cfg.MinIO.Bucket)
 	}
 
 	return &StorageService{client: cli, cfg: cfg, logger: logger}, nil

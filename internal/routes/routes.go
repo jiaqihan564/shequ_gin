@@ -27,9 +27,9 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 	// 初始化处理器
 	uploadMaxBytes := int64(cfg.Assets.MaxAvatarSizeMB) * 1024 * 1024
 	authHandler := handlers.NewAuthHandler(ctn.Auth)
-	userHandler := handlers.NewUserHandler(ctn.UserSvc)
+	userHandler := handlers.NewUserHandler(ctn.UserSvc, cfg)
 	healthHandler := handlers.NewHealthHandler(ctn.DB)
-	uploadHandler := handlers.NewUploadHandler(ctn.Storage, uploadMaxBytes, cfg.Assets.MaxAvatarHistory)
+	uploadHandler := handlers.NewUploadHandler(ctn.Storage, ctn.UserSvc, uploadMaxBytes, cfg.Assets.MaxAvatarHistory)
 
 	// 健康检查路由
 	r.GET("/health", healthHandler.Check)
@@ -50,27 +50,26 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 		auth := api.Group("/")
 		auth.Use(middleware.AuthMiddleware(cfg))
 		{
-			// 用户相关路由
-			auth.GET("/user/profile", userHandler.GetProfile)
-			auth.PUT("/user/profile", userHandler.UpdateProfile)
-			// 兼容别名：PUT /api/auth/me -> UpdateProfile
-			auth.PUT("/auth/me", userHandler.UpdateProfile)
-			auth.GET("/user/:id", userHandler.GetUserByID)
+			// 前端期望的统一接口
+			auth.GET("/auth/me", userHandler.GetMe)    // 获取当前用户信息
+			auth.PUT("/auth/me", userHandler.UpdateMe) // 更新当前用户信息
+
+			// 文件上传接口
+			auth.POST("/upload", uploadHandler.UploadAvatar)
 
 			// 退出登录（JWT无状态，主要用于客户端清除token）
 			auth.POST("/auth/logout", authHandler.Logout)
 
-			// 文件上传（头像）仅保留兼容别名
+			// 保留的原有接口（向后兼容）
+			auth.GET("/user/profile", userHandler.GetProfile)
+			auth.PUT("/user/profile", userHandler.UpdateProfile)
+			auth.GET("/user/:id", userHandler.GetUserByID)
 			auth.POST("/files/upload", uploadHandler.UploadAvatar)
-			// 兼容别名：POST /api/upload -> UploadAvatar
-			auth.POST("/upload", uploadHandler.UploadAvatar)
-
-			// 历史头像查询
 			auth.GET("/user/avatar/history", uploadHandler.ListAvatarHistory)
-			// 兼容别名：GET /api/avatar/history
 			auth.GET("/avatar/history", uploadHandler.ListAvatarHistory)
-			// 兼容别名：PUT /api/auth/me/avatar -> JSON 更新头像URL
-			auth.PUT("/auth/me/avatar", userHandler.UpdateAvatar)
+
+			// 临时兼容旧的头像更新接口
+			auth.PUT("/auth/me/avatar", userHandler.UpdateMe)
 		}
 	}
 

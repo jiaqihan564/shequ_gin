@@ -79,7 +79,7 @@ func (s *AuthService) Login(ctx context.Context, username, password, clientIP st
 	// 读取扩展资料（昵称/简介）
 	extra, _ := s.userRepo.GetUserProfile(ctx, user.ID)
 
-	// 返回登录成功响应
+	// 返回登录成功响应（匹配前端期望格式）
 	response := &models.LoginResponse{
 		Code:    200,
 		Message: "登录成功",
@@ -94,7 +94,7 @@ func (s *AuthService) Login(ctx context.Context, username, password, clientIP st
 				Email:         user.Email,
 				AuthStatus:    user.AuthStatus,
 				AccountStatus: user.AccountStatus,
-				AvatarURL:     s.buildAvatarURL(user.Username),
+				AvatarURL:     extra.AvatarURL, // 使用数据库中的头像URL
 				Nickname:      extra.Nickname,
 				Bio:           extra.Bio,
 			},
@@ -172,7 +172,7 @@ func (s *AuthService) Register(ctx context.Context, username, password, email st
 	// 读取扩展资料（可能为空）
 	extra, _ := s.userRepo.GetUserProfile(ctx, user.ID)
 
-	// 返回注册成功响应
+	// 返回注册成功响应（匹配前端期望格式）
 	response := &models.LoginResponse{
 		Code:    201,
 		Message: "注册成功",
@@ -187,7 +187,7 @@ func (s *AuthService) Register(ctx context.Context, username, password, email st
 				Email:         user.Email,
 				AuthStatus:    user.AuthStatus,
 				AccountStatus: user.AccountStatus,
-				AvatarURL:     s.buildAvatarURL(user.Username),
+				AvatarURL:     extra.AvatarURL, // 注册时通常为空
 				Nickname:      extra.Nickname,
 				Bio:           extra.Bio,
 			},
@@ -206,12 +206,14 @@ func (s *AuthService) generateJWT(userID uint, username string) (string, error) 
 	return token.SignedString([]byte(s.config.JWT.SecretKey))
 }
 
-// buildAvatarURL 根据用户名生成头像URL: {base}/{username}/avatar.png
+// buildAvatarURL 根据用户名生成头像URL: {base}/{username}/avatar.png?t={timestamp}
+// 添加时间戳参数防止浏览器缓存
 func (s *AuthService) buildAvatarURL(username string) string {
 	base := s.config.Assets.PublicBaseURL
 	if base == "" {
 		return ""
 	}
 	base = strings.TrimRight(base, "/")
-	return fmt.Sprintf("%s/%s/avatar.png", base, username)
+	// 添加时间戳参数，确保每次获取用户信息时都能刷新头像
+	return fmt.Sprintf("%s/%s/avatar.png?t=%d", base, username, time.Now().Unix())
 }
