@@ -252,6 +252,24 @@ func (r *UserRepository) UpsertUserProfile(ctx context.Context, profile *models.
 	return nil
 }
 
+// UpdateUserAvatar 仅更新头像URL
+func (r *UserRepository) UpdateUserAvatar(ctx context.Context, profile *models.UserExtraProfile) error {
+	query := `INSERT INTO user_profile (user_id, avatar_url, created_at, updated_at)
+              VALUES (?, ?, NOW(), NOW())
+              ON DUPLICATE KEY UPDATE avatar_url = VALUES(avatar_url), updated_at = NOW()`
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	_, err := r.db.DB.ExecContext(ctx, query, profile.UserID, profile.AvatarURL)
+	if err != nil {
+		r.logger.Error("更新用户头像失败", "userID", profile.UserID, "error", err.Error())
+		return utils.ErrDatabaseUpdate
+	}
+	r.logger.Info("更新用户头像成功", "userID", profile.UserID, "avatarUrl", profile.AvatarURL)
+	return nil
+}
+
 // UpdateLoginInfo 更新登录信息
 func (r *UserRepository) UpdateLoginInfo(ctx context.Context, userID uint, loginTime time.Time, loginIP string) error {
 	query := `UPDATE user_auth SET last_login_time = ?, last_login_ip = ?, failed_login_count = 0, updated_at = ? WHERE id = ?`

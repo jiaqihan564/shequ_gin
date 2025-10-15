@@ -4,15 +4,15 @@
 # 服务器配置
 server:
   host: "localhost"
-  port: "8080"
+  port: "3001"
   mode: "release"  # debug, release, test
 
 # 数据库配置
 database:
-  host: "192.168.200.131"
+  host: "127.0.0.1"
   port: "3306"
   username: "root"
-  password: "mysql_F7KJNF"
+  password: "root"
   database: "hub"
   charset: "utf8mb4"
   max_open_conns: 100
@@ -27,7 +27,7 @@ jwt:
 
 # 日志配置
 log:
-  level: "info"  # debug, info, warn, error
+  level: "debug"  # debug, info, warn, error
   format: "json"  # json, text
   output: "file"  # stdout, file
   file_path: "log/app.log"
@@ -60,8 +60,8 @@ assets:
 
 # MinIO 对象存储配置
 minio:
-  endpoint: "192.168.200.131:9000"
-  access_key_id: "minio_8yFeSH"
-  secret_access_key: "minio_Yfh6Gb"
+  endpoint: "127.0.0.1:9000"
+  access_key_id: "minioadmin"
+  secret_access_key: "minioadmin"
   use_ssl: false
   bucket: "community-assets"

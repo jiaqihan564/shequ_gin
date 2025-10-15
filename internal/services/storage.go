@@ -55,6 +55,9 @@ func NewStorageService(cfg *config.Config) (*StorageService, error) {
 
 // PutObject 覆盖上传对象
 func (s *StorageService) PutObject(ctx context.Context, objectPath string, contentType string, reader io.Reader, size int64) (string, error) {
+	if s.client == nil {
+		return "", fmt.Errorf("MinIO 客户端未初始化")
+	}
 	if size < 0 {
 		// 将未知大小的 Reader 读入内存缓冲（头像通常较小）
 		buf := new(bytes.Buffer)
@@ -85,6 +88,9 @@ func (s *StorageService) PutObject(ctx context.Context, objectPath string, conte
 
 // ObjectExists 判断对象是否存在
 func (s *StorageService) ObjectExists(ctx context.Context, objectPath string) (bool, error) {
+	if s.client == nil {
+		return false, fmt.Errorf("MinIO 客户端未初始化")
+	}
 	_, err := s.client.StatObject(ctx, s.cfg.MinIO.Bucket, objectPath, minio.StatObjectOptions{})
 	if err != nil {
 		// 将错误转为通用响应，判断是否为不存在
@@ -99,6 +105,9 @@ func (s *StorageService) ObjectExists(ctx context.Context, objectPath string) (b
 
 // CopyObject 在桶内复制对象
 func (s *StorageService) CopyObject(ctx context.Context, srcPath, dstPath string) error {
+	if s.client == nil {
+		return fmt.Errorf("MinIO 客户端未初始化")
+	}
 	src := minio.CopySrcOptions{Bucket: s.cfg.MinIO.Bucket, Object: srcPath}
 	dst := minio.CopyDestOptions{Bucket: s.cfg.MinIO.Bucket, Object: dstPath}
 	_, err := s.client.CopyObject(ctx, dst, src)
@@ -111,6 +120,9 @@ func (s *StorageService) CopyObject(ctx context.Context, srcPath, dstPath string
 
 // RemoveObject 删除对象
 func (s *StorageService) RemoveObject(ctx context.Context, objectPath string) error {
+	if s.client == nil {
+		return fmt.Errorf("MinIO 客户端未初始化")
+	}
 	err := s.client.RemoveObject(ctx, s.cfg.MinIO.Bucket, objectPath, minio.RemoveObjectOptions{})
 	if err != nil {
 		s.logger.Error("删除对象失败", "object", objectPath, "error", err.Error())
@@ -121,6 +133,9 @@ func (s *StorageService) RemoveObject(ctx context.Context, objectPath string) er
 
 // ListObjects 列举指定前缀下的对象（非递归）
 func (s *StorageService) ListObjects(ctx context.Context, prefix string) ([]ObjectInfo, error) {
+	if s.client == nil {
+		return nil, fmt.Errorf("MinIO 客户端未初始化")
+	}
 	ops := minio.ListObjectsOptions{Prefix: prefix, Recursive: false}
 	ch := s.client.ListObjects(ctx, s.cfg.MinIO.Bucket, ops)
 	var list []ObjectInfo

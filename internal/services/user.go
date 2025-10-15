@@ -35,3 +35,8 @@ func (s *UserService) GetUserProfile(ctx context.Context, userID uint) (*models.
 func (s *UserService) UpsertUserProfile(ctx context.Context, profile *models.UserExtraProfile) error {
 	return s.userRepo.UpsertUserProfile(ctx, profile)
 }
+
+// UpdateUserAvatar 更新用户头像URL
+func (s *UserService) UpdateUserAvatar(ctx context.Context, profile *models.UserExtraProfile) error {
+	return s.userRepo.UpdateUserAvatar(ctx, profile)
+}

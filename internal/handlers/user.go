@@ -1,8 +1,6 @@
 package handlers
 
 import (
-	"net/http"
-
 	"gin/internal/models"
 	"gin/internal/services"
 	"gin/internal/utils"
@@ -72,7 +70,21 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 
 	// 持久化昵称/简介到 user_profile
 	if payload.Profile.Nickname != "" || payload.Profile.Bio != "" {
-		prof := &models.UserExtraProfile{UserID: userID, Nickname: payload.Profile.Nickname, Bio: payload.Profile.Bio}
+		// 验证昵称和简介
+		if payload.Profile.Nickname != "" && !utils.ValidateNickname(payload.Profile.Nickname) {
+			utils.ValidationErrorResponse(c, "昵称格式不正确，长度应为1-50个字符")
+			return
+		}
+		if payload.Profile.Bio != "" && !utils.ValidateBio(payload.Profile.Bio) {
+			utils.ValidationErrorResponse(c, "简介过长，最多500个字符")
+			return
+		}
+
+		// 清理输入
+		nickname := utils.SanitizeString(payload.Profile.Nickname)
+		bio := utils.SanitizeString(payload.Profile.Bio)
+
+		prof := &models.UserExtraProfile{UserID: userID, Nickname: nickname, Bio: bio}
 		if err := h.userService.UpsertUserProfile(c.Request.Context(), prof); err != nil {
 			statusCode := utils.GetHTTPStatusCode(err)
 			utils.ErrorResponse(c, statusCode, err.Error())
@@ -100,9 +112,45 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 
 // UpdateAvatar 使用 JSON 提交的头像 URL 更新用户头像（兼容前端协议）
 func (h *UserHandler) UpdateAvatar(c *gin.Context) {
-	// 禁止通过编辑页面（JSON）修改头像，提示改用上传接口
-	h.logger.Warn("更新头像被拒绝：不支持通过编辑页面修改", "ip", c.ClientIP(), "path", c.FullPath())
-	utils.ErrorResponse(c, http.StatusMethodNotAllowed, "头像不支持通过编辑页面更改，请使用上传接口")
+	userID, err := utils.GetUserIDFromContext(c)
+	if err != nil {
+		h.logger.Warn("更新头像失败：用户未认证", "ip", c.ClientIP())
+		utils.UnauthorizedResponse(c, err.Error())
+		return
+	}
+
+	var payload struct {
+		AvatarURL string `json:"avatarUrl" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		h.logger.Warn("更新头像请求参数错误", "userID", userID, "error", err.Error(), "ip", c.ClientIP())
+		utils.ValidationErrorResponse(c, "请求参数错误: "+err.Error())
+		return
+	}
+
+	// 验证URL格式
+	if !utils.ValidateURL(payload.AvatarURL) {
+		h.logger.Warn("更新头像失败：URL格式错误", "userID", userID, "url", payload.AvatarURL)
+		utils.ValidationErrorResponse(c, "无效的URL格式")
+		return
+	}
+
+	// 更新 user_profile 中的 avatar_url
+	prof := &models.UserExtraProfile{
+		UserID:    userID,
+		AvatarURL: payload.AvatarURL,
+	}
+	if err := h.userService.UpdateUserAvatar(c.Request.Context(), prof); err != nil {
+		h.logger.Error("更新头像失败", "userID", userID, "error", err.Error())
+		statusCode := utils.GetHTTPStatusCode(err)
+		utils.ErrorResponse(c, statusCode, err.Error())
+		return
+	}
+
+	h.logger.Info("更新头像成功", "userID", userID, "avatarUrl", payload.AvatarURL, "ip", c.ClientIP())
+	utils.SuccessResponse(c, 200, "更新头像成功", gin.H{
+		"avatarUrl": payload.AvatarURL,
+	})
 }
 
 // GetUserByID 根据ID获取用户信息（管理员功能）
@@ -138,5 +186,3 @@ func (h *UserHandler) GetUserByID(c *gin.Context) {
 	h.logger.Info("获取用户信息成功", "currentUserID", currentUserID, "targetUserID", targetUserID, "username", user.Username, "ip", c.ClientIP())
 	utils.SuccessResponse(c, 200, "获取用户信息成功", user)
 }
-
-// 旧的邮箱校验逻辑已移除（邮箱不支持修改）

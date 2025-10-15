@@ -1,6 +1,9 @@
 package utils
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 // 定义常用错误
 var (
@@ -60,28 +63,86 @@ const (
 	ErrCodeUploadFailed      = "UPLOAD_FAILED"
 )
 
+// AppError 应用错误（包含上下文信息）
+type AppError struct {
+	Err     error                  // 原始错误
+	Message string                 // 用户友好的错误消息
+	Code    int                    // HTTP状态码
+	Context map[string]interface{} // 上下文信息
+}
+
+// Error 实现error接口
+func (e *AppError) Error() string {
+	if e.Message != "" {
+		return e.Message
+	}
+	if e.Err != nil {
+		return e.Err.Error()
+	}
+	return "未知错误"
+}
+
+// Unwrap 支持errors.Unwrap
+func (e *AppError) Unwrap() error {
+	return e.Err
+}
+
+// NewAppError 创建应用错误
+func NewAppError(err error, message string, code int) *AppError {
+	return &AppError{
+		Err:     err,
+		Message: message,
+		Code:    code,
+		Context: make(map[string]interface{}),
+	}
+}
+
+// WithContext 添加上下文信息
+func (e *AppError) WithContext(key string, value interface{}) *AppError {
+	e.Context[key] = value
+	return e
+}
+
+// WrapError 包装错误并添加上下文
+func WrapError(err error, message string) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%s: %w", message, err)
+}
+
 // GetHTTPStatusCode 获取错误对应的HTTP状态码
 func GetHTTPStatusCode(err error) int {
-	switch err {
-	case ErrUserNotAuthenticated, ErrInvalidToken, ErrTokenExpired:
+	// 检查是否是AppError
+	var appErr *AppError
+	if errors.As(err, &appErr) {
+		return appErr.Code
+	}
+
+	// 标准错误映射
+	switch {
+	case errors.Is(err, ErrUserNotAuthenticated) || errors.Is(err, ErrInvalidToken) || errors.Is(err, ErrTokenExpired):
 		return 401
-	case ErrInvalidCredentials, ErrAccountDisabled, ErrTooManyLoginAttempts:
+	case errors.Is(err, ErrInvalidCredentials) || errors.Is(err, ErrAccountDisabled) || errors.Is(err, ErrTooManyLoginAttempts):
 		return 401
-	case ErrInsufficientPermissions, ErrAccessDenied:
+	case errors.Is(err, ErrInsufficientPermissions) || errors.Is(err, ErrAccessDenied):
 		return 403
-	case ErrUserNotFound, ErrResourceNotFound:
+	case errors.Is(err, ErrUserNotFound) || errors.Is(err, ErrResourceNotFound):
 		return 404
-	case ErrUserAlreadyExists, ErrEmailAlreadyExists:
+	case errors.Is(err, ErrUserAlreadyExists) || errors.Is(err, ErrEmailAlreadyExists):
 		return 409
-	case ErrInvalidRequest, ErrMissingParameter, ErrInvalidParameter, ErrValidationFailed:
+	case errors.Is(err, ErrInvalidRequest) || errors.Is(err, ErrMissingParameter) ||
+		errors.Is(err, ErrInvalidParameter) || errors.Is(err, ErrValidationFailed):
 		return 400
-	case ErrRequestTooLarge:
+	case errors.Is(err, ErrInvalidUsername) || errors.Is(err, ErrInvalidEmail) || errors.Is(err, ErrInvalidPassword):
+		return 400
+	case errors.Is(err, ErrRequestTooLarge):
 		return 413
-	case ErrUnsupportedMediaType:
+	case errors.Is(err, ErrUnsupportedMediaType):
 		return 415
-	case ErrRateLimitExceeded:
+	case errors.Is(err, ErrRateLimitExceeded):
 		return 429
-	case ErrServiceUnavailable, ErrMaintenanceMode:
+	case errors.Is(err, ErrServiceUnavailable) || errors.Is(err, ErrMaintenanceMode):
 		return 503
 	default:
 		return 500

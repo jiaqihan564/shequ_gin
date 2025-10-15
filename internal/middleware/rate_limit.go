@@ -71,19 +71,69 @@ func (tb *TokenBucket) Reset(key string) {
 
 // IPRateLimiter IP限流器
 type IPRateLimiter struct {
-	limiters   map[string]*TokenBucket
+	limiters   map[string]*limiterEntry
 	mutex      sync.RWMutex
 	capacity   int
 	refillRate time.Duration
+	stopClean  chan struct{} // 停止清理goroutine
+}
+
+// limiterEntry 限流器条目（包含最后访问时间）
+type limiterEntry struct {
+	limiter    *TokenBucket
+	lastAccess time.Time
 }
 
 // NewIPRateLimiter 创建IP限流器
 func NewIPRateLimiter(capacity int, refillRate time.Duration) *IPRateLimiter {
-	return &IPRateLimiter{
-		limiters:   make(map[string]*TokenBucket),
+	rl := &IPRateLimiter{
+		limiters:   make(map[string]*limiterEntry),
 		capacity:   capacity,
 		refillRate: refillRate,
+		stopClean:  make(chan struct{}),
 	}
+
+	// 启动定期清理过期条目（每30分钟清理一次超过1小时未访问的条目）
+	go func() {
+		ticker := time.NewTicker(30 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				rl.cleanup()
+			case <-rl.stopClean:
+				return
+			}
+		}
+	}()
+
+	return rl
+}
+
+// cleanup 清理超过1小时未访问的条目
+func (rl *IPRateLimiter) cleanup() {
+	rl.mutex.Lock()
+	defer rl.mutex.Unlock()
+
+	now := time.Now()
+	expireTime := 1 * time.Hour
+	removed := 0
+
+	for ip, entry := range rl.limiters {
+		if now.Sub(entry.lastAccess) > expireTime {
+			delete(rl.limiters, ip)
+			removed++
+		}
+	}
+
+	if removed > 0 {
+		utils.GetLogger().Info("清理过期限流器条目", "removed", removed, "remaining", len(rl.limiters))
+	}
+}
+
+// Stop 停止清理goroutine
+func (rl *IPRateLimiter) Stop() {
+	close(rl.stopClean)
 }
 
 // GetLimiter 获取指定IP的限流器
@@ -91,12 +141,17 @@ func (rl *IPRateLimiter) GetLimiter(ip string) *TokenBucket {
 	rl.mutex.Lock()
 	defer rl.mutex.Unlock()
 
-	limiter, exists := rl.limiters[ip]
+	entry, exists := rl.limiters[ip]
 	if !exists {
-		limiter = NewTokenBucket(rl.capacity, rl.refillRate)
-		rl.limiters[ip] = limiter
+		entry = &limiterEntry{
+			limiter:    NewTokenBucket(rl.capacity, rl.refillRate),
+			lastAccess: time.Now(),
+		}
+		rl.limiters[ip] = entry
+	} else {
+		entry.lastAccess = time.Now()
 	}
-	return limiter
+	return entry.limiter
 }
 
 // Allow 检查IP是否允许请求
@@ -109,8 +164,9 @@ func (rl *IPRateLimiter) Allow(ip string) bool {
 func (rl *IPRateLimiter) Reset(ip string) {
 	rl.mutex.Lock()
 	defer rl.mutex.Unlock()
-	if limiter, exists := rl.limiters[ip]; exists {
-		limiter.Reset(ip)
+	if entry, exists := rl.limiters[ip]; exists {
+		entry.limiter.Reset(ip)
+		entry.lastAccess = time.Now()
 	}
 }
 

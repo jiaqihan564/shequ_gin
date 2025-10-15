@@ -223,81 +223,58 @@ func loadFromFile(config *Config, filename string) error {
 
 // overrideWithEnvVars 用环境变量覆盖配置
 func overrideWithEnvVars(config *Config) {
+	// 使用辅助函数简化配置覆盖
+	setEnvString := func(target *string, envKey string) {
+		if val := getEnv(envKey, ""); val != "" {
+			*target = val
+		}
+	}
+
+	setEnvInt := func(target *int, envKey string) {
+		if val := getEnv(envKey, ""); val != "" {
+			if n := parseInt(val); n > 0 {
+				*target = n
+			}
+		}
+	}
+
+	setEnvBool := func(target *bool, envKey string) {
+		if val := getEnv(envKey, ""); val != "" {
+			*target = strings.ToLower(val) == "true" || val == "1"
+		}
+	}
+
 	// 服务器配置
-	if val := getEnv("SERVER_HOST", ""); val != "" {
-		config.Server.Host = val
-	}
-	if val := getEnv("SERVER_PORT", ""); val != "" {
-		config.Server.Port = val
-	}
-	if val := getEnv("SERVER_MODE", ""); val != "" {
-		config.Server.Mode = val
-	}
+	setEnvString(&config.Server.Host, "SERVER_HOST")
+	setEnvString(&config.Server.Port, "SERVER_PORT")
+	setEnvString(&config.Server.Mode, "SERVER_MODE")
 
 	// 数据库配置
-	if val := getEnv("DB_HOST", ""); val != "" {
-		config.Database.Host = val
-	}
-	if val := getEnv("DB_PORT", ""); val != "" {
-		config.Database.Port = val
-	}
-	if val := getEnv("DB_USERNAME", ""); val != "" {
-		config.Database.Username = val
-	}
-	if val := getEnv("DB_PASSWORD", ""); val != "" {
-		config.Database.Password = val
-	}
-	if val := getEnv("DB_DATABASE", ""); val != "" {
-		config.Database.Database = val
-	}
+	setEnvString(&config.Database.Host, "DB_HOST")
+	setEnvString(&config.Database.Port, "DB_PORT")
+	setEnvString(&config.Database.Username, "DB_USERNAME")
+	setEnvString(&config.Database.Password, "DB_PASSWORD")
+	setEnvString(&config.Database.Database, "DB_DATABASE")
 
 	// JWT配置
-	if val := getEnv("JWT_SECRET", ""); val != "" {
-		config.JWT.SecretKey = val
-	}
-	if val := getEnv("JWT_EXPIRE_HOURS", ""); val != "" {
-		if hours := parseInt(val); hours > 0 {
-			config.JWT.ExpireHours = hours
-		}
-	}
+	setEnvString(&config.JWT.SecretKey, "JWT_SECRET")
+	setEnvInt(&config.JWT.ExpireHours, "JWT_EXPIRE_HOURS")
 
 	// 日志配置
-	if val := getEnv("LOG_LEVEL", ""); val != "" {
-		config.Log.Level = val
-	}
-	if val := getEnv("LOG_FORMAT", ""); val != "" {
-		config.Log.Format = val
-	}
-	if val := getEnv("LOG_OUTPUT", ""); val != "" {
-		config.Log.Output = val
-	}
+	setEnvString(&config.Log.Level, "LOG_LEVEL")
+	setEnvString(&config.Log.Format, "LOG_FORMAT")
+	setEnvString(&config.Log.Output, "LOG_OUTPUT")
 
 	// 静态资源配置
-	if val := getEnv("ASSETS_PUBLIC_BASE_URL", ""); val != "" {
-		config.Assets.PublicBaseURL = val
-	}
-	if val := getEnv("ASSETS_MAX_AVATAR_MB", ""); val != "" {
-		if n := parseInt(val); n > 0 {
-			config.Assets.MaxAvatarSizeMB = n
-		}
-	}
+	setEnvString(&config.Assets.PublicBaseURL, "ASSETS_PUBLIC_BASE_URL")
+	setEnvInt(&config.Assets.MaxAvatarSizeMB, "ASSETS_MAX_AVATAR_MB")
 
 	// MinIO 配置
-	if val := getEnv("MINIO_ENDPOINT", ""); val != "" {
-		config.MinIO.Endpoint = val
-	}
-	if val := getEnv("MINIO_ACCESS_KEY", ""); val != "" {
-		config.MinIO.AccessKeyID = val
-	}
-	if val := getEnv("MINIO_SECRET_KEY", ""); val != "" {
-		config.MinIO.SecretAccessKey = val
-	}
-	if val := getEnv("MINIO_USE_SSL", ""); val != "" {
-		config.MinIO.UseSSL = strings.ToLower(val) == "true" || val == "1"
-	}
-	if val := getEnv("MINIO_BUCKET", ""); val != "" {
-		config.MinIO.Bucket = val
-	}
+	setEnvString(&config.MinIO.Endpoint, "MINIO_ENDPOINT")
+	setEnvString(&config.MinIO.AccessKeyID, "MINIO_ACCESS_KEY")
+	setEnvString(&config.MinIO.SecretAccessKey, "MINIO_SECRET_KEY")
+	setEnvBool(&config.MinIO.UseSSL, "MINIO_USE_SSL")
+	setEnvString(&config.MinIO.Bucket, "MINIO_BUCKET")
 }
 
 // parseInt 解析整数

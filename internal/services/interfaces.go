@@ -19,6 +19,7 @@ type UserServiceInterface interface {
 	GetUserByID(ctx context.Context, id uint) (*models.User, error)
 	GetUserProfile(ctx context.Context, userID uint) (*models.UserExtraProfile, error)
 	UpsertUserProfile(ctx context.Context, profile *models.UserExtraProfile) error
+	UpdateUserAvatar(ctx context.Context, profile *models.UserExtraProfile) error
 }
 
 // StorageClient 存储客户端接口（用于头像上传等场景）

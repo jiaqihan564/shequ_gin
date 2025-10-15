@@ -11,31 +11,25 @@
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
-# Dependency directories (remove the comment below to include it)
+# Dependency directories
 # vendor/
 
 # Go workspace file
 go.work
 
-# IDE files
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
+# Build output
+build/
+dist/
+bin/
 
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
+# Coverage reports
+coverage.out
+coverage.html
 
 # Log files
 *.log
 logs/
+log/
 
 # Environment variables
 .env
@@ -53,15 +47,6 @@ logs/
 tmp/
 temp/
 
-# Build output
-build/
-dist/
-bin/
-
-# Coverage reports
-coverage.out
-coverage.html
-
 # Air live reload
 tmp/
 
@@ -71,26 +56,26 @@ config.local.json
 config.prod.yaml
 config.dev.yaml
 
-# JetBrains IDEs
+# IDE files - JetBrains
 .idea/
 *.iml
 *.ipr
 *.iws
 
-# Visual Studio Code
+# IDE files - Visual Studio Code
 .vscode/
 *.code-workspace
 
-# Sublime Text
+# IDE files - Sublime Text
 *.sublime-project
 *.sublime-workspace
 
-# Vim
+# IDE files - Vim
 *.swp
 *.swo
 .netrwhist
 
-# Emacs
+# IDE files - Emacs
 *~
 \#*\#
 /.emacs.desktop
@@ -102,6 +87,7 @@ tramp
 
 # MacOS
 .DS_Store
+.DS_Store?
 .AppleDouble
 .LSOverride
 Icon
@@ -135,7 +121,6 @@ $RECYCLE.BIN/
 *.lnk
 
 # Linux
-*~
 .fuse_hidden*
 .directory
 .Trash-*

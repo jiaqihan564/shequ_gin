@@ -1,11 +1,11 @@
 package utils
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
-	"strconv"
 	"sync"
 	"time"
 
@@ -99,8 +99,11 @@ func NewLogger(cfg *config.LogConfig) (*AppLogger, error) {
 		config: cfg,
 	}
 
-	// 设置日志输出
-	var output *os.File
+	// 设置日志输出和创建日志器
+	flags := log.LstdFlags | log.Lshortfile
+	if cfg.Format == "json" {
+		flags = 0 // JSON格式不需要时间戳和文件信息
+	}
 
 	switch cfg.Output {
 	case "file":
@@ -109,31 +112,19 @@ func NewLogger(cfg *config.LogConfig) (*AppLogger, error) {
 		if werr != nil {
 			return nil, werr
 		}
-		flags := log.LstdFlags | log.Lshortfile
-		if cfg.Format == "json" {
-			flags = 0
-		}
 		logger.infoLogger = log.New(w, "[INFO] ", flags)
 		logger.warnLogger = log.New(w, "[WARN] ", flags)
 		logger.errorLogger = log.New(w, "[ERROR] ", flags)
 		logger.debugLogger = log.New(w, "[DEBUG] ", flags)
 		logger.fatalLogger = log.New(w, "[FATAL] ", flags)
-		// 不要提前返回，后续需要根据配置开启异步
 	default:
-		output = os.Stdout
+		// 默认输出到标准输出
+		logger.infoLogger = log.New(os.Stdout, "[INFO] ", flags)
+		logger.warnLogger = log.New(os.Stdout, "[WARN] ", flags)
+		logger.errorLogger = log.New(os.Stdout, "[ERROR] ", flags)
+		logger.debugLogger = log.New(os.Stdout, "[DEBUG] ", flags)
+		logger.fatalLogger = log.New(os.Stdout, "[FATAL] ", flags)
 	}
-
-	// 创建不同级别的日志器
-	flags := log.LstdFlags | log.Lshortfile
-	if cfg.Format == "json" {
-		flags = 0 // JSON格式不需要时间戳和文件信息
-	}
-
-	logger.infoLogger = log.New(output, "[INFO] ", flags)
-	logger.warnLogger = log.New(output, "[WARN] ", flags)
-	logger.errorLogger = log.New(output, "[ERROR] ", flags)
-	logger.debugLogger = log.New(output, "[DEBUG] ", flags)
-	logger.fatalLogger = log.New(output, "[FATAL] ", flags)
 
 	// 配置异步
 	// 当 cfg.Buffer 大于 0 或 cfg.Async 为 true 时启用异步
@@ -289,28 +280,28 @@ func (l *AppLogger) logJSON(level, msg string, fields ...interface{}) {
 		}
 	}
 
-	// 简单的JSON序列化（生产环境建议使用专门的JSON库）
-	jsonStr := `{"timestamp":"` + entry["timestamp"].(string) + `","level":"` + level + `","message":"` + msg + `"`
-	for key, value := range entry {
-		if key != "timestamp" && key != "level" && key != "message" {
-			jsonStr += `,"` + key + `":"` + toString(value) + `"`
-		}
+	// 使用标准库的 JSON 序列化，更安全高效
+	jsonBytes, err := json.Marshal(entry)
+	if err != nil {
+		// 如果序列化失败，回退到简单格式
+		jsonStr := fmt.Sprintf(`{"timestamp":"%s","level":"%s","message":"%s","error":"json marshal failed"}`,
+			time.Now().Format(time.RFC3339), level, msg)
+		jsonBytes = []byte(jsonStr)
 	}
-	jsonStr += "}"
 
 	switch level {
 	case "DEBUG":
-		l.debugLogger.Println(jsonStr)
+		l.debugLogger.Println(string(jsonBytes))
 	case "INFO":
-		l.infoLogger.Println(jsonStr)
+		l.infoLogger.Println(string(jsonBytes))
 	case "WARN":
-		l.warnLogger.Println(jsonStr)
+		l.warnLogger.Println(string(jsonBytes))
 	case "ERROR":
-		l.errorLogger.Println(jsonStr)
+		l.errorLogger.Println(string(jsonBytes))
 	case "FATAL":
-		l.fatalLogger.Println(jsonStr)
+		l.fatalLogger.Println(string(jsonBytes))
 	default:
-		l.infoLogger.Println(jsonStr)
+		l.infoLogger.Println(string(jsonBytes))
 	}
 }
 
@@ -330,28 +321,6 @@ func (l *AppLogger) Close() error {
 		l.wg.Wait()
 	}
 	return nil
-}
-
-// toString 将值转换为字符串
-func toString(value interface{}) string {
-	switch v := value.(type) {
-	case string:
-		return v
-	case int:
-		return strconv.Itoa(v)
-	case int64:
-		return strconv.FormatInt(v, 10)
-	case uint:
-		return strconv.FormatUint(uint64(v), 10)
-	case uint64:
-		return strconv.FormatUint(v, 10)
-	case float64:
-		return strconv.FormatFloat(v, 'f', -1, 64)
-	case bool:
-		return strconv.FormatBool(v)
-	default:
-		return fmt.Sprintf("%v", v)
-	}
 }
 
 // 全局日志器实例

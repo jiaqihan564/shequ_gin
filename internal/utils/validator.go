@@ -73,6 +73,79 @@ func SanitizeString(input string) string {
 	return input
 }
 
-//
+// ValidateNickname 验证昵称格式
+func ValidateNickname(nickname string) bool {
+	// 昵称长度1-50个字符
+	if len(nickname) < 1 || len(nickname) > 50 {
+		return false
+	}
+	// 不能只包含空格
+	if strings.TrimSpace(nickname) == "" {
+		return false
+	}
+	return true
+}
 
-//
+// ValidateBio 验证简介格式
+func ValidateBio(bio string) bool {
+	// 简介长度最多500个字符
+	if len(bio) > 500 {
+		return false
+	}
+	return true
+}
+
+// ValidateURL 验证URL格式
+func ValidateURL(url string) bool {
+	if url == "" {
+		return false
+	}
+	// 简单的URL验证
+	return strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://")
+}
+
+// ValidatePhoneNumber 验证手机号码（中国）
+func ValidatePhoneNumber(phone string) bool {
+	if len(phone) != 11 {
+		return false
+	}
+	// 简单验证：以1开头，第二位是3-9，后面9位是数字
+	if phone[0] != '1' {
+		return false
+	}
+	secondDigit := phone[1]
+	if secondDigit < '3' || secondDigit > '9' {
+		return false
+	}
+	for _, c := range phone[2:] {
+		if !unicode.IsDigit(c) {
+			return false
+		}
+	}
+	return true
+}
+
+// ValidatePositiveInt 验证正整数
+func ValidatePositiveInt(n int) bool {
+	return n > 0
+}
+
+// ValidateRange 验证数字范围
+func ValidateRange(n, min, max int) bool {
+	return n >= min && n <= max
+}
+
+// ContainsSQLKeywords 检查是否包含SQL关键字（简单防护）
+func ContainsSQLKeywords(input string) bool {
+	lowerInput := strings.ToLower(input)
+	keywords := []string{
+		"select", "insert", "update", "delete", "drop",
+		"union", "exec", "script", "javascript",
+	}
+	for _, keyword := range keywords {
+		if strings.Contains(lowerInput, keyword) {
+			return true
+		}
+	}
+	return false
+}
