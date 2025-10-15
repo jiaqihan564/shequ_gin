@@ -1,40 +1,25 @@
 package middleware
 
 import (
-	"crypto/rand"
-	"encoding/hex"
-	"fmt"
+	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
-// genRequestID 生成请求ID
-func genRequestID() string {
-	timestamp := time.Now().UnixNano()
-	randomBytes := make([]byte, 8)
-	_, _ = rand.Read(randomBytes)
-	randomStr := hex.EncodeToString(randomBytes)
-	return fmt.Sprintf("%d-%s", timestamp, randomStr)
-}
+var requestCounter uint64
 
-// RequestIDMiddleware 请求ID中间件
+// RequestIDMiddleware 请求ID中间件（使用原子计数器，性能最优）
 func RequestIDMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 尝试从请求头获取请求ID
-		requestID := c.GetHeader("X-Request-ID")
+		// 生成请求ID：时间戳 + 原子计数器
+		timestamp := time.Now().UnixNano()
+		count := atomic.AddUint64(&requestCounter, 1)
+		requestID := strconv.FormatInt(timestamp, 10) + "-" + strconv.FormatUint(count, 10)
 
-		// 如果没有请求ID，生成一个新的
-		if requestID == "" {
-			requestID = genRequestID()
-		}
-
-		// 将请求ID设置到上下文中
 		c.Set("requestID", requestID)
-
-		// 将请求ID添加到响应头
 		c.Header("X-Request-ID", requestID)
-
 		c.Next()
 	}
 }

@@ -61,13 +61,15 @@ func main() {
 	// 设置路由
 	r := routes.SetupRoutes(cfg, container)
 
-	// 创建HTTP服务器
+	// 创建HTTP服务器（优化性能配置）
 	server := &http.Server{
-		Addr:         cfg.Server.Host + ":" + cfg.Server.Port,
-		Handler:      r,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		Addr:              cfg.Server.Host + ":" + cfg.Server.Port,
+		Handler:           r,
+		ReadTimeout:       15 * time.Second, // 减少超时时间
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second, // 防止慢速攻击
+		MaxHeaderBytes:    1 << 20,         // 1MB，限制请求头大小
 	}
 
 	// 启动服务器

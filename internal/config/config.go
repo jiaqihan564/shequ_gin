@@ -181,25 +181,9 @@ func getDefaultConfig() *Config {
 			AllowCredentials: true,
 		},
 		Assets: AssetsConfig{
-			PublicBaseURL: getEnv("ASSETS_PUBLIC_BASE_URL", "http://localhost:9000/community-assets"),
-			MaxAvatarSizeMB: func() int {
-				if v := getEnv("ASSETS_MAX_AVATAR_MB", ""); v != "" {
-					n := parseInt(v)
-					if n > 0 {
-						return n
-					}
-				}
-				return 5
-			}(),
-			MaxAvatarHistory: func() int {
-				if v := getEnv("ASSETS_MAX_AVATAR_HISTORY", ""); v != "" {
-					n := parseInt(v)
-					if n > 0 {
-						return n
-					}
-				}
-				return 9
-			}(),
+			PublicBaseURL:    getEnv("ASSETS_PUBLIC_BASE_URL", "http://localhost:9000/community-assets"),
+			MaxAvatarSizeMB:  5,
+			MaxAvatarHistory: 9,
 		},
 		MinIO: MinIOConfig{
 			Endpoint:        getEnv("MINIO_ENDPOINT", "localhost:9000"),

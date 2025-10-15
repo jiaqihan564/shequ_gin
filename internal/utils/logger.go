@@ -30,6 +30,7 @@ type AppLogger struct {
 	debugLogger *log.Logger
 	fatalLogger *log.Logger
 	config      *config.LogConfig
+	level       int // 缓存的日志级别（性能优化）
 
 	// async pipeline
 	asyncEnabled bool
@@ -95,8 +96,22 @@ func (w *dailyRotateWriter) Write(p []byte) (int, error) {
 
 // NewLogger 创建新的日志器
 func NewLogger(cfg *config.LogConfig) (*AppLogger, error) {
+	// 预计算日志级别
+	level := levelInfo
+	switch cfg.Level {
+	case "debug":
+		level = levelDebug
+	case "info":
+		level = levelInfo
+	case "warn":
+		level = levelWarn
+	default:
+		level = levelError
+	}
+
 	logger := &AppLogger{
 		config: cfg,
+		level:  level,
 	}
 
 	// 设置日志输出和创建日志器
@@ -157,16 +172,24 @@ func NewLogger(cfg *config.LogConfig) (*AppLogger, error) {
 	return logger, nil
 }
 
+// 预计算日志级别（性能优化）
+var (
+	levelDebug = 0
+	levelInfo  = 1
+	levelWarn  = 2
+	levelError = 3
+)
+
 // Info 记录信息日志
 func (l *AppLogger) Info(msg string, fields ...interface{}) {
-	if l.config.Level == "debug" || l.config.Level == "info" {
+	if l.level <= levelInfo {
 		l.write("INFO", msg, fields...)
 	}
 }
 
 // Warn 记录警告日志
 func (l *AppLogger) Warn(msg string, fields ...interface{}) {
-	if l.config.Level == "debug" || l.config.Level == "info" || l.config.Level == "warn" {
+	if l.level <= levelWarn {
 		l.write("WARN", msg, fields...)
 	}
 }
@@ -178,7 +201,7 @@ func (l *AppLogger) Error(msg string, fields ...interface{}) {
 
 // Debug 记录调试日志
 func (l *AppLogger) Debug(msg string, fields ...interface{}) {
-	if l.config.Level == "debug" {
+	if l.level <= levelDebug {
 		l.write("DEBUG", msg, fields...)
 	}
 }
@@ -353,17 +376,6 @@ func GetLogger() Logger {
 	}
 	return globalLogger
 }
-
-// 便捷函数
-func Info(msg string, fields ...interface{}) { GetLogger().Info(msg, fields...) }
-
-func Warn(msg string, fields ...interface{}) { GetLogger().Warn(msg, fields...) }
-
-func Error(msg string, fields ...interface{}) { GetLogger().Error(msg, fields...) }
-
-func Debug(msg string, fields ...interface{}) { GetLogger().Debug(msg, fields...) }
-
-func Fatal(msg string, fields ...interface{}) { GetLogger().Fatal(msg, fields...) }
 
 // CloseLogger 优雅关闭全局日志器
 func CloseLogger() error {

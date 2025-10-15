@@ -27,15 +27,11 @@ type Database struct {
 func NewDatabase(cfg *config.Config) (*Database, error) {
 	logger := utils.GetLogger()
 
-	// 构建数据库连接字符串
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=%s&parseTime=True&loc=Local&timeout=10s&readTimeout=30s&writeTimeout=30s&interpolateParams=true",
-		cfg.Database.Username,
-		cfg.Database.Password,
-		cfg.Database.Host,
-		cfg.Database.Port,
-		cfg.Database.Database,
-		cfg.Database.Charset,
-	)
+	// 构建数据库连接字符串（优化字符串拼接）
+	dsn := cfg.Database.Username + ":" + cfg.Database.Password + "@tcp(" +
+		cfg.Database.Host + ":" + cfg.Database.Port + ")/" + cfg.Database.Database +
+		"?charset=" + cfg.Database.Charset +
+		"&parseTime=True&loc=Local&timeout=10s&readTimeout=30s&writeTimeout=30s&interpolateParams=true"
 
 	// 连接数据库
 	db, err := sql.Open("mysql", dsn)
@@ -132,13 +128,6 @@ func (d *Database) Ping() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	return d.DB.PingContext(ctx)
-}
-
-//
-
-// HealthCheck 健康检查
-func (d *Database) HealthCheck() error {
-	return d.Ping()
 }
 
 // PrepareStmt 获取或创建prepared statement（带缓存）

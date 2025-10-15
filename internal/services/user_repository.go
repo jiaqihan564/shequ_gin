@@ -28,9 +28,6 @@ func (r *UserRepository) CreateUser(ctx context.Context, user *models.User) erro
 	query := `INSERT INTO user_auth (username, password_hash, email, auth_status, account_status, created_at, updated_at) 
 			  VALUES (?, ?, ?, ?, ?, ?, ?)`
 
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
 	result, err := r.db.DB.ExecContext(ctx, query,
 		user.Username,
 		user.PasswordHash,
@@ -58,17 +55,14 @@ func (r *UserRepository) CreateUser(ctx context.Context, user *models.User) erro
 	return nil
 }
 
-// GetUserByUsername 根据用户名获取用户
+// GetUserByUsername 根据用户名获取用户（使用prepared statement）
 func (r *UserRepository) GetUserByUsername(ctx context.Context, username string) (*models.User, error) {
 	query := `SELECT id, username, password_hash, email, auth_status, account_status, 
 			  last_login_time, last_login_ip, failed_login_count, created_at, updated_at 
 			  FROM user_auth WHERE username = ?`
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
 	user := &models.User{}
-	err := r.db.DB.QueryRowContext(ctx, query, username).Scan(
+	err := r.db.QueryRowWithCache(ctx, query, username).Scan(
 		&user.ID,
 		&user.Username,
 		&user.PasswordHash,
@@ -82,11 +76,10 @@ func (r *UserRepository) GetUserByUsername(ctx context.Context, username string)
 		&user.UpdatedAt,
 	)
 
+	if err == sql.ErrNoRows {
+		return nil, utils.ErrUserNotFound
+	}
 	if err != nil {
-		if err == sql.ErrNoRows {
-			r.logger.Debug("用户不存在", "username", username)
-			return nil, utils.ErrUserNotFound
-		}
 		r.logger.Error("查询用户失败", "username", username, "error", err.Error())
 		return nil, utils.ErrDatabaseQuery
 	}
@@ -94,17 +87,14 @@ func (r *UserRepository) GetUserByUsername(ctx context.Context, username string)
 	return user, nil
 }
 
-// GetUserByEmail 根据邮箱获取用户
+// GetUserByEmail 根据邮箱获取用户（使用prepared statement）
 func (r *UserRepository) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
 	query := `SELECT id, username, password_hash, email, auth_status, account_status, 
 			  last_login_time, last_login_ip, failed_login_count, created_at, updated_at 
 			  FROM user_auth WHERE email = ?`
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
 	user := &models.User{}
-	err := r.db.DB.QueryRowContext(ctx, query, email).Scan(
+	err := r.db.QueryRowWithCache(ctx, query, email).Scan(
 		&user.ID,
 		&user.Username,
 		&user.PasswordHash,
@@ -118,11 +108,10 @@ func (r *UserRepository) GetUserByEmail(ctx context.Context, email string) (*mod
 		&user.UpdatedAt,
 	)
 
+	if err == sql.ErrNoRows {
+		return nil, utils.ErrUserNotFound
+	}
 	if err != nil {
-		if err == sql.ErrNoRows {
-			r.logger.Debug("用户不存在", "email", email)
-			return nil, utils.ErrUserNotFound
-		}
 		r.logger.Error("查询用户失败", "email", email, "error", err.Error())
 		return nil, utils.ErrDatabaseQuery
 	}
@@ -130,17 +119,14 @@ func (r *UserRepository) GetUserByEmail(ctx context.Context, email string) (*mod
 	return user, nil
 }
 
-// GetUserByID 根据ID获取用户
+// GetUserByID 根据ID获取用户（使用prepared statement）
 func (r *UserRepository) GetUserByID(ctx context.Context, id uint) (*models.User, error) {
 	query := `SELECT id, username, password_hash, email, auth_status, account_status, 
 			  last_login_time, last_login_ip, failed_login_count, created_at, updated_at 
 			  FROM user_auth WHERE id = ?`
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
 	user := &models.User{}
-	err := r.db.DB.QueryRowContext(ctx, query, id).Scan(
+	err := r.db.QueryRowWithCache(ctx, query, id).Scan(
 		&user.ID,
 		&user.Username,
 		&user.PasswordHash,
@@ -154,11 +140,10 @@ func (r *UserRepository) GetUserByID(ctx context.Context, id uint) (*models.User
 		&user.UpdatedAt,
 	)
 
+	if err == sql.ErrNoRows {
+		return nil, utils.ErrUserNotFound
+	}
 	if err != nil {
-		if err == sql.ErrNoRows {
-			r.logger.Debug("用户不存在", "userID", id)
-			return nil, utils.ErrUserNotFound
-		}
 		r.logger.Error("查询用户失败", "userID", id, "error", err.Error())
 		return nil, utils.ErrDatabaseQuery
 	}
@@ -210,9 +195,6 @@ func (r *UserRepository) UpdateUser(ctx context.Context, user *models.User) erro
 func (r *UserRepository) GetUserProfile(ctx context.Context, userID uint) (*models.UserExtraProfile, error) {
 	query := `SELECT user_id, nickname, bio, avatar_url, created_at, updated_at FROM user_profile WHERE user_id = ?`
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
 	prof := &models.UserExtraProfile{}
 	err := r.db.DB.QueryRowContext(ctx, query, userID).Scan(
 		&prof.UserID,
@@ -241,10 +223,7 @@ func (r *UserRepository) UpsertUserProfile(ctx context.Context, profile *models.
               VALUES (?, ?, ?, COALESCE(?, NULL), NOW(), NOW())
               ON DUPLICATE KEY UPDATE nickname = VALUES(nickname), bio = VALUES(bio), updated_at = NOW()`
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	_, err := r.db.DB.ExecContext(ctx, query, profile.UserID, profile.Nickname, profile.Bio, profile.AvatarURL)
+	_, err := r.db.ExecWithCache(ctx, query, profile.UserID, profile.Nickname, profile.Bio, profile.AvatarURL)
 	if err != nil {
 		r.logger.Error("保存用户扩展资料失败", "userID", profile.UserID, "error", err.Error())
 		return utils.ErrDatabaseUpdate
@@ -258,10 +237,7 @@ func (r *UserRepository) UpdateUserAvatar(ctx context.Context, profile *models.U
               VALUES (?, ?, NOW(), NOW())
               ON DUPLICATE KEY UPDATE avatar_url = VALUES(avatar_url), updated_at = NOW()`
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	_, err := r.db.DB.ExecContext(ctx, query, profile.UserID, profile.AvatarURL)
+	_, err := r.db.ExecWithCache(ctx, query, profile.UserID, profile.AvatarURL)
 	if err != nil {
 		r.logger.Error("更新用户头像失败", "userID", profile.UserID, "error", err.Error())
 		return utils.ErrDatabaseUpdate
@@ -274,10 +250,7 @@ func (r *UserRepository) UpdateUserAvatar(ctx context.Context, profile *models.U
 func (r *UserRepository) UpdateLoginInfo(ctx context.Context, userID uint, loginTime time.Time, loginIP string) error {
 	query := `UPDATE user_auth SET last_login_time = ?, last_login_ip = ?, failed_login_count = 0, updated_at = ? WHERE id = ?`
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	_, err := r.db.DB.ExecContext(ctx, query, loginTime, loginIP, time.Now(), userID)
+	_, err := r.db.ExecWithCache(ctx, query, loginTime, loginIP, time.Now(), userID)
 	if err != nil {
 		r.logger.Error("更新登录信息失败", "userID", userID, "error", err.Error())
 		return utils.ErrDatabaseUpdate
@@ -290,10 +263,7 @@ func (r *UserRepository) UpdateLoginInfo(ctx context.Context, userID uint, login
 func (r *UserRepository) IncrementFailedLoginCount(ctx context.Context, userID uint) error {
 	query := `UPDATE user_auth SET failed_login_count = failed_login_count + 1, updated_at = ? WHERE id = ?`
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	_, err := r.db.DB.ExecContext(ctx, query, time.Now(), userID)
+	_, err := r.db.ExecWithCache(ctx, query, time.Now(), userID)
 	if err != nil {
 		r.logger.Error("更新登录失败次数失败", "userID", userID, "error", err.Error())
 		return utils.ErrDatabaseUpdate
@@ -302,36 +272,34 @@ func (r *UserRepository) IncrementFailedLoginCount(ctx context.Context, userID u
 	return nil
 }
 
-// CheckUsernameExists 检查用户名是否存在
+// CheckUsernameExists 检查用户名是否存在（使用prepared statement）
 func (r *UserRepository) CheckUsernameExists(ctx context.Context, username string) (bool, error) {
-	query := `SELECT COUNT(*) FROM user_auth WHERE username = ?`
+	query := `SELECT 1 FROM user_auth WHERE username = ? LIMIT 1`
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	var count int
-	err := r.db.DB.QueryRowContext(ctx, query, username).Scan(&count)
+	var exists int
+	err := r.db.QueryRowWithCache(ctx, query, username).Scan(&exists)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
 	if err != nil {
 		r.logger.Error("检查用户名失败", "username", username, "error", err.Error())
 		return false, utils.ErrDatabaseQuery
 	}
-
-	return count > 0, nil
+	return true, nil
 }
 
-// CheckEmailExists 检查邮箱是否存在
+// CheckEmailExists 检查邮箱是否存在（使用prepared statement）
 func (r *UserRepository) CheckEmailExists(ctx context.Context, email string) (bool, error) {
-	query := `SELECT COUNT(*) FROM user_auth WHERE email = ?`
+	query := `SELECT 1 FROM user_auth WHERE email = ? LIMIT 1`
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	var count int
-	err := r.db.DB.QueryRowContext(ctx, query, email).Scan(&count)
+	var exists int
+	err := r.db.QueryRowWithCache(ctx, query, email).Scan(&exists)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
 	if err != nil {
 		r.logger.Error("检查邮箱失败", "email", email, "error", err.Error())
 		return false, utils.ErrDatabaseQuery
 	}
-
-	return count > 0, nil
+	return true, nil
 }

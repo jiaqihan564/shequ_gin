@@ -4,7 +4,6 @@ import (
 	"sync"
 	"time"
 
-	"gin/internal/config"
 	"gin/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -173,70 +172,34 @@ func (rl *IPRateLimiter) Reset(ip string) {
 // 全局IP限流器
 var globalIPRateLimiter *IPRateLimiter
 
-// InitRateLimiter 初始化限流器
-func InitRateLimiter(cfg *config.Config) {
-	// 默认配置：每分钟100个请求，每秒补充1.67个令牌
-	capacity := 100
-	refillRate := time.Second * 60 / 100 // 每分钟100个请求
-
-	// 如果配置中有限流设置，使用配置值
-	if cfg != nil {
-		// 可以从配置中读取限流参数
-		// 这里暂时使用默认值，后续可以扩展配置
+// RateLimitMiddleware 全局限流中间件
+func RateLimitMiddleware() gin.HandlerFunc {
+	// 懒初始化：每分钟100个请求
+	if globalIPRateLimiter == nil {
+		globalIPRateLimiter = NewIPRateLimiter(100, time.Second*60/100)
+		utils.GetLogger().Info("限流器初始化完成", "capacity", 100, "rate", "100/min")
 	}
 
-	globalIPRateLimiter = NewIPRateLimiter(capacity, refillRate)
-	utils.GetLogger().Info("限流器初始化完成", "capacity", capacity, "refillRate", refillRate)
-}
-
-// RateLimitMiddleware 限流中间件
-func RateLimitMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if globalIPRateLimiter == nil {
-			// 如果没有初始化限流器，使用默认配置
-			InitRateLimiter(nil)
-		}
-
-		clientIP := c.ClientIP()
-
-		if !globalIPRateLimiter.Allow(clientIP) {
+		if !globalIPRateLimiter.Allow(c.ClientIP()) {
 			utils.TooManyRequestsResponse(c, "请求频率过高，请稍后再试")
 			c.Abort()
 			return
 		}
-
 		c.Next()
 	}
 }
 
-// LoginRateLimitMiddleware 登录限流中间件
-func LoginRateLimitMiddleware() gin.HandlerFunc {
-	// 登录限流更严格：每分钟5次尝试
-	loginLimiter := NewIPRateLimiter(5, time.Minute/5)
+// AuthRateLimitMiddleware 认证操作限流中间件（登录/注册共用）
+func AuthRateLimitMiddleware() gin.HandlerFunc {
+	// 认证限流：每分钟5次尝试
+	authLimiter := NewIPRateLimiter(5, time.Minute/5)
 
 	return func(c *gin.Context) {
 		clientIP := c.ClientIP()
 
-		if !loginLimiter.Allow(clientIP) {
-			utils.TooManyRequestsResponse(c, "登录尝试次数过多，请稍后再试")
-			c.Abort()
-			return
-		}
-
-		c.Next()
-	}
-}
-
-// RegisterRateLimitMiddleware 注册限流中间件
-func RegisterRateLimitMiddleware() gin.HandlerFunc {
-	// 注册限流：每分钟10次尝试
-	registerLimiter := NewIPRateLimiter(10, time.Minute/10)
-
-	return func(c *gin.Context) {
-		clientIP := c.ClientIP()
-
-		if !registerLimiter.Allow(clientIP) {
-			utils.TooManyRequestsResponse(c, "注册尝试次数过多，请稍后再试")
+		if !authLimiter.Allow(clientIP) {
+			utils.TooManyRequestsResponse(c, "操作频繁，请稍后再试")
 			c.Abort()
 			return
 		}

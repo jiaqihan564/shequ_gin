@@ -8,9 +8,6 @@ import (
 	"gin/internal/models"
 	"gin/internal/utils"
 
-	"fmt"
-	"strings"
-
 	"github.com/golang-jwt/jwt/v4"
 )
 
@@ -35,52 +32,41 @@ func (s *AuthService) Login(ctx context.Context, username, password, clientIP st
 	// 获取用户信息
 	user, err := s.userRepo.GetUserByUsername(ctx, username)
 	if err != nil {
-		s.logger.Warn("登录失败：用户不存在", "username", username, "ip", clientIP)
 		return nil, utils.ErrInvalidCredentials
 	}
 
 	// 检查账户状态
 	if user.AccountStatus != 1 {
-		s.logger.Warn("登录失败：账户已被禁用", "userID", user.ID, "username", username, "ip", clientIP)
 		return nil, utils.ErrAccountDisabled
 	}
 
 	// 检查登录失败次数
 	if user.FailedLoginCount >= s.config.Security.MaxLoginAttempts {
-		s.logger.Warn("登录失败：登录尝试次数过多", "userID", user.ID, "username", username, "failedCount", user.FailedLoginCount, "ip", clientIP)
 		return nil, utils.ErrTooManyLoginAttempts
 	}
 
 	// 验证密码
 	if !utils.CheckPasswordHash(password, user.PasswordHash) {
-		// 增加登录失败次数
-		if err := s.userRepo.IncrementFailedLoginCount(ctx, user.ID); err != nil {
-			s.logger.Error("更新登录失败次数失败", "userID", user.ID, "error", err.Error())
-		}
-		s.logger.Warn("登录失败：密码错误", "userID", user.ID, "username", username, "ip", clientIP)
+		_ = s.userRepo.IncrementFailedLoginCount(ctx, user.ID)
 		return nil, utils.ErrInvalidCredentials
 	}
 
 	// 更新登录信息
 	now := time.Now()
-	err = s.userRepo.UpdateLoginInfo(ctx, user.ID, now, clientIP)
-	if err != nil {
-		// 登录信息更新失败不影响登录流程，只记录错误
+	if err := s.userRepo.UpdateLoginInfo(ctx, user.ID, now, clientIP); err != nil {
 		s.logger.Error("更新登录信息失败", "userID", user.ID, "error", err.Error())
 	}
 
 	// 生成JWT token
 	token, err := s.generateJWT(user.ID, user.Username)
 	if err != nil {
-		s.logger.Error("生成JWT token失败", "userID", user.ID, "error", err.Error())
 		return nil, utils.ErrInternalServerError
 	}
 
-	// 读取扩展资料（昵称/简介）
+	// 读取扩展资料
 	extra, _ := s.userRepo.GetUserProfile(ctx, user.ID)
 
-	// 返回登录成功响应（匹配前端期望格式）
-	response := &models.LoginResponse{
+	return &models.LoginResponse{
 		Code:    200,
 		Message: "登录成功",
 		Data: struct {
@@ -94,86 +80,62 @@ func (s *AuthService) Login(ctx context.Context, username, password, clientIP st
 				Email:         user.Email,
 				AuthStatus:    user.AuthStatus,
 				AccountStatus: user.AccountStatus,
-				AvatarURL:     extra.AvatarURL, // 使用数据库中的头像URL
+				AvatarURL:     extra.AvatarURL,
 				Nickname:      extra.Nickname,
 				Bio:           extra.Bio,
 			},
 		},
-	}
-
-	s.logger.Info("用户登录成功", "userID", user.ID, "username", username, "ip", clientIP)
-	return response, nil
+	}, nil
 }
 
 // Register 用户注册
 func (s *AuthService) Register(ctx context.Context, username, password, email string) (*models.LoginResponse, error) {
-	// 检查用户名是否已存在
-	usernameExists, err := s.userRepo.CheckUsernameExists(ctx, username)
-	if err != nil {
-		s.logger.Error("检查用户名失败", "username", username, "error", err.Error())
-		return nil, utils.ErrDatabaseQuery
-	}
-	if usernameExists {
-		s.logger.Warn("注册失败：用户名已存在", "username", username)
+	// 检查用户名和邮箱是否存在
+	if exists, _ := s.userRepo.CheckUsernameExists(ctx, username); exists {
 		return nil, utils.ErrUserAlreadyExists
 	}
-
-	// 检查邮箱是否已存在
-	emailExists, err := s.userRepo.CheckEmailExists(ctx, email)
-	if err != nil {
-		s.logger.Error("检查邮箱失败", "email", email, "error", err.Error())
-		return nil, utils.ErrDatabaseQuery
-	}
-	if emailExists {
-		s.logger.Warn("注册失败：邮箱已被注册", "email", email)
+	if exists, _ := s.userRepo.CheckEmailExists(ctx, email); exists {
 		return nil, utils.ErrEmailAlreadyExists
 	}
 
 	// 加密密码
 	hashedPassword, err := utils.HashPassword(password)
 	if err != nil {
-		s.logger.Error("密码加密失败", "username", username, "error", err.Error())
 		return nil, utils.ErrInternalServerError
 	}
 
-	// 创建新用户
+	// 创建用户
 	now := time.Now()
 	user := &models.User{
 		Username:      username,
 		PasswordHash:  hashedPassword,
 		Email:         email,
-		AuthStatus:    1, // 已验证
-		AccountStatus: 1, // 正常
+		AuthStatus:    1,
+		AccountStatus: 1,
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}
 
-	// 保存用户到数据库
-	err = s.userRepo.CreateUser(ctx, user)
-	if err != nil {
-		s.logger.Error("创建用户失败", "username", username, "email", email, "error", err.Error())
+	if err := s.userRepo.CreateUser(ctx, user); err != nil {
 		return nil, utils.ErrDatabaseInsert
 	}
 
-	// 重新获取用户信息以获取生成的ID
+	// 重新获取用户以获取ID
 	user, err = s.userRepo.GetUserByUsername(ctx, username)
 	if err != nil {
-		s.logger.Error("获取用户信息失败", "username", username, "error", err.Error())
 		return nil, utils.ErrDatabaseQuery
 	}
 
 	// 生成JWT token
 	token, err := s.generateJWT(user.ID, user.Username)
 	if err != nil {
-		s.logger.Error("生成JWT token失败", "userID", user.ID, "error", err.Error())
 		return nil, utils.ErrInternalServerError
 	}
 
-	// 读取扩展资料（可能为空）
+	// 读取扩展资料
 	extra, _ := s.userRepo.GetUserProfile(ctx, user.ID)
 
-	// 返回注册成功响应（匹配前端期望格式）
-	response := &models.LoginResponse{
+	return &models.LoginResponse{
 		Code:    201,
 		Message: "注册成功",
 		Data: struct {
@@ -187,33 +149,17 @@ func (s *AuthService) Register(ctx context.Context, username, password, email st
 				Email:         user.Email,
 				AuthStatus:    user.AuthStatus,
 				AccountStatus: user.AccountStatus,
-				AvatarURL:     extra.AvatarURL, // 注册时通常为空
+				AvatarURL:     extra.AvatarURL,
 				Nickname:      extra.Nickname,
 				Bio:           extra.Bio,
 			},
 		},
-	}
-
-	s.logger.Info("用户注册成功", "userID", user.ID, "username", username, "email", email)
-	return response, nil
+	}, nil
 }
 
 // generateJWT 生成JWT token
 func (s *AuthService) generateJWT(userID uint, username string) (string, error) {
 	claims := models.CreateClaims(userID, username, s.config.JWT.Issuer, s.config.JWT.ExpireHours)
-
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(s.config.JWT.SecretKey))
-}
-
-// buildAvatarURL 根据用户名生成头像URL: {base}/{username}/avatar.png?t={timestamp}
-// 添加时间戳参数防止浏览器缓存
-func (s *AuthService) buildAvatarURL(username string) string {
-	base := s.config.Assets.PublicBaseURL
-	if base == "" {
-		return ""
-	}
-	base = strings.TrimRight(base, "/")
-	// 添加时间戳参数，确保每次获取用户信息时都能刷新头像
-	return fmt.Sprintf("%s/%s/avatar.png?t=%d", base, username, time.Now().Unix())
 }
