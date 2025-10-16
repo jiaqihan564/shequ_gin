@@ -38,6 +38,8 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 	chatHandler := handlers.NewChatHandler(ctn.ChatRepo, ctn.UserRepo)
 	articleHandler := handlers.NewArticleHandler(ctn.ArticleRepo)
 	privateMsgHandler := handlers.NewPrivateMessageHandler(ctn.PrivateMsgRepo, ctn.UserRepo)
+	resourceHandler := handlers.NewResourceHandler(ctn.ResourceRepo, ctn.ResourceCommentRepo)
+	chunkUploadHandler := handlers.NewChunkUploadHandler(ctn.UploadMgr)
 
 	// 健康检查路由
 	r.GET("/health", healthHandler.Check)
@@ -129,6 +131,25 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 			auth.POST("/messages/send", privateMsgHandler.SendMessage)                     // 发送消息
 			auth.GET("/conversations/unread-count", privateMsgHandler.GetUnreadCount)      // 获取未读数
 			auth.POST("/conversations/start/:userId", privateMsgHandler.StartConversation) // 开始会话
+
+			// 资源相关接口
+			auth.POST("/resources", resourceHandler.CreateResource)                             // 创建资源
+			auth.GET("/resources", resourceHandler.GetResourceList)                             // 获取资源列表
+			auth.GET("/resources/:id", resourceHandler.GetResourceDetail)                       // 获取资源详情
+			auth.DELETE("/resources/:id", resourceHandler.DeleteResource)                       // 删除资源
+			auth.POST("/resources/:id/like", resourceHandler.ToggleResourceLike)                // 点赞资源
+			auth.GET("/resources/:id/download", resourceHandler.DownloadResource)               // 下载资源
+			auth.GET("/resource-categories", resourceHandler.GetCategories)                     // 获取资源分类
+			auth.POST("/resources/:id/comments", resourceHandler.CreateResourceComment)         // 发表资源评论
+			auth.GET("/resources/:id/comments", resourceHandler.GetResourceComments)            // 获取资源评论
+			auth.POST("/resource-comments/:id/like", resourceHandler.ToggleResourceCommentLike) // 资源评论点赞
+
+			// 分片上传接口
+			auth.POST("/upload/init", chunkUploadHandler.InitUpload)                  // 初始化上传
+			auth.POST("/upload/chunk", chunkUploadHandler.UploadChunk)                // 上传分片
+			auth.POST("/upload/merge", chunkUploadHandler.MergeChunks)                // 合并分片
+			auth.GET("/upload/status/:upload_id", chunkUploadHandler.GetUploadStatus) // 查询进度
+			auth.POST("/upload/cancel/:upload_id", chunkUploadHandler.CancelUpload)   // 取消上传
 		}
 	}
 
