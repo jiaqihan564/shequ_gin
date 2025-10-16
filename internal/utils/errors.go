@@ -42,6 +42,7 @@ var (
 	// 权限相关错误
 	ErrInsufficientPermissions = errors.New("权限不足")
 	ErrAccessDenied            = errors.New("访问被拒绝")
+	ErrUnauthorized            = errors.New("未授权操作")
 	ErrResourceNotFound        = errors.New("资源不存在")
 
 	// 系统相关错误
@@ -125,7 +126,7 @@ func GetHTTPStatusCode(err error) int {
 		return 401
 	case errors.Is(err, ErrInvalidCredentials) || errors.Is(err, ErrAccountDisabled) || errors.Is(err, ErrTooManyLoginAttempts):
 		return 401
-	case errors.Is(err, ErrInsufficientPermissions) || errors.Is(err, ErrAccessDenied):
+	case errors.Is(err, ErrInsufficientPermissions) || errors.Is(err, ErrAccessDenied) || errors.Is(err, ErrUnauthorized):
 		return 403
 	case errors.Is(err, ErrUserNotFound) || errors.Is(err, ErrResourceNotFound):
 		return 404

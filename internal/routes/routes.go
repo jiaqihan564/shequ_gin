@@ -36,6 +36,7 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 	historyHandler := handlers.NewHistoryHandler(ctn.HistoryRepo)
 	cumulativeHandler := handlers.NewCumulativeStatsHandler(ctn.CumulativeRepo)
 	chatHandler := handlers.NewChatHandler(ctn.ChatRepo, ctn.UserRepo)
+	articleHandler := handlers.NewArticleHandler(ctn.ArticleRepo)
 
 	// 健康检查路由
 	r.GET("/health", healthHandler.Check)
@@ -105,6 +106,21 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 			auth.GET("/chat/messages/new", chatHandler.GetNewMessages)   // 获取新消息（轮询）
 			auth.DELETE("/chat/messages/:id", chatHandler.DeleteMessage) // 删除消息
 			auth.GET("/chat/online-count", chatHandler.GetOnlineCount)   // 获取在线用户数
+
+			// 文章相关接口
+			auth.POST("/articles", articleHandler.CreateArticle)              // 创建文章
+			auth.GET("/articles/:id", articleHandler.GetArticleDetail)        // 获取文章详情
+			auth.PUT("/articles/:id", articleHandler.UpdateArticle)           // 更新文章
+			auth.DELETE("/articles/:id", articleHandler.DeleteArticle)        // 删除文章
+			auth.POST("/articles/:id/like", articleHandler.ToggleArticleLike) // 点赞/取消点赞
+			auth.POST("/articles/:id/comments", articleHandler.CreateComment) // 发表评论
+			auth.GET("/articles/:id/comments", articleHandler.GetComments)    // 获取评论
+			auth.POST("/comments/:id/like", articleHandler.ToggleCommentLike) // 评论点赞
+			auth.DELETE("/comments/:id", articleHandler.DeleteComment)        // 删除评论
+			auth.POST("/articles/report", articleHandler.CreateReport)        // 举报文章/评论
+			auth.GET("/articles", articleHandler.GetArticleList)              // 获取文章列表
+			auth.GET("/articles/categories", articleHandler.GetCategories)    // 获取分类列表
+			auth.GET("/articles/tags", articleHandler.GetTags)                // 获取标签列表
 		}
 	}
 

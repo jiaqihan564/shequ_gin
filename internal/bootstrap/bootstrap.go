@@ -16,6 +16,7 @@ type Container struct {
 	HistoryRepo    *services.HistoryRepository
 	CumulativeRepo *services.CumulativeStatsRepository
 	ChatRepo       *services.ChatRepository
+	ArticleRepo    *services.ArticleRepository
 }
 
 // New 构建容器
@@ -25,6 +26,7 @@ func New(cfg *config.Config, db *services.Database) (*Container, error) {
 	historyRepo := services.NewHistoryRepository(db)
 	cumulativeRepo := services.NewCumulativeStatsRepository(db)
 	chatRepo := services.NewChatRepository(db)
+	articleRepo := services.NewArticleRepository(db)
 	authService := services.NewAuthService(cfg, userRepo, historyRepo)
 	userService := services.NewUserService(userRepo)
 	storageService, err := services.NewStorageService(cfg)
@@ -43,5 +45,6 @@ func New(cfg *config.Config, db *services.Database) (*Container, error) {
 		HistoryRepo:    historyRepo,
 		CumulativeRepo: cumulativeRepo,
 		ChatRepo:       chatRepo,
+		ArticleRepo:    articleRepo,
 	}, nil
 }
