@@ -490,18 +490,6 @@ func (s *AuthService) generateJWT(userID uint, username string) (string, error) 
 	return signedToken, nil
 }
 
-// buildAvatarURL 根据用户名生成头像URL: {base}/{username}/avatar.png?t={timestamp}
-// 添加时间戳参数防止浏览器缓存
-func (s *AuthService) buildAvatarURL(username string) string {
-	base := s.config.Assets.PublicBaseURL
-	if base == "" {
-		return ""
-	}
-	base = strings.TrimRight(base, "/")
-	// 添加时间戳参数，确保每次获取用户信息时都能刷新头像
-	return fmt.Sprintf("%s/%s/avatar.png?t=%d", base, username, time.Now().Unix())
-}
-
 // ChangePassword 修改密码
 func (s *AuthService) ChangePassword(ctx context.Context, userID uint, currentPassword, newPassword string) error {
 	startTime := time.Now()

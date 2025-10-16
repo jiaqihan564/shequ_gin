@@ -37,6 +37,7 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 	cumulativeHandler := handlers.NewCumulativeStatsHandler(ctn.CumulativeRepo)
 	chatHandler := handlers.NewChatHandler(ctn.ChatRepo, ctn.UserRepo)
 	articleHandler := handlers.NewArticleHandler(ctn.ArticleRepo)
+	privateMsgHandler := handlers.NewPrivateMessageHandler(ctn.PrivateMsgRepo, ctn.UserRepo)
 
 	// 健康检查路由
 	r.GET("/health", healthHandler.Check)
@@ -121,6 +122,13 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 			auth.GET("/articles", articleHandler.GetArticleList)              // 获取文章列表
 			auth.GET("/articles/categories", articleHandler.GetCategories)    // 获取分类列表
 			auth.GET("/articles/tags", articleHandler.GetTags)                // 获取标签列表
+
+			// 私信相关接口
+			auth.GET("/conversations", privateMsgHandler.GetConversations)                 // 获取会话列表
+			auth.GET("/conversations/:id/messages", privateMsgHandler.GetMessages)         // 获取会话消息
+			auth.POST("/messages/send", privateMsgHandler.SendMessage)                     // 发送消息
+			auth.GET("/conversations/unread-count", privateMsgHandler.GetUnreadCount)      // 获取未读数
+			auth.POST("/conversations/start/:userId", privateMsgHandler.StartConversation) // 开始会话
 		}
 	}
 

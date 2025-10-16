@@ -505,7 +505,8 @@ func (r *ArticleRepository) ToggleArticleLike(ctx context.Context, articleID, us
 	err := r.db.DB.QueryRowContext(ctx, checkQuery, articleID, userID).Scan(&likeID)
 
 	isLiked := false
-	if err == sql.ErrNoRows {
+	switch err {
+	case sql.ErrNoRows:
 		// 未点赞，执行点赞
 		insertQuery := `INSERT INTO article_likes (article_id, user_id, created_at) VALUES (?, ?, ?)`
 		_, err := r.db.DB.ExecContext(ctx, insertQuery, articleID, userID, time.Now())
@@ -516,7 +517,7 @@ func (r *ArticleRepository) ToggleArticleLike(ctx context.Context, articleID, us
 		// 更新文章点赞数
 		_, _ = r.db.DB.ExecContext(ctx, `UPDATE articles SET like_count = like_count + 1 WHERE id = ?`, articleID)
 		isLiked = true
-	} else if err == nil {
+	case nil:
 		// 已点赞，取消点赞
 		deleteQuery := `DELETE FROM article_likes WHERE article_id = ? AND user_id = ?`
 		_, err := r.db.DB.ExecContext(ctx, deleteQuery, articleID, userID)
@@ -527,7 +528,7 @@ func (r *ArticleRepository) ToggleArticleLike(ctx context.Context, articleID, us
 		// 更新文章点赞数
 		_, _ = r.db.DB.ExecContext(ctx, `UPDATE articles SET like_count = GREATEST(like_count - 1, 0) WHERE id = ?`, articleID)
 		isLiked = false
-	} else {
+	default:
 		return false, utils.ErrDatabaseQuery
 	}
 
@@ -745,7 +746,8 @@ func (r *ArticleRepository) ToggleCommentLike(ctx context.Context, commentID, us
 	err := r.db.DB.QueryRowContext(ctx, checkQuery, commentID, userID).Scan(&likeID)
 
 	isLiked := false
-	if err == sql.ErrNoRows {
+	switch err {
+	case sql.ErrNoRows:
 		// 未点赞，执行点赞
 		insertQuery := `INSERT INTO article_comment_likes (comment_id, user_id, created_at) VALUES (?, ?, ?)`
 		_, err := r.db.DB.ExecContext(ctx, insertQuery, commentID, userID, time.Now())
@@ -756,7 +758,7 @@ func (r *ArticleRepository) ToggleCommentLike(ctx context.Context, commentID, us
 		// 更新评论点赞数
 		_, _ = r.db.DB.ExecContext(ctx, `UPDATE article_comments SET like_count = like_count + 1 WHERE id = ?`, commentID)
 		isLiked = true
-	} else if err == nil {
+	case nil:
 		// 已点赞，取消点赞
 		deleteQuery := `DELETE FROM article_comment_likes WHERE comment_id = ? AND user_id = ?`
 		_, err := r.db.DB.ExecContext(ctx, deleteQuery, commentID, userID)
@@ -767,7 +769,7 @@ func (r *ArticleRepository) ToggleCommentLike(ctx context.Context, commentID, us
 		// 更新评论点赞数
 		_, _ = r.db.DB.ExecContext(ctx, `UPDATE article_comments SET like_count = GREATEST(like_count - 1, 0) WHERE id = ?`, commentID)
 		isLiked = false
-	} else {
+	default:
 		return false, utils.ErrDatabaseQuery
 	}
 

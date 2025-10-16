@@ -508,8 +508,32 @@ func (h *UserHandler) GetUserByID(c *gin.Context) {
 		return
 	}
 
+	// 获取用户扩展资料（包括头像）
+	profile, _ := h.userService.GetUserProfile(ctx, targetUserID)
+
+	// 构建响应，包含完整的用户信息和profile
+	response := gin.H{
+		"id":             user.ID,
+		"username":       user.Username,
+		"email":          user.Email,
+		"auth_status":    user.AuthStatus,
+		"account_status": user.AccountStatus,
+		"created_at":     user.CreatedAt,
+		"updated_at":     user.UpdatedAt,
+	}
+
+	if profile != nil {
+		response["profile"] = gin.H{
+			"nickname":   profile.Nickname,
+			"bio":        profile.Bio,
+			"avatar_url": profile.AvatarURL,
+		}
+		// 同时在根级提供 avatar 字段（方便前端使用）
+		response["avatar"] = profile.AvatarURL
+	}
+
 	h.logger.Info("获取用户信息成功", "currentUserID", currentUserID, "targetUserID", targetUserID, "username", user.Username, "ip", c.ClientIP())
-	utils.SuccessResponse(c, 200, "获取用户信息成功", user)
+	utils.SuccessResponse(c, 200, "获取用户信息成功", response)
 }
 
 // buildAvatarURL 构建带时间戳的头像URL（防止浏览器缓存）
