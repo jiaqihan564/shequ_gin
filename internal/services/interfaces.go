@@ -10,8 +10,11 @@ import (
 
 // AuthServiceInterface 认证服务接口
 type AuthServiceInterface interface {
-	Login(ctx context.Context, username, password, clientIP string) (*models.LoginResponse, error)
+	Login(ctx context.Context, username, password, clientIP, province, city string) (*models.LoginResponse, error)
 	Register(ctx context.Context, username, password, email string) (*models.LoginResponse, error)
+	ChangePassword(ctx context.Context, userID uint, currentPassword, newPassword string) error
+	ForgotPassword(ctx context.Context, email string) (string, error)
+	ResetPassword(ctx context.Context, token, newPassword string) error
 }
 
 // UserServiceInterface 用户服务接口

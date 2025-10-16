@@ -33,6 +33,8 @@ type UserProfile struct {
 type LoginRequest struct {
 	Username string `json:"username" binding:"required"`
 	Password string `json:"password" binding:"required"`
+	Province string `json:"province"` // 登录省份（可选）
+	City     string `json:"city"`     // 登录城市（可选）
 }
 
 // RegisterRequest 注册请求结构体
@@ -69,4 +71,31 @@ type UserExtraProfile struct {
 	AvatarURL string    `json:"avatar_url" db:"avatar_url"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+}
+
+// ChangePasswordRequest 修改密码请求结构体
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"currentPassword" binding:"required"`
+	NewPassword     string `json:"newPassword" binding:"required"`
+}
+
+// ForgotPasswordRequest 忘记密码请求结构体
+type ForgotPasswordRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+// ResetPasswordRequest 重置密码请求结构体
+type ResetPasswordRequest struct {
+	Token       string `json:"token" binding:"required"`
+	NewPassword string `json:"newPassword" binding:"required"`
+}
+
+// PasswordResetToken 密码重置token结构体
+type PasswordResetToken struct {
+	ID        uint      `json:"id" db:"id"`
+	Email     string    `json:"email" db:"email"`
+	Token     string    `json:"token" db:"token"`
+	ExpiresAt time.Time `json:"expires_at" db:"expires_at"`
+	Used      bool      `json:"used" db:"used"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
 }

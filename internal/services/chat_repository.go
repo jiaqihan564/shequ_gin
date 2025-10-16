@@ -1,0 +1,216 @@
+package services
+
+import (
+	"context"
+	"database/sql"
+	"gin/internal/models"
+	"gin/internal/utils"
+	"time"
+)
+
+// ChatRepository 聊天消息仓库
+type ChatRepository struct {
+	db     *Database
+	logger utils.Logger
+}
+
+// NewChatRepository 创建聊天消息仓库
+func NewChatRepository(db *Database) *ChatRepository {
+	return &ChatRepository{
+		db:     db,
+		logger: utils.GetLogger(),
+	}
+}
+
+// SendMessage 发送消息
+func (r *ChatRepository) SendMessage(userID uint, username, nickname, avatar, content, ipAddress string) (*models.ChatMessage, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	now := time.Now()
+	query := `INSERT INTO chat_messages (user_id, username, nickname, avatar, content, message_type, send_time, ip_address, status, created_at)
+			  VALUES (?, ?, ?, ?, ?, 1, ?, ?, 1, ?)`
+
+	result, err := r.db.DB.ExecContext(ctx, query, userID, username, nickname, avatar, content, now, ipAddress, now)
+	if err != nil {
+		r.logger.Error("发送消息失败", "error", err.Error())
+		return nil, utils.ErrDatabaseQuery
+	}
+
+	messageID, err := result.LastInsertId()
+	if err != nil {
+		r.logger.Error("获取消息ID失败", "error", err.Error())
+		return nil, utils.ErrDatabaseQuery
+	}
+
+	return &models.ChatMessage{
+		ID:          uint(messageID),
+		UserID:      userID,
+		Username:    username,
+		Nickname:    nickname,
+		Avatar:      avatar,
+		Content:     content,
+		MessageType: 1,
+		SendTime:    now,
+		IPAddress:   ipAddress,
+		Status:      1,
+		CreatedAt:   now,
+	}, nil
+}
+
+// GetMessages 获取消息列表（分页）
+func (r *ChatRepository) GetMessages(limit int, beforeID uint) ([]models.ChatMessage, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var query string
+	var rows *sql.Rows
+	var err error
+
+	if beforeID > 0 {
+		// 获取指定ID之前的消息
+		query = `SELECT id, user_id, username, nickname, avatar, content, message_type, send_time, status, created_at
+				 FROM chat_messages
+				 WHERE status = 1 AND id < ?
+				 ORDER BY id DESC
+				 LIMIT ?`
+		rows, err = r.db.DB.QueryContext(ctx, query, beforeID, limit)
+	} else {
+		// 获取最新消息
+		query = `SELECT id, user_id, username, nickname, avatar, content, message_type, send_time, status, created_at
+				 FROM chat_messages
+				 WHERE status = 1
+				 ORDER BY id DESC
+				 LIMIT ?`
+		rows, err = r.db.DB.QueryContext(ctx, query, limit)
+	}
+
+	if err != nil {
+		r.logger.Error("获取消息列表失败", "error", err.Error())
+		return nil, utils.ErrDatabaseQuery
+	}
+	defer rows.Close()
+
+	var messages []models.ChatMessage
+	for rows.Next() {
+		var msg models.ChatMessage
+		if err := rows.Scan(&msg.ID, &msg.UserID, &msg.Username, &msg.Nickname, &msg.Avatar,
+			&msg.Content, &msg.MessageType, &msg.SendTime, &msg.Status, &msg.CreatedAt); err != nil {
+			continue
+		}
+		messages = append(messages, msg)
+	}
+
+	// 反转顺序，让最旧的消息在前面
+	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+		messages[i], messages[j] = messages[j], messages[i]
+	}
+
+	return messages, nil
+}
+
+// GetNewMessages 获取新消息（指定ID之后的）
+func (r *ChatRepository) GetNewMessages(afterID uint) ([]models.ChatMessage, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `SELECT id, user_id, username, nickname, avatar, content, message_type, send_time, status, created_at
+			  FROM chat_messages
+			  WHERE status = 1 AND id > ?
+			  ORDER BY id ASC
+			  LIMIT 100`
+
+	rows, err := r.db.DB.QueryContext(ctx, query, afterID)
+	if err != nil {
+		r.logger.Error("获取新消息失败", "error", err.Error())
+		return nil, utils.ErrDatabaseQuery
+	}
+	defer rows.Close()
+
+	var messages []models.ChatMessage
+	for rows.Next() {
+		var msg models.ChatMessage
+		if err := rows.Scan(&msg.ID, &msg.UserID, &msg.Username, &msg.Nickname, &msg.Avatar,
+			&msg.Content, &msg.MessageType, &msg.SendTime, &msg.Status, &msg.CreatedAt); err != nil {
+			continue
+		}
+		messages = append(messages, msg)
+	}
+
+	return messages, nil
+}
+
+// DeleteMessage 删除消息（软删除）
+func (r *ChatRepository) DeleteMessage(messageID, userID uint) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `UPDATE chat_messages SET status = 0 WHERE id = ? AND user_id = ?`
+	result, err := r.db.DB.ExecContext(ctx, query, messageID, userID)
+	if err != nil {
+		r.logger.Error("删除消息失败", "error", err.Error())
+		return utils.ErrDatabaseQuery
+	}
+
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
+		return utils.ErrDatabaseUpdate
+	}
+
+	return nil
+}
+
+// UpdateOnlineUser 更新在线用户心跳
+func (r *ChatRepository) UpdateOnlineUser(userID uint, username string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	now := time.Now()
+	query := `INSERT INTO online_users (user_id, username, last_heartbeat, created_at)
+			  VALUES (?, ?, ?, ?)
+			  ON DUPLICATE KEY UPDATE last_heartbeat = ?, username = ?`
+
+	_, err := r.db.DB.ExecContext(ctx, query, userID, username, now, now, now, username)
+	if err != nil {
+		r.logger.Error("更新在线用户失败", "error", err.Error())
+		return utils.ErrDatabaseQuery
+	}
+
+	return nil
+}
+
+// GetOnlineCount 获取在线用户数（最近5分钟有心跳的）
+func (r *ChatRepository) GetOnlineCount() (int, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// 5分钟内有心跳的用户视为在线
+	fiveMinutesAgo := time.Now().Add(-5 * time.Minute)
+	query := `SELECT COUNT(*) FROM online_users WHERE last_heartbeat >= ?`
+
+	var count int
+	err := r.db.DB.QueryRowContext(ctx, query, fiveMinutesAgo).Scan(&count)
+	if err != nil {
+		r.logger.Error("获取在线用户数失败", "error", err.Error())
+		return 0, utils.ErrDatabaseQuery
+	}
+
+	return count, nil
+}
+
+// CleanOldOnlineUsers 清理过期的在线用户记录（超过1小时）
+func (r *ChatRepository) CleanOldOnlineUsers() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	oneHourAgo := time.Now().Add(-1 * time.Hour)
+	query := `DELETE FROM online_users WHERE last_heartbeat < ?`
+
+	_, err := r.db.DB.ExecContext(ctx, query, oneHourAgo)
+	if err != nil {
+		r.logger.Error("清理过期在线用户失败", "error", err.Error())
+		return utils.ErrDatabaseQuery
+	}
+
+	return nil
+}

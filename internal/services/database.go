@@ -27,11 +27,15 @@ type Database struct {
 func NewDatabase(cfg *config.Config) (*Database, error) {
 	logger := utils.GetLogger()
 
-	// 构建数据库连接字符串（优化字符串拼接）
-	dsn := cfg.Database.Username + ":" + cfg.Database.Password + "@tcp(" +
-		cfg.Database.Host + ":" + cfg.Database.Port + ")/" + cfg.Database.Database +
-		"?charset=" + cfg.Database.Charset +
-		"&parseTime=True&loc=Local&timeout=10s&readTimeout=30s&writeTimeout=30s&interpolateParams=true"
+	// 构建数据库连接字符串
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=%s&parseTime=True&loc=Local&timeout=10s&readTimeout=30s&writeTimeout=30s&interpolateParams=true",
+		cfg.Database.Username,
+		cfg.Database.Password,
+		cfg.Database.Host,
+		cfg.Database.Port,
+		cfg.Database.Database,
+		cfg.Database.Charset,
+	)
 
 	// 连接数据库
 	db, err := sql.Open("mysql", dsn)
@@ -130,6 +134,13 @@ func (d *Database) Ping() error {
 	return d.DB.PingContext(ctx)
 }
 
+//
+
+// HealthCheck 健康检查
+func (d *Database) HealthCheck() error {
+	return d.Ping()
+}
+
 // PrepareStmt 获取或创建prepared statement（带缓存）
 func (d *Database) PrepareStmt(ctx context.Context, query string) (*sql.Stmt, error) {
 	// 先尝试从缓存获取
@@ -161,28 +172,132 @@ func (d *Database) PrepareStmt(ctx context.Context, query string) (*sql.Stmt, er
 
 // ExecWithCache 使用缓存的prepared statement执行查询
 func (d *Database) ExecWithCache(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+	start := time.Now()
+	d.logger.Debug("SQL执行开始[ExecWithCache]",
+		"query", utils.TruncateString(query, 200),
+		"params", utils.FormatSQLParams(args),
+		"paramCount", len(args))
+
 	stmt, err := d.PrepareStmt(ctx, query)
 	if err != nil {
+		d.logger.Error("SQL执行失败: prepare失败",
+			"query", utils.TruncateString(query, 200),
+			"error", err.Error(),
+			"duration", time.Since(start))
 		return nil, err
 	}
-	return stmt.ExecContext(ctx, args...)
+
+	result, err := stmt.ExecContext(ctx, args...)
+	duration := time.Since(start)
+
+	if err != nil {
+		d.logger.Error("SQL执行失败",
+			"query", utils.TruncateString(query, 200),
+			"error", err.Error(),
+			"duration", duration)
+		return nil, err
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	lastInsertID, _ := result.LastInsertId()
+
+	d.logger.Info("SQL执行成功[ExecWithCache]",
+		"query", utils.TruncateString(query, 200),
+		"rowsAffected", rowsAffected,
+		"lastInsertID", lastInsertID,
+		"duration", duration,
+		"durationMs", duration.Milliseconds())
+
+	// 慢查询警告
+	if duration > 100*time.Millisecond {
+		d.logger.Warn("检测到慢查询[ExecWithCache]",
+			"query", utils.TruncateString(query, 200),
+			"duration", duration,
+			"durationMs", duration.Milliseconds(),
+			"threshold", "100ms")
+	}
+
+	return result, nil
 }
 
 // QueryRowWithCache 使用缓存的prepared statement执行单行查询
 func (d *Database) QueryRowWithCache(ctx context.Context, query string, args ...interface{}) *sql.Row {
+	start := time.Now()
+	d.logger.Debug("SQL查询开始[QueryRowWithCache]",
+		"query", utils.TruncateString(query, 200),
+		"params", utils.FormatSQLParams(args),
+		"paramCount", len(args))
+
 	stmt, err := d.PrepareStmt(ctx, query)
 	if err != nil {
+		d.logger.Warn("SQL查询: prepare失败，回退到普通查询",
+			"query", utils.TruncateString(query, 200),
+			"error", err.Error())
 		// 如果prepare失败，回退到普通查询
 		return d.DB.QueryRowContext(ctx, query, args...)
 	}
-	return stmt.QueryRowContext(ctx, args...)
+
+	row := stmt.QueryRowContext(ctx, args...)
+	duration := time.Since(start)
+
+	d.logger.Debug("SQL查询完成[QueryRowWithCache]",
+		"query", utils.TruncateString(query, 200),
+		"duration", duration,
+		"durationMs", duration.Milliseconds())
+
+	// 慢查询警告
+	if duration > 100*time.Millisecond {
+		d.logger.Warn("检测到慢查询[QueryRowWithCache]",
+			"query", utils.TruncateString(query, 200),
+			"duration", duration,
+			"durationMs", duration.Milliseconds(),
+			"threshold", "100ms")
+	}
+
+	return row
 }
 
 // QueryWithCache 使用缓存的prepared statement执行多行查询
 func (d *Database) QueryWithCache(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+	start := time.Now()
+	d.logger.Debug("SQL查询开始[QueryWithCache]",
+		"query", utils.TruncateString(query, 200),
+		"params", utils.FormatSQLParams(args),
+		"paramCount", len(args))
+
 	stmt, err := d.PrepareStmt(ctx, query)
 	if err != nil {
+		d.logger.Error("SQL查询失败: prepare失败",
+			"query", utils.TruncateString(query, 200),
+			"error", err.Error(),
+			"duration", time.Since(start))
 		return nil, err
 	}
-	return stmt.QueryContext(ctx, args...)
+
+	rows, err := stmt.QueryContext(ctx, args...)
+	duration := time.Since(start)
+
+	if err != nil {
+		d.logger.Error("SQL查询失败",
+			"query", utils.TruncateString(query, 200),
+			"error", err.Error(),
+			"duration", duration)
+		return nil, err
+	}
+
+	d.logger.Info("SQL查询成功[QueryWithCache]",
+		"query", utils.TruncateString(query, 200),
+		"duration", duration,
+		"durationMs", duration.Milliseconds())
+
+	// 慢查询警告
+	if duration > 100*time.Millisecond {
+		d.logger.Warn("检测到慢查询[QueryWithCache]",
+			"query", utils.TruncateString(query, 200),
+			"duration", duration,
+			"durationMs", duration.Milliseconds(),
+			"threshold", "100ms")
+	}
+
+	return rows, nil
 }

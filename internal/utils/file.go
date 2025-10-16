@@ -49,7 +49,7 @@ func (fv *FileValidator) Validate(file *multipart.FileHeader) error {
 func (fv *FileValidator) validateMagicNumber(fileHeader *multipart.FileHeader) error {
 	file, err := fileHeader.Open()
 	if err != nil {
-		return errors.New("无法打开文件")
+		return WrapError(err, "无法打开文件")
 	}
 	defer file.Close()
 
@@ -57,7 +57,7 @@ func (fv *FileValidator) validateMagicNumber(fileHeader *multipart.FileHeader) e
 	buf := make([]byte, 16)
 	n, err := io.ReadFull(file, buf)
 	if err != nil && err != io.ErrUnexpectedEOF {
-		return errors.New("读取文件失败")
+		return WrapError(err, "读取文件失败")
 	}
 	buf = buf[:n]
 
@@ -101,4 +101,33 @@ func IsPNG(file *multipart.FileHeader) bool {
 	// PNG magic number: 89 50 4E 47 0D 0A 1A 0A
 	return buf[0] == 0x89 && buf[1] == 0x50 && buf[2] == 0x4E && buf[3] == 0x47 &&
 		buf[4] == 0x0D && buf[5] == 0x0A && buf[6] == 0x1A && buf[7] == 0x0A
+}
+
+// IsJPEG 检查是否是JPEG文件（通过魔数）
+func IsJPEG(file *multipart.FileHeader) bool {
+	f, err := file.Open()
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	buf := make([]byte, 3)
+	n, err := io.ReadFull(f, buf)
+	if err != nil || n != 3 {
+		return false
+	}
+
+	// JPEG magic number: FF D8 FF
+	return buf[0] == 0xFF && buf[1] == 0xD8 && buf[2] == 0xFF
+}
+
+// GetFileExtension 根据魔数获取文件扩展名
+func GetFileExtension(file *multipart.FileHeader) string {
+	if IsPNG(file) {
+		return ".png"
+	}
+	if IsJPEG(file) {
+		return ".jpg"
+	}
+	return ""
 }

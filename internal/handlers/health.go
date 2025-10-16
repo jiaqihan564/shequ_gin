@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"net/http"
+
 	"gin/internal/services"
 
 	"github.com/gin-gonic/gin"
@@ -18,23 +20,23 @@ func NewHealthHandler(db *services.Database) *HealthHandler {
 
 // Check 健康检查
 func (h *HealthHandler) Check(c *gin.Context) {
-	if err := h.db.Ping(); err != nil {
-		c.JSON(503, gin.H{"status": "unhealthy", "error": err.Error()})
+	if err := h.db.HealthCheck(); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "unhealthy", "error": err.Error()})
 		return
 	}
-	c.JSON(200, gin.H{"status": "healthy"})
+	c.JSON(http.StatusOK, gin.H{"status": "healthy"})
 }
 
 // Ready 就绪检查
 func (h *HealthHandler) Ready(c *gin.Context) {
-	if err := h.db.Ping(); err != nil {
-		c.JSON(503, gin.H{"status": "not ready", "error": err.Error()})
+	if err := h.db.HealthCheck(); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "not ready", "error": err.Error()})
 		return
 	}
-	c.JSON(200, gin.H{"status": "ready"})
+	c.JSON(http.StatusOK, gin.H{"status": "ready"})
 }
 
 // Live 存活检查
 func (h *HealthHandler) Live(c *gin.Context) {
-	c.JSON(200, gin.H{"status": "alive"})
+	c.JSON(http.StatusOK, gin.H{"status": "live"})
 }

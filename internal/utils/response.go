@@ -9,58 +9,145 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// ResponseHandler 响应处理器
+type ResponseHandler struct{}
+
 // SuccessResponse 成功响应
-func SuccessResponse(c *gin.Context, code int, message string, data interface{}) {
-	c.JSON(code, models.CommonResponse{
+func (rh *ResponseHandler) SuccessResponse(c *gin.Context, code int, message string, data interface{}) {
+	response := models.CommonResponse{
 		Code:      code,
 		Message:   message,
 		RequestID: getRequestID(c),
 		Data:      data,
-	})
+	}
+	c.JSON(code, response)
 }
 
 // ErrorResponse 错误响应
-func ErrorResponse(c *gin.Context, code int, message string) {
-	c.JSON(code, models.CommonResponse{
+func (rh *ResponseHandler) ErrorResponse(c *gin.Context, code int, message string) {
+	response := models.CommonResponse{
 		Code:      code,
 		Message:   message,
 		RequestID: getRequestID(c),
-	})
+	}
+	c.JSON(code, response)
 }
 
 // CodeErrorResponse 带错误码的错误响应
-func CodeErrorResponse(c *gin.Context, code int, errorCode string, message string) {
-	c.JSON(code, models.CommonResponse{
+func (rh *ResponseHandler) CodeErrorResponse(c *gin.Context, code int, errorCode string, message string) {
+	response := models.CommonResponse{
 		Code:      code,
 		Message:   message,
 		ErrorCode: errorCode,
 		RequestID: getRequestID(c),
-	})
+	}
+	c.JSON(code, response)
 }
 
-// 快捷错误响应函数
+// BadRequestResponse 400错误响应
+func (rh *ResponseHandler) BadRequestResponse(c *gin.Context, message string) {
+	rh.ErrorResponse(c, http.StatusBadRequest, message)
+}
+
+// UnauthorizedResponse 401错误响应
+func (rh *ResponseHandler) UnauthorizedResponse(c *gin.Context, message string) {
+	rh.ErrorResponse(c, http.StatusUnauthorized, message)
+}
+
+// ForbiddenResponse 403错误响应
+func (rh *ResponseHandler) ForbiddenResponse(c *gin.Context, message string) {
+	rh.ErrorResponse(c, http.StatusForbidden, message)
+}
+
+// NotFoundResponse 404错误响应
+func (rh *ResponseHandler) NotFoundResponse(c *gin.Context, message string) {
+	rh.ErrorResponse(c, http.StatusNotFound, message)
+}
+
+// ConflictResponse 409错误响应
+func (rh *ResponseHandler) ConflictResponse(c *gin.Context, message string) {
+	rh.ErrorResponse(c, http.StatusConflict, message)
+}
+
+// InternalServerErrorResponse 500错误响应
+func (rh *ResponseHandler) InternalServerErrorResponse(c *gin.Context, message string) {
+	rh.ErrorResponse(c, http.StatusInternalServerError, message)
+}
+
+// ValidationErrorResponse 验证错误响应
+func (rh *ResponseHandler) ValidationErrorResponse(c *gin.Context, message string) {
+	rh.ErrorResponse(c, http.StatusUnprocessableEntity, message)
+}
+
+// TooManyRequestsResponse 429错误响应
+func (rh *ResponseHandler) TooManyRequestsResponse(c *gin.Context, message string) {
+	rh.ErrorResponse(c, http.StatusTooManyRequests, message)
+}
+
+// 全局响应处理器实例
+var globalResponseHandler *ResponseHandler
+
+// GetResponseHandler 获取全局响应处理器
+func GetResponseHandler() *ResponseHandler {
+	if globalResponseHandler == nil {
+		globalResponseHandler = &ResponseHandler{}
+	}
+	return globalResponseHandler
+}
+
+// 便捷函数
+func SuccessResponse(c *gin.Context, code int, message string, data interface{}) {
+	GetResponseHandler().SuccessResponse(c, code, message, data)
+}
+
+func ErrorResponse(c *gin.Context, code int, message string) {
+	GetResponseHandler().ErrorResponse(c, code, message)
+}
+
+func CodeErrorResponse(c *gin.Context, code int, errorCode string, message string) {
+	GetResponseHandler().CodeErrorResponse(c, code, errorCode, message)
+}
+
 func BadRequestResponse(c *gin.Context, message string) {
-	ErrorResponse(c, http.StatusBadRequest, message)
+	GetResponseHandler().BadRequestResponse(c, message)
 }
 
 func UnauthorizedResponse(c *gin.Context, message string) {
-	ErrorResponse(c, http.StatusUnauthorized, message)
+	GetResponseHandler().UnauthorizedResponse(c, message)
+}
+
+func ForbiddenResponse(c *gin.Context, message string) {
+	GetResponseHandler().ForbiddenResponse(c, message)
 }
 
 func NotFoundResponse(c *gin.Context, message string) {
-	ErrorResponse(c, http.StatusNotFound, message)
+	GetResponseHandler().NotFoundResponse(c, message)
+}
+
+func ConflictResponse(c *gin.Context, message string) {
+	GetResponseHandler().ConflictResponse(c, message)
 }
 
 func InternalServerErrorResponse(c *gin.Context, message string) {
-	ErrorResponse(c, http.StatusInternalServerError, message)
+	GetResponseHandler().InternalServerErrorResponse(c, message)
 }
 
 func ValidationErrorResponse(c *gin.Context, message string) {
-	ErrorResponse(c, http.StatusUnprocessableEntity, message)
+	GetResponseHandler().ValidationErrorResponse(c, message)
 }
 
 func TooManyRequestsResponse(c *gin.Context, message string) {
-	ErrorResponse(c, http.StatusTooManyRequests, message)
+	GetResponseHandler().TooManyRequestsResponse(c, message)
+}
+
+// ParseUintParam 解析URL参数中的uint类型
+func ParseUintParam(c *gin.Context, param string) (uint, error) {
+	idStr := c.Param(param)
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		return 0, err
+	}
+	return uint(id), nil
 }
 
 // GetUserIDFromContext 从上下文中获取用户ID
@@ -87,7 +174,7 @@ func GetUserIDFromContext(c *gin.Context) (uint, error) {
 	return 0, ErrInvalidUserID
 }
 
-// getRequestID 从gin上下文获取request_id
+// 从 gin 上下文获取 request_id
 func getRequestID(c *gin.Context) string {
 	if v, ok := c.Get("requestID"); ok {
 		if s, ok := v.(string); ok {

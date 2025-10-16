@@ -7,16 +7,25 @@ import (
 
 // Container 应用容器（简单装配）
 type Container struct {
-	DB      *services.Database
-	Auth    services.AuthServiceInterface
-	UserSvc services.UserServiceInterface
-	Storage services.StorageClient
+	DB             *services.Database
+	Auth           services.AuthServiceInterface
+	UserSvc        services.UserServiceInterface
+	UserRepo       *services.UserRepository
+	Storage        services.StorageClient
+	StatsRepo      *services.StatisticsRepository
+	HistoryRepo    *services.HistoryRepository
+	CumulativeRepo *services.CumulativeStatsRepository
+	ChatRepo       *services.ChatRepository
 }
 
 // New 构建容器
 func New(cfg *config.Config, db *services.Database) (*Container, error) {
 	userRepo := services.NewUserRepository(db)
-	authService := services.NewAuthService(cfg, userRepo)
+	statsRepo := services.NewStatisticsRepository(db)
+	historyRepo := services.NewHistoryRepository(db)
+	cumulativeRepo := services.NewCumulativeStatsRepository(db)
+	chatRepo := services.NewChatRepository(db)
+	authService := services.NewAuthService(cfg, userRepo, historyRepo)
 	userService := services.NewUserService(userRepo)
 	storageService, err := services.NewStorageService(cfg)
 	if err != nil {
@@ -25,9 +34,14 @@ func New(cfg *config.Config, db *services.Database) (*Container, error) {
 	}
 
 	return &Container{
-		DB:      db,
-		Auth:    authService,
-		UserSvc: userService,
-		Storage: storageService,
+		DB:             db,
+		Auth:           authService,
+		UserSvc:        userService,
+		UserRepo:       userRepo,
+		Storage:        storageService,
+		StatsRepo:      statsRepo,
+		HistoryRepo:    historyRepo,
+		CumulativeRepo: cumulativeRepo,
+		ChatRepo:       chatRepo,
 	}, nil
 }
