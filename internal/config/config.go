@@ -11,14 +11,15 @@ import (
 
 // Config 应用配置结构体
 type Config struct {
-	Server   ServerConfig   `yaml:"server" json:"server"`
-	JWT      JWTConfig      `yaml:"jwt" json:"jwt"`
-	Database DatabaseConfig `yaml:"database" json:"database"`
-	Log      LogConfig      `yaml:"log" json:"log"`
-	Security SecurityConfig `yaml:"security" json:"security"`
-	CORS     CORSConfig     `yaml:"cors" json:"cors"`
-	Assets   AssetsConfig   `yaml:"assets" json:"assets"`
-	MinIO    MinIOConfig    `yaml:"minio" json:"minio"`
+	Server           ServerConfig           `yaml:"server" json:"server"`
+	JWT              JWTConfig              `yaml:"jwt" json:"jwt"`
+	Database         DatabaseConfig         `yaml:"database" json:"database"`
+	Log              LogConfig              `yaml:"log" json:"log"`
+	Security         SecurityConfig         `yaml:"security" json:"security"`
+	CORS             CORSConfig             `yaml:"cors" json:"cors"`
+	Assets           AssetsConfig           `yaml:"assets" json:"assets"`
+	MinIO            MinIOConfig            `yaml:"minio" json:"minio"`
+	ResourcesStorage ResourcesStorageConfig `yaml:"resources_storage" json:"resources_storage"`
 }
 
 // ServerConfig 服务器配置
@@ -92,6 +93,12 @@ type MinIOConfig struct {
 	SecretAccessKey string `yaml:"secret_access_key" json:"secret_access_key"`
 	UseSSL          bool   `yaml:"use_ssl" json:"use_ssl"`
 	Bucket          string `yaml:"bucket" json:"bucket"`
+}
+
+// ResourcesStorageConfig 资源存储配置
+type ResourcesStorageConfig struct {
+	Bucket        string `yaml:"bucket" json:"bucket"`
+	PublicBaseURL string `yaml:"public_base_url" json:"public_base_url"`
 }
 
 // Load 加载配置
@@ -208,6 +215,10 @@ func getDefaultConfig() *Config {
 			UseSSL:          strings.ToLower(getEnv("MINIO_USE_SSL", "false")) == "true" || getEnv("MINIO_USE_SSL", "false") == "1",
 			Bucket:          getEnv("MINIO_BUCKET", "community-assets"),
 		},
+		ResourcesStorage: ResourcesStorageConfig{
+			Bucket:        getEnv("RESOURCES_BUCKET", "community-resources"),
+			PublicBaseURL: getEnv("RESOURCES_PUBLIC_BASE_URL", "http://127.0.0.1:9000/community-resources"),
+		},
 	}
 }
 
@@ -275,6 +286,10 @@ func overrideWithEnvVars(config *Config) {
 	setEnvString(&config.MinIO.SecretAccessKey, "MINIO_SECRET_KEY")
 	setEnvBool(&config.MinIO.UseSSL, "MINIO_USE_SSL")
 	setEnvString(&config.MinIO.Bucket, "MINIO_BUCKET")
+
+	// 资源存储配置
+	setEnvString(&config.ResourcesStorage.Bucket, "RESOURCES_BUCKET")
+	setEnvString(&config.ResourcesStorage.PublicBaseURL, "RESOURCES_PUBLIC_BASE_URL")
 }
 
 // parseInt 解析整数

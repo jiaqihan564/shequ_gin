@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"gin/internal/config"
 	"gin/internal/services"
+	"gin/internal/utils"
 )
 
 // Container 应用容器（简单装配）
@@ -20,6 +21,7 @@ type Container struct {
 	PrivateMsgRepo      *services.PrivateMessageRepository
 	ResourceRepo        *services.ResourceRepository
 	ResourceCommentRepo *services.ResourceCommentRepository
+	ResourceStorage     *services.ResourceStorageService
 	UploadMgr           *services.UploadManager
 }
 
@@ -41,6 +43,15 @@ func New(cfg *config.Config, db *services.Database) (*Container, error) {
 		// 允许存储失败返回 nil，由上层决定是否禁用上传
 		storageService = nil
 	}
+
+	// 初始化资源存储服务（独立桶）
+	resourceStorage, err := services.NewResourceStorageService(cfg)
+	if err != nil {
+		logger := utils.GetLogger()
+		logger.Warn("资源存储服务初始化失败", "error", err.Error())
+		resourceStorage = nil
+	}
+
 	uploadMgr := services.NewUploadManager(db, storageService)
 
 	return &Container{
@@ -57,6 +68,7 @@ func New(cfg *config.Config, db *services.Database) (*Container, error) {
 		PrivateMsgRepo:      privateMsgRepo,
 		ResourceRepo:        resourceRepo,
 		ResourceCommentRepo: resourceCommentRepo,
+		ResourceStorage:     resourceStorage,
 		UploadMgr:           uploadMgr,
 	}, nil
 }

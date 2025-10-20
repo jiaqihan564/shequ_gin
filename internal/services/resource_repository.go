@@ -393,3 +393,42 @@ func (r *ResourceRepository) GetAllCategories(ctx context.Context) ([]models.Res
 
 	return categories, nil
 }
+
+// UpdateResourceImages 更新资源的图片列表
+func (r *ResourceRepository) UpdateResourceImages(ctx context.Context, resourceID uint, imageURLs []string) error {
+	tx, err := r.db.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return utils.ErrDatabaseQuery
+	}
+	defer tx.Rollback()
+
+	// 删除现有图片记录
+	_, err = tx.ExecContext(ctx, `DELETE FROM resource_images WHERE resource_id = ?`, resourceID)
+	if err != nil {
+		r.logger.Error("删除旧图片记录失败", "resourceID", resourceID, "error", err.Error())
+		return utils.ErrDatabaseUpdate
+	}
+
+	// 插入新的图片记录
+	if len(imageURLs) > 0 {
+		imgQuery := `INSERT INTO resource_images (resource_id, image_url, image_order, is_cover, created_at) VALUES (?, ?, ?, ?, ?)`
+		for i, url := range imageURLs {
+			isCover := 0
+			if i == 0 {
+				isCover = 1
+			}
+			_, err := tx.ExecContext(ctx, imgQuery, resourceID, url, i, isCover, time.Now())
+			if err != nil {
+				r.logger.Error("插入新图片记录失败", "resourceID", resourceID, "index", i, "error", err.Error())
+				return utils.ErrDatabaseInsert
+			}
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return utils.ErrDatabaseUpdate
+	}
+
+	r.logger.Info("更新资源图片成功", "resourceID", resourceID, "count", len(imageURLs))
+	return nil
+}

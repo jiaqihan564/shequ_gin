@@ -15,14 +15,16 @@ import (
 type ResourceHandler struct {
 	resourceRepo        *services.ResourceRepository
 	resourceCommentRepo *services.ResourceCommentRepository
+	resourceStorage     *services.ResourceStorageService
 	logger              utils.Logger
 }
 
 // NewResourceHandler 创建资源处理器
-func NewResourceHandler(resourceRepo *services.ResourceRepository, resourceCommentRepo *services.ResourceCommentRepository) *ResourceHandler {
+func NewResourceHandler(resourceRepo *services.ResourceRepository, resourceCommentRepo *services.ResourceCommentRepository, resourceStorage *services.ResourceStorageService) *ResourceHandler {
 	return &ResourceHandler{
 		resourceRepo:        resourceRepo,
 		resourceCommentRepo: resourceCommentRepo,
+		resourceStorage:     resourceStorage,
 		logger:              utils.GetLogger(),
 	}
 }
@@ -80,11 +82,33 @@ func (h *ResourceHandler) CreateResource(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	err = h.resourceRepo.CreateResource(ctx, resource, req.ImageURLs, req.Tags)
+
+	// 先创建资源记录以获取resourceID
+	err = h.resourceRepo.CreateResource(ctx, resource, []string{}, req.Tags)
 	if err != nil {
 		h.logger.Error("创建资源失败", "userID", userID, "error", err.Error())
 		utils.ErrorResponse(c, 500, "创建资源失败")
 		return
+	}
+
+	// 如果有临时图片URL，移动到正式目录
+	finalImageURLs := req.ImageURLs
+	if len(req.ImageURLs) > 0 && h.resourceStorage != nil {
+		movedURLs, err := h.resourceStorage.MoveResourceImages(ctx, req.ImageURLs, resource.ID)
+		if err != nil {
+			h.logger.Warn("移动资源图片失败", "resourceID", resource.ID, "error", err.Error())
+			// 不中断创建流程，使用原始URL
+		} else {
+			finalImageURLs = movedURLs
+			h.logger.Info("成功移动资源图片", "resourceID", resource.ID, "count", len(movedURLs))
+		}
+
+		// 更新资源的图片记录
+		if len(finalImageURLs) > 0 {
+			// 这里需要调用repository更新图片URLs
+			// 暂时通过重新保存实现
+			_ = h.resourceRepo.UpdateResourceImages(ctx, resource.ID, finalImageURLs)
+		}
 	}
 
 	h.logger.Info("创建资源成功", "resourceID", resource.ID, "userID", userID)

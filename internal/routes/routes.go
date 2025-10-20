@@ -31,14 +31,14 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 	authHandler := handlers.NewAuthHandler(ctn.Auth)
 	userHandler := handlers.NewUserHandler(ctn.UserSvc, ctn.HistoryRepo, cfg)
 	healthHandler := handlers.NewHealthHandler(ctn.DB)
-	uploadHandler := handlers.NewUploadHandler(ctn.Storage, ctn.UserSvc, uploadMaxBytes, cfg.Assets.MaxAvatarHistory)
+	uploadHandler := handlers.NewUploadHandler(ctn.Storage, ctn.ResourceStorage, ctn.UserSvc, uploadMaxBytes, cfg.Assets.MaxAvatarHistory)
 	statsHandler := handlers.NewStatisticsHandler(ctn.StatsRepo)
 	historyHandler := handlers.NewHistoryHandler(ctn.HistoryRepo)
 	cumulativeHandler := handlers.NewCumulativeStatsHandler(ctn.CumulativeRepo)
 	chatHandler := handlers.NewChatHandler(ctn.ChatRepo, ctn.UserRepo)
 	articleHandler := handlers.NewArticleHandler(ctn.ArticleRepo)
 	privateMsgHandler := handlers.NewPrivateMessageHandler(ctn.PrivateMsgRepo, ctn.UserRepo)
-	resourceHandler := handlers.NewResourceHandler(ctn.ResourceRepo, ctn.ResourceCommentRepo)
+	resourceHandler := handlers.NewResourceHandler(ctn.ResourceRepo, ctn.ResourceCommentRepo, ctn.ResourceStorage)
 	chunkUploadHandler := handlers.NewChunkUploadHandler(ctn.UploadMgr)
 
 	// 健康检查路由
@@ -69,6 +69,8 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 
 			// 文件上传接口
 			auth.POST("/upload", uploadHandler.UploadAvatar)
+			auth.POST("/resources/images/upload", uploadHandler.UploadResourceImage)    // 上传资源预览图
+			auth.POST("/resources/documents/upload", uploadHandler.UploadDocumentImage) // 上传文档图片
 
 			// 退出登录（JWT无状态，主要用于客户端清除token）
 			auth.POST("/auth/logout", authHandler.Logout)

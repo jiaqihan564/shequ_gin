@@ -65,3 +65,8 @@ minio:
   secret_access_key: "minioadmin"
   use_ssl: false
   bucket: "community-assets"
+
+# 资源存储配置（独立桶）
+resources_storage:
+  bucket: "community-resources"
+  public_base_url: "http://127.0.0.1:9000/community-resources"

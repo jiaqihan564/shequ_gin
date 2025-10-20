@@ -21,6 +21,7 @@ import (
 // UploadHandler 处理上传
 type UploadHandler struct {
 	storage            services.StorageClient
+	resourceStorage    *services.ResourceStorageService
 	userService        services.UserServiceInterface
 	logger             utils.Logger
 	maxAvatarSizeBytes int64
@@ -28,9 +29,10 @@ type UploadHandler struct {
 }
 
 // NewUploadHandler 创建上传处理器
-func NewUploadHandler(storage services.StorageClient, userService services.UserServiceInterface, maxAvatarSizeBytes int64, maxAvatarHistory int) *UploadHandler {
+func NewUploadHandler(storage services.StorageClient, resourceStorage *services.ResourceStorageService, userService services.UserServiceInterface, maxAvatarSizeBytes int64, maxAvatarHistory int) *UploadHandler {
 	return &UploadHandler{
 		storage:            storage,
+		resourceStorage:    resourceStorage,
 		userService:        userService,
 		logger:             utils.GetLogger(),
 		maxAvatarSizeBytes: maxAvatarSizeBytes,
@@ -320,6 +322,12 @@ func (h *UploadHandler) archiveOldAvatar(ctx context.Context, userID uint, usern
 		"objectKey", objectKey,
 		"timestamp", timestamp)
 
+	// 检查存储服务
+	if h.storage == nil {
+		h.logger.Warn("【archiveOldAvatar】存储服务未配置，跳过归档", "userID", userID)
+		return
+	}
+
 	// 检查是否存在旧头像
 	checkStart := time.Now()
 	exists, err := h.storage.ObjectExists(ctx, objectKey)
@@ -585,4 +593,110 @@ func (h *UploadHandler) ListAvatarHistory(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, 200, "OK", gin.H{"items": items})
+}
+
+// UploadResourceImage 上传资源预览图
+func (h *UploadHandler) UploadResourceImage(c *gin.Context) {
+	// 验证用户登录
+	_, err := utils.GetUserIDFromContext(c)
+	if err != nil {
+		utils.UnauthorizedResponse(c, "未登录")
+		return
+	}
+
+	// 检查资源存储服务是否可用
+	if h.resourceStorage == nil {
+		utils.InternalServerErrorResponse(c, "资源存储服务未配置")
+		return
+	}
+
+	// 解析上传的文件
+	file, header, err := c.Request.FormFile("file")
+	if err != nil {
+		h.logger.Warn("解析上传文件失败", "error", err.Error())
+		utils.BadRequestResponse(c, "未找到上传文件")
+		return
+	}
+	defer file.Close()
+
+	// 验证文件大小（最大5MB）
+	maxSize := int64(5 * 1024 * 1024)
+	if header.Size > maxSize {
+		utils.BadRequestResponse(c, "图片大小不能超过5MB")
+		return
+	}
+
+	// 验证文件类型
+	contentType := header.Header.Get("Content-Type")
+	if !strings.HasPrefix(contentType, "image/") {
+		utils.BadRequestResponse(c, "只能上传图片文件")
+		return
+	}
+
+	// 上传到临时目录
+	ctx := c.Request.Context()
+	imageURL, err := h.resourceStorage.UploadResourceImage(ctx, file, header.Filename, header.Size)
+	if err != nil {
+		h.logger.Error("上传资源图片失败", "error", err.Error())
+		utils.InternalServerErrorResponse(c, "上传失败")
+		return
+	}
+
+	h.logger.Info("资源图片上传成功", "filename", header.Filename, "url", imageURL)
+	utils.SuccessResponse(c, 200, "上传成功", gin.H{
+		"image_url": imageURL,
+	})
+}
+
+// UploadDocumentImage 上传文档图片
+func (h *UploadHandler) UploadDocumentImage(c *gin.Context) {
+	// 验证用户登录
+	_, err := utils.GetUserIDFromContext(c)
+	if err != nil {
+		utils.UnauthorizedResponse(c, "未登录")
+		return
+	}
+
+	// 检查资源存储服务是否可用
+	if h.resourceStorage == nil {
+		utils.InternalServerErrorResponse(c, "资源存储服务未配置")
+		return
+	}
+
+	// 解析上传的文件
+	file, header, err := c.Request.FormFile("file")
+	if err != nil {
+		h.logger.Warn("解析上传文件失败", "error", err.Error())
+		utils.BadRequestResponse(c, "未找到上传文件")
+		return
+	}
+	defer file.Close()
+
+	// 验证文件大小（最大5MB）
+	maxSize := int64(5 * 1024 * 1024)
+	if header.Size > maxSize {
+		utils.BadRequestResponse(c, "图片大小不能超过5MB")
+		return
+	}
+
+	// 验证文件类型
+	contentType := header.Header.Get("Content-Type")
+	if !strings.HasPrefix(contentType, "image/") {
+		utils.BadRequestResponse(c, "只能上传图片文件")
+		return
+	}
+
+	// 上传到文档目录
+	ctx := c.Request.Context()
+	imageURL, err := h.resourceStorage.UploadDocumentImage(ctx, file, header.Filename, header.Size)
+	if err != nil {
+		h.logger.Error("上传文档图片失败", "error", err.Error())
+		utils.InternalServerErrorResponse(c, "上传失败")
+		return
+	}
+
+	h.logger.Info("文档图片上传成功", "filename", header.Filename, "url", imageURL)
+	utils.SuccessResponse(c, 200, "上传成功", gin.H{
+		"image_url": imageURL,
+	})
 }
