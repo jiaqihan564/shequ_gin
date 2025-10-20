@@ -15,13 +15,15 @@ import (
 // ArticleHandler 文章处理器
 type ArticleHandler struct {
 	articleRepo *services.ArticleRepository
+	cacheSvc    *services.CacheService
 	logger      utils.Logger
 }
 
 // NewArticleHandler 创建文章处理器
-func NewArticleHandler(articleRepo *services.ArticleRepository) *ArticleHandler {
+func NewArticleHandler(articleRepo *services.ArticleRepository, cacheSvc *services.CacheService) *ArticleHandler {
 	return &ArticleHandler{
 		articleRepo: articleRepo,
+		cacheSvc:    cacheSvc,
 		logger:      utils.GetLogger(),
 	}
 }
@@ -101,11 +103,14 @@ func (h *ArticleHandler) GetArticleDetail(c *gin.Context) {
 		return
 	}
 
-	// 增加浏览次数（异步）
-	// 使用独立的context避免请求结束后被取消
+	// 增加浏览次数（异步，带超时保护）
+	// 使用独立的context避免请求结束后被取消，同时添加超时防止goroutine泄漏
 	go func() {
-		bgCtx := context.Background()
-		h.articleRepo.IncrementViewCount(bgCtx, uint(articleID))
+		bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := h.articleRepo.IncrementViewCount(bgCtx, uint(articleID)); err != nil {
+			h.logger.Debug("异步更新浏览次数失败", "articleID", articleID, "error", err.Error())
+		}
 	}()
 
 	h.logger.Info("获取文章详情成功", "articleID", articleID)
@@ -418,10 +423,12 @@ func (h *ArticleHandler) CreateReport(c *gin.Context) {
 	utils.SuccessResponse(c, 201, "举报成功，我们会尽快处理", nil)
 }
 
-// GetCategories 获取所有分类
+// GetCategories 获取所有分类（带缓存）
 func (h *ArticleHandler) GetCategories(c *gin.Context) {
 	ctx := c.Request.Context()
-	categories, err := h.articleRepo.GetAllCategories(ctx)
+
+	// 使用缓存服务获取分类
+	categories, err := h.cacheSvc.GetArticleCategories(ctx)
 	if err != nil {
 		h.logger.Error("获取分类列表失败", "error", err.Error())
 		statusCode := utils.GetHTTPStatusCode(err)
@@ -429,16 +436,18 @@ func (h *ArticleHandler) GetCategories(c *gin.Context) {
 		return
 	}
 
-	h.logger.Info("获取分类列表成功", "count", len(categories))
+	h.logger.Debug("获取分类列表成功（可能来自缓存）", "count", len(categories))
 	utils.SuccessResponse(c, 200, "获取成功", gin.H{
 		"categories": categories,
 	})
 }
 
-// GetTags 获取所有标签
+// GetTags 获取所有标签（带缓存）
 func (h *ArticleHandler) GetTags(c *gin.Context) {
 	ctx := c.Request.Context()
-	tags, err := h.articleRepo.GetAllTags(ctx)
+
+	// 使用缓存服务获取标签
+	tags, err := h.cacheSvc.GetArticleTags(ctx)
 	if err != nil {
 		h.logger.Error("获取标签列表失败", "error", err.Error())
 		statusCode := utils.GetHTTPStatusCode(err)
@@ -446,7 +455,7 @@ func (h *ArticleHandler) GetTags(c *gin.Context) {
 		return
 	}
 
-	h.logger.Info("获取标签列表成功", "count", len(tags))
+	h.logger.Debug("获取标签列表成功（可能来自缓存）", "count", len(tags))
 	utils.SuccessResponse(c, 200, "获取成功", gin.H{
 		"tags": tags,
 	})

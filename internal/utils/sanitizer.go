@@ -23,9 +23,6 @@ var (
 	// HTML 标签正则
 	htmlTagRegex = regexp.MustCompile(`<[^>]+>`)
 
-	// 危险字符正则
-	dangerousCharsRegex = regexp.MustCompile(`[<>&"'\/]`)
-
 	// SQL 注入模式（仅作为额外检测，不应依赖此作为唯一防护）
 	sqlInjectionPatterns = []*regexp.Regexp{
 		regexp.MustCompile(`(?i)(union|select|insert|update|delete|drop|create|alter|exec|execute)`),

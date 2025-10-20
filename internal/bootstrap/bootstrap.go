@@ -23,6 +23,7 @@ type Container struct {
 	ResourceCommentRepo *services.ResourceCommentRepository
 	ResourceStorage     *services.ResourceStorageService
 	UploadMgr           *services.UploadManager
+	CacheSvc            *services.CacheService // 缓存服务
 }
 
 // New 构建容器
@@ -54,6 +55,9 @@ func New(cfg *config.Config, db *services.Database) (*Container, error) {
 
 	uploadMgr := services.NewUploadManager(db, storageService)
 
+	// 初始化缓存服务
+	cacheService := services.NewCacheService(articleRepo)
+
 	return &Container{
 		DB:                  db,
 		Auth:                authService,
@@ -70,5 +74,6 @@ func New(cfg *config.Config, db *services.Database) (*Container, error) {
 		ResourceCommentRepo: resourceCommentRepo,
 		ResourceStorage:     resourceStorage,
 		UploadMgr:           uploadMgr,
+		CacheSvc:            cacheService,
 	}, nil
 }

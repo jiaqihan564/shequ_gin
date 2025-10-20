@@ -1,0 +1,214 @@
+package services
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"time"
+
+	"gin/internal/models"
+	"gin/internal/utils"
+)
+
+// CacheService 缓存服务
+// 为热点数据提供内存缓存，减少数据库查询
+type CacheService struct {
+	cache       *utils.MemoryCache
+	articleRepo *ArticleRepository
+	logger      utils.Logger
+}
+
+// NewCacheService 创建缓存服务
+func NewCacheService(articleRepo *ArticleRepository) *CacheService {
+	return &CacheService{
+		cache:       utils.GetCache(),
+		articleRepo: articleRepo,
+		logger:      utils.GetLogger(),
+	}
+}
+
+// Cache Keys
+const (
+	cacheKeyArticleCategories = "article:categories:all"
+	cacheKeyArticleTags       = "article:tags:all"
+	cacheKeyArticlePrefix     = "article:detail:"
+	cacheKeyOnlineCount       = "chat:online:count"
+)
+
+// Cache TTL
+const (
+	cacheTTLCategories  = 1 * time.Hour    // 分类变化不频繁
+	cacheTTLTags        = 30 * time.Minute // 标签变化较少
+	cacheTTLArticle     = 5 * time.Minute  // 文章详情
+	cacheTTLOnlineCount = 10 * time.Second // 在线人数（短TTL，准实时）
+)
+
+// =============================================================================
+// 文章分类缓存
+// =============================================================================
+
+// GetArticleCategories 获取文章分类（带缓存）
+func (s *CacheService) GetArticleCategories(ctx context.Context) ([]models.ArticleCategory, error) {
+	// 尝试从缓存获取
+	if cached, ok := s.cache.Get(cacheKeyArticleCategories); ok {
+		if categories, ok := cached.([]models.ArticleCategory); ok {
+			s.logger.Debug("命中分类缓存", "count", len(categories))
+			return categories, nil
+		}
+	}
+
+	// 缓存未命中，从数据库获取
+	s.logger.Debug("分类缓存未命中，从数据库加载")
+	categories, err := s.articleRepo.GetAllCategories(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// 写入缓存
+	s.cache.SetWithTTL(cacheKeyArticleCategories, categories, cacheTTLCategories)
+	s.logger.Info("分类数据已缓存", "count", len(categories), "ttl", cacheTTLCategories)
+
+	return categories, nil
+}
+
+// InvalidateArticleCategories 使分类缓存失效
+func (s *CacheService) InvalidateArticleCategories() {
+	s.cache.Delete(cacheKeyArticleCategories)
+	s.logger.Info("分类缓存已失效")
+}
+
+// =============================================================================
+// 文章标签缓存
+// =============================================================================
+
+// GetArticleTags 获取文章标签（带缓存）
+func (s *CacheService) GetArticleTags(ctx context.Context) ([]models.ArticleTag, error) {
+	// 尝试从缓存获取
+	if cached, ok := s.cache.Get(cacheKeyArticleTags); ok {
+		if tags, ok := cached.([]models.ArticleTag); ok {
+			s.logger.Debug("命中标签缓存", "count", len(tags))
+			return tags, nil
+		}
+	}
+
+	// 缓存未命中，从数据库获取
+	s.logger.Debug("标签缓存未命中，从数据库加载")
+	tags, err := s.articleRepo.GetAllTags(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// 写入缓存
+	s.cache.SetWithTTL(cacheKeyArticleTags, tags, cacheTTLTags)
+	s.logger.Info("标签数据已缓存", "count", len(tags), "ttl", cacheTTLTags)
+
+	return tags, nil
+}
+
+// InvalidateArticleTags 使标签缓存失效
+func (s *CacheService) InvalidateArticleTags() {
+	s.cache.Delete(cacheKeyArticleTags)
+	s.logger.Info("标签缓存已失效")
+}
+
+// =============================================================================
+// 文章详情缓存
+// =============================================================================
+
+// GetArticleDetail 获取文章详情（带缓存，使用优化查询）
+func (s *CacheService) GetArticleDetail(ctx context.Context, articleID uint, userID uint) (*models.ArticleDetailResponse, error) {
+	cacheKey := fmt.Sprintf("%s%d:user%d", cacheKeyArticlePrefix, articleID, userID)
+
+	// 尝试从缓存获取
+	if cached, ok := s.cache.Get(cacheKey); ok {
+		// 尝试类型断言
+		if article, ok := cached.(*models.ArticleDetailResponse); ok {
+			s.logger.Debug("命中文章详情缓存", "articleID", articleID)
+			return article, nil
+		}
+
+		// 如果类型断言失败，尝试JSON反序列化（防止缓存结构变化）
+		if jsonData, ok := cached.(string); ok {
+			var article models.ArticleDetailResponse
+			if err := json.Unmarshal([]byte(jsonData), &article); err == nil {
+				s.logger.Debug("命中文章详情缓存（JSON）", "articleID", articleID)
+				return &article, nil
+			}
+		}
+	}
+
+	// 缓存未命中，从数据库获取（使用优化版本）
+	s.logger.Debug("文章详情缓存未命中，从数据库加载（优化查询）", "articleID", articleID)
+
+	// 优先使用优化版本的查询（如果存在）
+	article, err := s.articleRepo.GetArticleByIDOptimized(ctx, articleID, userID)
+	if err != nil {
+		// 如果优化版本失败，回退到原版本
+		s.logger.Warn("优化查询失败，回退到原版本", "articleID", articleID, "error", err.Error())
+		article, err = s.articleRepo.GetArticleByID(ctx, articleID, userID)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// 写入缓存（使用较短的TTL）
+	s.cache.SetWithTTL(cacheKey, article, cacheTTLArticle)
+	s.logger.Debug("文章详情已缓存", "articleID", articleID, "ttl", cacheTTLArticle)
+
+	return article, nil
+}
+
+// InvalidateArticleDetail 使文章详情缓存失效
+func (s *CacheService) InvalidateArticleDetail(articleID uint) {
+	// 文章详情缓存包含用户ID，需要清除所有相关缓存
+	// 简单方案：使用前缀匹配删除（内存缓存不支持模式匹配，这里手动处理）
+	// 更好的方案是使用Redis的SCAN + DEL
+
+	// 由于TTL较短（5分钟），简单记录日志即可
+	// 缓存会自动过期
+	s.logger.Info("文章详情缓存将在TTL后自动失效", "articleID", articleID, "ttl", cacheTTLArticle)
+}
+
+// =============================================================================
+// 在线用户数缓存
+// =============================================================================
+
+// SetOnlineCount 设置在线用户数缓存
+func (s *CacheService) SetOnlineCount(count int) {
+	s.cache.SetWithTTL(cacheKeyOnlineCount, count, cacheTTLOnlineCount)
+	s.logger.Debug("在线用户数已缓存", "count", count, "ttl", cacheTTLOnlineCount)
+}
+
+// GetOnlineCount 获取在线用户数（从缓存）
+func (s *CacheService) GetOnlineCount() (int, bool) {
+	if cached, ok := s.cache.Get(cacheKeyOnlineCount); ok {
+		if count, ok := cached.(int); ok {
+			s.logger.Debug("命中在线用户数缓存", "count", count)
+			return count, true
+		}
+	}
+	return 0, false
+}
+
+// =============================================================================
+// 缓存统计
+// =============================================================================
+
+// GetCacheStats 获取缓存统计信息
+func (s *CacheService) GetCacheStats() map[string]interface{} {
+	return map[string]interface{}{
+		"size": s.cache.Size(),
+		"keys": []string{
+			cacheKeyArticleCategories,
+			cacheKeyArticleTags,
+			cacheKeyOnlineCount,
+			fmt.Sprintf("%s*", cacheKeyArticlePrefix),
+		},
+	}
+}
+
+// ClearAllCache 清空所有缓存（谨慎使用）
+func (s *CacheService) ClearAllCache() {
+	s.cache.Clear()
+	s.logger.Warn("所有缓存已清空")
+}

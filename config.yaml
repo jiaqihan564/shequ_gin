@@ -16,7 +16,7 @@ database:
   database: "hub"
   charset: "utf8mb4"
   max_open_conns: 100
-  max_idle_conns: 10
+  max_idle_conns: 25  # 优化: 增加空闲连接数，减少连接创建开销
   conn_max_lifetime: "1h"
 
 # JWT配置
