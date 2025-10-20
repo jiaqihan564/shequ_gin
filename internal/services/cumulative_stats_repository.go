@@ -152,7 +152,8 @@ func (r *CumulativeStatsRepository) GetDailyMetrics(startDate, endDate string) (
 	}
 	defer rows.Close()
 
-	var metrics []models.DailyMetrics
+	// 初始化为空数组，避免返回null
+	metrics := make([]models.DailyMetrics, 0)
 	for rows.Next() {
 		var m models.DailyMetrics
 		err := rows.Scan(

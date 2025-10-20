@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"strconv"
 	"time"
 
@@ -101,7 +102,11 @@ func (h *ArticleHandler) GetArticleDetail(c *gin.Context) {
 	}
 
 	// 增加浏览次数（异步）
-	go h.articleRepo.IncrementViewCount(ctx, uint(articleID))
+	// 使用独立的context避免请求结束后被取消
+	go func() {
+		bgCtx := context.Background()
+		h.articleRepo.IncrementViewCount(bgCtx, uint(articleID))
+	}()
 
 	h.logger.Info("获取文章详情成功", "articleID", articleID)
 	utils.SuccessResponse(c, 200, "获取成功", article)

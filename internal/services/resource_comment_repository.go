@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 
 	"gin/internal/models"
@@ -94,20 +95,50 @@ func (r *ResourceCommentRepository) GetCommentsByResourceID(ctx context.Context,
 	}
 	defer rows.Close()
 
-	var comments []models.ResourceCommentResponse
+	// 初始化为空数组，避免返回null
+	comments := make([]models.ResourceCommentResponse, 0)
+	commentIDs := make([]uint, 0)
+	userIDs := make([]uint, 0)
+
+	// 第一步：收集所有评论和用户ID
 	for rows.Next() {
 		comment, err := r.scanComment(rows, userID)
 		if err != nil {
 			continue
 		}
-
-		// 加载用户信息
-		r.loadCommentUser(ctx, &comment)
-
-		// 加载回复
-		r.loadReplies(ctx, &comment, userID)
-
+		commentIDs = append(commentIDs, comment.ID)
+		userIDs = append(userIDs, comment.UserID)
 		comments = append(comments, comment)
+	}
+
+	// 如果没有评论，直接返回
+	if len(comments) == 0 {
+		return &models.ResourceCommentsResponse{
+			Comments:   comments,
+			Total:      total,
+			Page:       page,
+			PageSize:   pageSize,
+			TotalPages: (total + pageSize - 1) / pageSize,
+		}, nil
+	}
+
+	// 第二步：批量查询所有用户信息（优化N+1）
+	userMap := r.batchGetUserInfo(ctx, userIDs)
+
+	// 第三步：批量查询所有评论的回复（优化N+1）
+	repliesMap := r.batchGetReplies(ctx, commentIDs, userID)
+
+	// 第四步：组装数据
+	for i := range comments {
+		// 设置用户信息
+		if user, exists := userMap[comments[i].UserID]; exists {
+			comments[i].User = user
+		}
+
+		// 设置回复
+		if replies, exists := repliesMap[comments[i].ID]; exists {
+			comments[i].Replies = replies
+		}
 	}
 
 	totalPages := (total + pageSize - 1) / pageSize
@@ -124,6 +155,8 @@ func (r *ResourceCommentRepository) GetCommentsByResourceID(ctx context.Context,
 // scanComment 扫描评论数据
 func (r *ResourceCommentRepository) scanComment(rows *sql.Rows, userID uint) (models.ResourceCommentResponse, error) {
 	var comment models.ResourceCommentResponse
+	// 初始化Replies为空数组
+	comment.Replies = make([]models.ResourceCommentResponse, 0)
 	var replyToUserID sql.NullInt64
 
 	err := rows.Scan(
@@ -147,62 +180,6 @@ func (r *ResourceCommentRepository) scanComment(rows *sql.Rows, userID uint) (mo
 	}
 
 	return comment, nil
-}
-
-// loadCommentUser 加载评论用户信息
-func (r *ResourceCommentRepository) loadCommentUser(ctx context.Context, comment *models.ResourceCommentResponse) {
-	query := `SELECT ua.id, ua.username, COALESCE(up.nickname, ua.username) as nickname, 
-	          COALESCE(up.avatar_url, '') as avatar
-	          FROM user_auth ua LEFT JOIN user_profile up ON ua.id = up.user_id 
-	          WHERE ua.id = ?`
-
-	user := &models.CommentUser{}
-	err := r.db.DB.QueryRowContext(ctx, query, comment.UserID).Scan(
-		&user.ID, &user.Username, &user.Nickname, &user.Avatar,
-	)
-
-	if err == nil {
-		comment.User = user
-	}
-
-	// 加载回复对象的用户信息
-	if comment.ReplyToUser != nil && comment.ReplyToUser.ID > 0 {
-		replyUser := &models.CommentUser{}
-		err := r.db.DB.QueryRowContext(ctx, query, comment.ReplyToUser.ID).Scan(
-			&replyUser.ID, &replyUser.Username, &replyUser.Nickname, &replyUser.Avatar,
-		)
-		if err == nil {
-			comment.ReplyToUser = replyUser
-		}
-	}
-}
-
-// loadReplies 加载子评论
-func (r *ResourceCommentRepository) loadReplies(ctx context.Context, comment *models.ResourceCommentResponse, userID uint) {
-	query := `SELECT id, resource_id, user_id, parent_id, root_id, reply_to_user_id, content,
-	          like_count, reply_count, created_at, updated_at
-	          FROM resource_comments 
-	          WHERE parent_id = ? AND status = 1
-	          ORDER BY created_at ASC`
-
-	rows, err := r.db.DB.QueryContext(ctx, query, comment.ID)
-	if err != nil {
-		return
-	}
-	defer rows.Close()
-
-	var replies []models.ResourceCommentResponse
-	for rows.Next() {
-		reply, err := r.scanComment(rows, userID)
-		if err != nil {
-			continue
-		}
-
-		r.loadCommentUser(ctx, &reply)
-		replies = append(replies, reply)
-	}
-
-	comment.Replies = replies
 }
 
 // checkUserLiked 检查用户是否点赞
@@ -244,6 +221,132 @@ func (r *ResourceCommentRepository) ToggleCommentLike(ctx context.Context, comme
 	}
 
 	return isLiked, nil
+}
+
+// batchGetUserInfo 批量获取用户信息（优化N+1）
+func (r *ResourceCommentRepository) batchGetUserInfo(ctx context.Context, userIDs []uint) map[uint]*models.CommentUser {
+	userMap := make(map[uint]*models.CommentUser)
+	if len(userIDs) == 0 {
+		return userMap
+	}
+
+	// 去重
+	uniqueIDs := make(map[uint]bool)
+	for _, id := range userIDs {
+		uniqueIDs[id] = true
+	}
+
+	// 构建批量查询
+	ids := make([]uint, 0, len(uniqueIDs))
+	for id := range uniqueIDs {
+		ids = append(ids, id)
+	}
+
+	if len(ids) == 0 {
+		return userMap
+	}
+
+	query := `SELECT ua.id, ua.username, COALESCE(up.nickname, ua.username) as nickname, 
+	          COALESCE(up.avatar_url, '') as avatar
+	          FROM user_auth ua LEFT JOIN user_profile up ON ua.id = up.user_id 
+	          WHERE ua.id IN (?` + strings.Repeat(",?", len(ids)-1) + `)`
+
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+
+	rows, err := r.db.DB.QueryContext(ctx, query, args...)
+	if err != nil {
+		return userMap
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		user := &models.CommentUser{}
+		if err := rows.Scan(&user.ID, &user.Username, &user.Nickname, &user.Avatar); err == nil {
+			userMap[user.ID] = user
+		}
+	}
+
+	return userMap
+}
+
+// batchGetReplies 批量获取评论回复（优化N+1）
+func (r *ResourceCommentRepository) batchGetReplies(ctx context.Context, commentIDs []uint, userID uint) map[uint][]models.ResourceCommentResponse {
+	repliesMap := make(map[uint][]models.ResourceCommentResponse)
+
+	if len(commentIDs) == 0 {
+		return repliesMap
+	}
+
+	// 批量查询所有回复
+	query := `SELECT id, resource_id, user_id, parent_id, root_id, reply_to_user_id, content,
+	          like_count, reply_count, created_at, updated_at
+	          FROM resource_comments 
+	          WHERE parent_id IN (?` + strings.Repeat(",?", len(commentIDs)-1) + `) AND status = 1
+	          ORDER BY created_at ASC`
+
+	args := make([]interface{}, len(commentIDs))
+	for i, id := range commentIDs {
+		args[i] = id
+	}
+
+	rows, err := r.db.DB.QueryContext(ctx, query, args...)
+	if err != nil {
+		// 返回空map，每个评论都有空数组
+		for _, id := range commentIDs {
+			repliesMap[id] = make([]models.ResourceCommentResponse, 0)
+		}
+		return repliesMap
+	}
+	defer rows.Close()
+
+	// 初始化所有评论的回复数组
+	for _, id := range commentIDs {
+		repliesMap[id] = make([]models.ResourceCommentResponse, 0)
+	}
+
+	// 收集所有回复和用户ID
+	allReplies := make([]models.ResourceCommentResponse, 0)
+	replyUserIDs := make([]uint, 0)
+
+	for rows.Next() {
+		reply, err := r.scanComment(rows, userID)
+		if err != nil {
+			continue
+		}
+		allReplies = append(allReplies, reply)
+		replyUserIDs = append(replyUserIDs, reply.UserID)
+		if reply.ReplyToUser != nil && reply.ReplyToUser.ID > 0 {
+			replyUserIDs = append(replyUserIDs, reply.ReplyToUser.ID)
+		}
+	}
+
+	// 批量查询回复的用户信息
+	if len(replyUserIDs) > 0 {
+		replyUserMap := r.batchGetUserInfo(ctx, replyUserIDs)
+
+		// 组装回复数据
+		for i := range allReplies {
+			// 设置回复者信息
+			if user, exists := replyUserMap[allReplies[i].UserID]; exists {
+				allReplies[i].User = user
+			}
+
+			// 设置被回复者信息
+			if allReplies[i].ReplyToUser != nil && allReplies[i].ReplyToUser.ID > 0 {
+				if replyToUser, exists := replyUserMap[allReplies[i].ReplyToUser.ID]; exists {
+					allReplies[i].ReplyToUser = replyToUser
+				}
+			}
+
+			// 添加到对应的父评论
+			repliesMap[allReplies[i].ParentID] = append(repliesMap[allReplies[i].ParentID], allReplies[i])
+		}
+	}
+
+	return repliesMap
 }
 
 // GetParentRootID 获取父评论的root_id

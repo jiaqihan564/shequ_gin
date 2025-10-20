@@ -163,7 +163,8 @@ func (r *PrivateMessageRepository) GetUserConversations(ctx context.Context, use
 	}
 	defer rows.Close()
 
-	var conversations []models.PrivateConversation
+	// 初始化为空数组，避免返回null
+	conversations := make([]models.PrivateConversation, 0)
 	for rows.Next() {
 		var conv models.PrivateConversation
 		var lastMsgID sql.NullInt64
@@ -218,7 +219,8 @@ func (r *PrivateMessageRepository) GetConversationMessages(ctx context.Context, 
 	}
 	defer rows.Close()
 
-	var messages []models.PrivateMessage
+	// 初始化为空数组，避免返回null
+	messages := make([]models.PrivateMessage, 0)
 	for rows.Next() {
 		var msg models.PrivateMessage
 		var isRead int

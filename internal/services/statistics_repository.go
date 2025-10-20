@@ -115,7 +115,8 @@ func (r *StatisticsRepository) GetUserStatistics(startDate, endDate string) ([]m
 	}
 	defer rows.Close()
 
-	var stats []models.UserStatistics
+	// 初始化为空数组，避免返回null
+	stats := make([]models.UserStatistics, 0)
 	for rows.Next() {
 		var stat models.UserStatistics
 		err := rows.Scan(
@@ -156,7 +157,8 @@ func (r *StatisticsRepository) GetApiStatistics(startDate, endDate string) ([]mo
 	}
 	defer rows.Close()
 
-	var stats []models.ApiStatistics
+	// 初始化为空数组，避免返回null
+	stats := make([]models.ApiStatistics, 0)
 	for rows.Next() {
 		var stat models.ApiStatistics
 		err := rows.Scan(
@@ -210,7 +212,8 @@ func (r *StatisticsRepository) GetEndpointRanking(startDate, endDate string, lim
 	}
 	defer rows.Close()
 
-	var rankings []models.EndpointRanking
+	// 初始化为空数组，避免返回null
+	rankings := make([]models.EndpointRanking, 0)
 	for rows.Next() {
 		var ranking models.EndpointRanking
 		err := rows.Scan(

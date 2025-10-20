@@ -127,6 +127,9 @@ func (r *ResourceRepository) GetResourceByID(ctx context.Context, resourceID, us
 
 	response := &models.ResourceDetailResponse{
 		Resource: resource,
+		// 初始化空数组，避免返回null
+		Images: make([]models.ResourceImage, 0),
+		Tags:   make([]string, 0),
 	}
 
 	// 获取作者信息
@@ -246,51 +249,52 @@ func (r *ResourceRepository) ListResources(ctx context.Context, query models.Res
 	}
 	offset := (query.Page - 1) * query.PageSize
 
-	// 查询列表
-	listQuery := `SELECT r.id, r.user_id, r.title, r.description, r.category_id, r.file_name,
-	              r.file_size, r.file_extension, r.download_count, r.view_count, r.like_count, r.created_at
-	              FROM resources r ` + whereClause + ` ` + orderBy + ` LIMIT ? OFFSET ?`
+	// 使用JOIN优化查询，避免N+1问题
+	listQueryOptimized := `SELECT r.id, r.user_id, r.title, r.description, r.category_id, r.file_name,
+	              r.file_size, r.file_extension, r.download_count, r.view_count, r.like_count, r.created_at,
+	              ua.username, COALESCE(up.nickname, ua.username) as nickname, COALESCE(up.avatar_url, '') as avatar,
+	              COALESCE(ri.image_url, '') as cover_image,
+	              rc.id as cat_id, rc.name as cat_name, rc.slug as cat_slug
+	              FROM resources r
+	              INNER JOIN user_auth ua ON r.user_id = ua.id
+	              LEFT JOIN user_profile up ON ua.id = up.user_id
+	              LEFT JOIN resource_images ri ON r.id = ri.resource_id AND ri.is_cover = 1
+	              LEFT JOIN resource_categories rc ON r.category_id = rc.id
+	              ` + whereClause + ` ` + orderBy + ` LIMIT ? OFFSET ?`
 	args = append(args, query.PageSize, offset)
 
-	rows, err := r.db.DB.QueryContext(ctx, listQuery, args...)
+	rows, err := r.db.DB.QueryContext(ctx, listQueryOptimized, args...)
 	if err != nil {
 		return nil, utils.ErrDatabaseQuery
 	}
 	defer rows.Close()
 
-	var resources []models.ResourceListItem
+	// 初始化为空数组，避免返回null
+	resources := make([]models.ResourceListItem, 0)
 	for rows.Next() {
 		var item models.ResourceListItem
 		var categoryID sql.NullInt64
+		var catID sql.NullInt64
+		var catName, catSlug sql.NullString
 
 		err := rows.Scan(
 			&item.ID, &item.Author.ID, &item.Title, &item.Description, &categoryID,
 			&item.FileName, &item.FileSize, &item.FileExtension,
 			&item.DownloadCount, &item.ViewCount, &item.LikeCount, &item.CreatedAt,
+			&item.Author.Username, &item.Author.Nickname, &item.Author.Avatar,
+			&item.CoverImage,
+			&catID, &catName, &catSlug,
 		)
 		if err != nil {
 			continue
 		}
 
-		// 获取作者信息
-		authorQuery := `SELECT ua.username, COALESCE(up.nickname, ua.username) as nickname, 
-		                COALESCE(up.avatar_url, '') as avatar
-		                FROM user_auth ua LEFT JOIN user_profile up ON ua.id = up.user_id 
-		                WHERE ua.id = ?`
-		_ = r.db.DB.QueryRowContext(ctx, authorQuery, item.Author.ID).Scan(
-			&item.Author.Username, &item.Author.Nickname, &item.Author.Avatar,
-		)
-
-		// 获取封面图
-		imgQuery := `SELECT image_url FROM resource_images WHERE resource_id = ? AND is_cover = 1 LIMIT 1`
-		_ = r.db.DB.QueryRowContext(ctx, imgQuery, item.ID).Scan(&item.CoverImage)
-
-		// 获取分类
-		if categoryID.Valid {
-			catQuery := `SELECT id, name, slug FROM resource_categories WHERE id = ?`
-			var cat models.ResourceCategory
-			if err := r.db.DB.QueryRowContext(ctx, catQuery, uint(categoryID.Int64)).Scan(&cat.ID, &cat.Name, &cat.Slug); err == nil {
-				item.Category = &cat
+		// 设置分类信息（如果存在）
+		if catID.Valid && catName.Valid {
+			item.Category = &models.ResourceCategory{
+				ID:   uint(catID.Int64),
+				Name: catName.String,
+				Slug: catSlug.String,
 			}
 		}
 

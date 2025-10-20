@@ -91,7 +91,8 @@ func (r *ChatRepository) GetMessages(limit int, beforeID uint) ([]models.ChatMes
 	}
 	defer rows.Close()
 
-	var messages []models.ChatMessage
+	// 初始化为空数组，避免返回null
+	messages := make([]models.ChatMessage, 0)
 	for rows.Next() {
 		var msg models.ChatMessage
 		if err := rows.Scan(&msg.ID, &msg.UserID, &msg.Username, &msg.Nickname, &msg.Avatar,
@@ -127,7 +128,8 @@ func (r *ChatRepository) GetNewMessages(afterID uint) ([]models.ChatMessage, err
 	}
 	defer rows.Close()
 
-	var messages []models.ChatMessage
+	// 初始化为空数组，避免返回null
+	messages := make([]models.ChatMessage, 0)
 	for rows.Next() {
 		var msg models.ChatMessage
 		if err := rows.Scan(&msg.ID, &msg.UserID, &msg.Username, &msg.Nickname, &msg.Avatar,

@@ -105,7 +105,8 @@ func (r *HistoryRepository) GetLoginHistory(userID uint, limit int) ([]models.Us
 	}
 	defer rows.Close()
 
-	var history []models.UserLoginHistory
+	// 初始化为空数组，避免返回null
+	history := make([]models.UserLoginHistory, 0)
 	for rows.Next() {
 		var h models.UserLoginHistory
 		var province, city sql.NullString
@@ -157,7 +158,8 @@ func (r *HistoryRepository) GetOperationHistory(userID uint, limit int) ([]model
 	}
 	defer rows.Close()
 
-	var history []models.UserOperationHistory
+	// 初始化为空数组，避免返回null
+	history := make([]models.UserOperationHistory, 0)
 	for rows.Next() {
 		var h models.UserOperationHistory
 		err := rows.Scan(
@@ -200,7 +202,8 @@ func (r *HistoryRepository) GetProfileChangeHistory(userID uint, limit int) ([]m
 	}
 	defer rows.Close()
 
-	var history []models.ProfileChangeHistory
+	// 初始化为空数组，避免返回null
+	history := make([]models.ProfileChangeHistory, 0)
 	for rows.Next() {
 		var h models.ProfileChangeHistory
 		err := rows.Scan(
@@ -242,7 +245,8 @@ func (r *HistoryRepository) GetLocationDistribution() (*models.LocationDistribut
 	}
 	defer provinceRows.Close()
 
-	var provinceStats []models.LocationStats
+	// 初始化为空数组，避免返回null
+	provinceStats := make([]models.LocationStats, 0)
 	for provinceRows.Next() {
 		var stat models.LocationStats
 		if err := provinceRows.Scan(&stat.Province, &stat.City, &stat.UserCount, &stat.LoginCount); err != nil {
@@ -266,7 +270,8 @@ func (r *HistoryRepository) GetLocationDistribution() (*models.LocationDistribut
 	}
 	defer cityRows.Close()
 
-	var cityStats []models.LocationStats
+	// 初始化为空数组，避免返回null
+	cityStats := make([]models.LocationStats, 0)
 	uniqueProvinces := make(map[string]bool)
 	uniqueCities := make(map[string]bool)
 
