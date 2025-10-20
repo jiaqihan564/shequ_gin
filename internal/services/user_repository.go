@@ -43,7 +43,8 @@ func (r *UserRepository) CreateUser(ctx context.Context, user *models.User) erro
 		"table", "user_auth",
 		"username", user.Username)
 
-	result, err := r.db.DB.ExecContext(ctx, query,
+	// 使用缓存的prepared statement
+	result, err := r.db.ExecWithCache(ctx, query,
 		user.Username,
 		user.PasswordHash,
 		user.Email,
@@ -98,7 +99,8 @@ func (r *UserRepository) GetUserByUsername(ctx context.Context, username string)
 	defer cancel()
 
 	user := &models.User{}
-	err := r.db.DB.QueryRowContext(ctx, query, username).Scan(
+	// 使用缓存的prepared statement
+	err := r.db.QueryRowWithCache(ctx, query, username).Scan(
 		&user.ID,
 		&user.Username,
 		&user.PasswordHash,
@@ -148,7 +150,8 @@ func (r *UserRepository) GetUserByEmail(ctx context.Context, email string) (*mod
 	defer cancel()
 
 	user := &models.User{}
-	err := r.db.DB.QueryRowContext(ctx, query, email).Scan(
+	// 使用缓存的prepared statement
+	err := r.db.QueryRowWithCache(ctx, query, email).Scan(
 		&user.ID,
 		&user.Username,
 		&user.PasswordHash,
@@ -190,7 +193,8 @@ func (r *UserRepository) GetUserByID(ctx context.Context, id uint) (*models.User
 	defer cancel()
 
 	user := &models.User{}
-	err := r.db.DB.QueryRowContext(ctx, query, id).Scan(
+	// 使用缓存的prepared statement
+	err := r.db.QueryRowWithCache(ctx, query, id).Scan(
 		&user.ID,
 		&user.Username,
 		&user.PasswordHash,
@@ -238,7 +242,8 @@ func (r *UserRepository) UpdateUser(ctx context.Context, user *models.User) erro
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	result, err := r.db.DB.ExecContext(ctx, query,
+	// 使用缓存的prepared statement
+	result, err := r.db.ExecWithCache(ctx, query,
 		user.Email,
 		user.AuthStatus,
 		user.AccountStatus,
@@ -277,7 +282,8 @@ func (r *UserRepository) GetUserProfile(ctx context.Context, userID uint) (*mode
 	defer cancel()
 
 	prof := &models.UserExtraProfile{}
-	err := r.db.DB.QueryRowContext(ctx, query, userID).Scan(
+	// 使用缓存的prepared statement
+	err := r.db.QueryRowWithCache(ctx, query, userID).Scan(
 		&prof.UserID,
 		&prof.Nickname,
 		&prof.Bio,
@@ -315,7 +321,8 @@ func (r *UserRepository) UpsertUserProfile(ctx context.Context, profile *models.
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	result, err := r.db.DB.ExecContext(ctx, query, profile.UserID, profile.Nickname, profile.Bio, profile.AvatarURL)
+	// 使用缓存的prepared statement
+	result, err := r.db.ExecWithCache(ctx, query, profile.UserID, profile.Nickname, profile.Bio, profile.AvatarURL)
 	if err != nil {
 		r.logger.Error("保存用户扩展资料失败",
 			"userID", profile.UserID,
@@ -344,7 +351,8 @@ func (r *UserRepository) UpdateUserAvatar(ctx context.Context, profile *models.U
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	_, err := r.db.DB.ExecContext(ctx, query, profile.UserID, profile.AvatarURL)
+	// 使用缓存的prepared statement
+	_, err := r.db.ExecWithCache(ctx, query, profile.UserID, profile.AvatarURL)
 	if err != nil {
 		r.logger.Error("更新用户头像失败", "userID", profile.UserID, "error", err.Error())
 		return utils.ErrDatabaseUpdate
@@ -368,7 +376,8 @@ func (r *UserRepository) UpdateLoginInfo(ctx context.Context, userID uint, login
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	result, err := r.db.DB.ExecContext(ctx, query, loginTime, loginIP, time.Now(), userID)
+	// 使用缓存的prepared statement
+	result, err := r.db.ExecWithCache(ctx, query, loginTime, loginIP, time.Now(), userID)
 	if err != nil {
 		r.logger.Error("更新登录信息失败",
 			"userID", userID,
@@ -395,7 +404,8 @@ func (r *UserRepository) IncrementFailedLoginCount(ctx context.Context, userID u
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	_, err := r.db.DB.ExecContext(ctx, query, time.Now(), userID)
+	// 使用缓存的prepared statement
+	_, err := r.db.ExecWithCache(ctx, query, time.Now(), userID)
 	if err != nil {
 		r.logger.Error("更新登录失败次数失败", "userID", userID, "error", err.Error())
 		return utils.ErrDatabaseUpdate
@@ -418,7 +428,8 @@ func (r *UserRepository) CheckUsernameExists(ctx context.Context, username strin
 	defer cancel()
 
 	var count int
-	err := r.db.DB.QueryRowContext(ctx, query, username).Scan(&count)
+	// 使用缓存的prepared statement
+	err := r.db.QueryRowWithCache(ctx, query, username).Scan(&count)
 	if err != nil {
 		r.logger.Error("检查用户名失败",
 			"username", username,
@@ -451,7 +462,8 @@ func (r *UserRepository) CheckEmailExists(ctx context.Context, email string) (bo
 	defer cancel()
 
 	var count int
-	err := r.db.DB.QueryRowContext(ctx, query, email).Scan(&count)
+	// 使用缓存的prepared statement
+	err := r.db.QueryRowWithCache(ctx, query, email).Scan(&count)
 	if err != nil {
 		r.logger.Error("检查邮箱失败",
 			"email", utils.SanitizeEmail(email),
@@ -483,7 +495,8 @@ func (r *UserRepository) UpdatePassword(ctx context.Context, userID uint, newPas
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	result, err := r.db.DB.ExecContext(ctx, query, newPasswordHash, time.Now(), userID)
+	// 使用缓存的prepared statement
+	result, err := r.db.ExecWithCache(ctx, query, newPasswordHash, time.Now(), userID)
 	if err != nil {
 		r.logger.Error("更新密码失败",
 			"userID", userID,
@@ -523,7 +536,8 @@ func (r *UserRepository) CreatePasswordResetToken(ctx context.Context, token *mo
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	result, err := r.db.DB.ExecContext(ctx, query,
+	// 使用缓存的prepared statement
+	result, err := r.db.ExecWithCache(ctx, query,
 		token.Email,
 		token.Token,
 		token.ExpiresAt,
@@ -565,7 +579,8 @@ func (r *UserRepository) GetPasswordResetToken(ctx context.Context, token string
 	defer cancel()
 
 	resetToken := &models.PasswordResetToken{}
-	err := r.db.DB.QueryRowContext(ctx, query, token).Scan(
+	// 使用缓存的prepared statement
+	err := r.db.QueryRowWithCache(ctx, query, token).Scan(
 		&resetToken.ID,
 		&resetToken.Email,
 		&resetToken.Token,
@@ -607,7 +622,8 @@ func (r *UserRepository) MarkPasswordResetTokenAsUsed(ctx context.Context, token
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	_, err := r.db.DB.ExecContext(ctx, query, tokenID)
+	// 使用缓存的prepared statement
+	_, err := r.db.ExecWithCache(ctx, query, tokenID)
 	if err != nil {
 		r.logger.Error("标记密码重置token失败",
 			"tokenID", tokenID,

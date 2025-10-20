@@ -215,23 +215,39 @@ func (s *AuthService) Login(ctx context.Context, username, password, clientIP, p
 			"profileQuery":  profileQueryLatency.Milliseconds(),
 		})
 
-	// 异步记录登录历史（不影响登录性能）
+	// 使用 Worker Pool 异步记录登录历史（不影响登录性能）
 	if s.historyRepo != nil {
-		go func() {
-			userAgentStr := "" // 需要从上下文获取，这里简化处理
-			if err := s.historyRepo.RecordLoginHistory(user.ID, username, clientIP, userAgentStr, province, city, 1); err != nil {
-				s.logger.Error("记录登录历史失败", "userID", user.ID, "error", err.Error())
-			} else {
+		userID := user.ID
+		userName := username
+		userIP := clientIP
+		prov := province
+		ct := city
+
+		err := utils.SubmitTask(
+			fmt.Sprintf("login-history-%d-%d", userID, time.Now().Unix()),
+			func(ctx context.Context) error {
+				userAgentStr := "" // 需要从上下文获取，这里简化处理
+				if err := s.historyRepo.RecordLoginHistory(userID, userName, userIP, userAgentStr, prov, ct, 1); err != nil {
+					s.logger.Error("记录登录历史失败", "userID", userID, "error", err.Error())
+					return err
+				}
 				s.logger.Info("记录登录历史成功",
-					"userID", user.ID,
-					"province", province,
-					"city", city)
-			}
-			// 记录操作历史
-			if err := s.historyRepo.RecordOperationHistory(user.ID, username, "登录", "用户登录系统", clientIP); err != nil {
-				s.logger.Error("记录操作历史失败", "userID", user.ID, "error", err.Error())
-			}
-		}()
+					"userID", userID,
+					"province", prov,
+					"city", ct)
+
+				// 记录操作历史
+				if err := s.historyRepo.RecordOperationHistory(userID, userName, "登录", "用户登录系统", userIP); err != nil {
+					s.logger.Error("记录操作历史失败", "userID", userID, "error", err.Error())
+					return err
+				}
+				return nil
+			},
+			10*time.Second,
+		)
+		if err != nil {
+			s.logger.Warn("提交登录历史记录任务失败", "error", err.Error())
+		}
 	}
 
 	return response, nil
@@ -444,14 +460,26 @@ func (s *AuthService) Register(ctx context.Context, username, password, email st
 			"profileQuery":  profileQueryLatency.Milliseconds(),
 		})
 
-	// 异步记录注册历史
+	// 使用 Worker Pool 异步记录注册历史
 	if s.historyRepo != nil {
-		go func() {
-			// 记录操作历史
-			if err := s.historyRepo.RecordOperationHistory(user.ID, username, "注册", "用户注册账号", ""); err != nil {
-				s.logger.Error("记录操作历史失败", "userID", user.ID, "error", err.Error())
-			}
-		}()
+		userID := user.ID
+		userName := username
+
+		err := utils.SubmitTask(
+			fmt.Sprintf("register-history-%d-%d", userID, time.Now().Unix()),
+			func(ctx context.Context) error {
+				// 记录操作历史
+				if err := s.historyRepo.RecordOperationHistory(userID, userName, "注册", "用户注册账号", ""); err != nil {
+					s.logger.Error("记录操作历史失败", "userID", userID, "error", err.Error())
+					return err
+				}
+				return nil
+			},
+			10*time.Second,
+		)
+		if err != nil {
+			s.logger.Warn("提交注册历史记录任务失败", "error", err.Error())
+		}
 	}
 
 	return response, nil
