@@ -32,10 +32,10 @@ func (h *HistoryHandler) GetLoginHistory(c *gin.Context) {
 	}
 
 	// 获取查询参数
-	limitStr := c.DefaultQuery("limit", "50")
+	limitStr := c.DefaultQuery("limit", "10")
 	limit, _ := strconv.Atoi(limitStr)
 	if limit <= 0 || limit > 100 {
-		limit = 50
+		limit = 10
 	}
 
 	history, err := h.historyRepo.GetLoginHistory(userID, limit)
@@ -59,10 +59,10 @@ func (h *HistoryHandler) GetOperationHistory(c *gin.Context) {
 	}
 
 	// 获取查询参数
-	limitStr := c.DefaultQuery("limit", "50")
+	limitStr := c.DefaultQuery("limit", "10")
 	limit, _ := strconv.Atoi(limitStr)
 	if limit <= 0 || limit > 100 {
-		limit = 50
+		limit = 10
 	}
 
 	history, err := h.historyRepo.GetOperationHistory(userID, limit)
@@ -86,10 +86,10 @@ func (h *HistoryHandler) GetProfileChangeHistory(c *gin.Context) {
 	}
 
 	// 获取查询参数
-	limitStr := c.DefaultQuery("limit", "50")
+	limitStr := c.DefaultQuery("limit", "10")
 	limit, _ := strconv.Atoi(limitStr)
 	if limit <= 0 || limit > 100 {
-		limit = 50
+		limit = 10
 	}
 
 	history, err := h.historyRepo.GetProfileChangeHistory(userID, limit)

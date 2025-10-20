@@ -299,7 +299,8 @@ func (r *ArticleRepository) ListArticles(ctx context.Context, query models.Artic
 	}
 	defer rows.Close()
 
-	var articles []models.ArticleListItem
+	// 初始化为空数组而不是nil，确保JSON序列化时返回[]而不是null
+	articles := make([]models.ArticleListItem, 0)
 	for rows.Next() {
 		var item models.ArticleListItem
 		err := rows.Scan(
