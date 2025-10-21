@@ -254,11 +254,14 @@ func (s *AuthService) Login(ctx context.Context, username, password, clientIP, p
 }
 
 // Register 用户注册
-func (s *AuthService) Register(ctx context.Context, username, password, email string) (*models.LoginResponse, error) {
+func (s *AuthService) Register(ctx context.Context, username, password, email, clientIP, userAgent, province, city string) (*models.LoginResponse, error) {
 	startTime := time.Now()
 	s.logger.Debug("【AuthService.Register】开始处理注册业务逻辑",
 		"username", username,
-		"email", utils.SanitizeEmail(email))
+		"email", utils.SanitizeEmail(email),
+		"clientIP", clientIP,
+		"province", province,
+		"city", city)
 
 	// 检查用户名是否已存在
 	s.logger.Debug("【AuthService.Register】检查用户名是否已存在", "username", username)
@@ -460,19 +463,34 @@ func (s *AuthService) Register(ctx context.Context, username, password, email st
 			"profileQuery":  profileQueryLatency.Milliseconds(),
 		})
 
-	// 使用 Worker Pool 异步记录注册历史
+	// 使用 Worker Pool 异步记录注册和登录历史
 	if s.historyRepo != nil {
 		userID := user.ID
 		userName := username
+		userIP := clientIP
+		userAgentStr := userAgent
+		prov := province
+		ct := city
 
 		err := utils.SubmitTask(
 			fmt.Sprintf("register-history-%d-%d", userID, time.Now().Unix()),
 			func(ctx context.Context) error {
 				// 记录操作历史
-				if err := s.historyRepo.RecordOperationHistory(userID, userName, "注册", "用户注册账号", ""); err != nil {
+				if err := s.historyRepo.RecordOperationHistory(userID, userName, "注册", "用户注册账号", userIP); err != nil {
 					s.logger.Error("记录操作历史失败", "userID", userID, "error", err.Error())
 					return err
 				}
+
+				// 记录登录历史（注册后自动登录）
+				if err := s.historyRepo.RecordLoginHistory(userID, userName, userIP, userAgentStr, prov, ct, 1); err != nil {
+					s.logger.Error("记录登录历史失败", "userID", userID, "error", err.Error())
+					return err
+				}
+				s.logger.Info("记录注册登录历史成功",
+					"userID", userID,
+					"province", prov,
+					"city", ct)
+
 				return nil
 			},
 			10*time.Second,

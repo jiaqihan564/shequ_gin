@@ -42,6 +42,8 @@ type RegisterRequest struct {
 	Username string `json:"username" binding:"required,min=3,max=20"`
 	Password string `json:"password" binding:"required,min=6"`
 	Email    string `json:"email" binding:"required"`
+	Province string `json:"province"` // 注册省份（可选）
+	City     string `json:"city"`     // 注册城市（可选）
 }
 
 // LoginResponse 登录响应结构体

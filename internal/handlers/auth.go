@@ -160,15 +160,19 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		"username", req.Username,
 		"email", utils.SanitizeEmail(req.Email),
 		"ip", clientIP,
-		"userAgent", userAgent)
+		"userAgent", userAgent,
+		"province", req.Province,
+		"city", req.City)
 
 	// 调用服务层进行用户注册
 	h.logger.Debug("【Register】调用服务层进行用户注册",
 		"username", req.Username,
-		"email", utils.SanitizeEmail(req.Email))
+		"email", utils.SanitizeEmail(req.Email),
+		"province", req.Province,
+		"city", req.City)
 	ctx := c.Request.Context()
 	serviceStartTime := time.Now()
-	response, err := h.authService.Register(ctx, req.Username, req.Password, req.Email)
+	response, err := h.authService.Register(ctx, req.Username, req.Password, req.Email, clientIP, userAgent, req.Province, req.City)
 	serviceLatency := time.Since(serviceStartTime)
 
 	if err != nil {
