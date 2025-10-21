@@ -58,6 +58,11 @@ func main() {
 		logger.Error("装配容器失败", "error", err.Error())
 	}
 
+	// 初始化管理员账号（如果不存在则自动创建）
+	if err := bootstrap.InitAdminAccounts(cfg, container.UserRepo); err != nil {
+		logger.Warn("初始化管理员账号失败", "error", err.Error())
+	}
+
 	// 设置路由
 	r := routes.SetupRoutes(cfg, container)
 

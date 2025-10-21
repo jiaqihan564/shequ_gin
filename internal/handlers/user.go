@@ -447,6 +447,21 @@ func (h *UserHandler) returnUserProfile(c *gin.Context, userID uint) {
 		bio = extra.Bio
 	}
 
+	// 检查用户是否为管理员
+	isAdmin := false
+	for _, adminUsername := range h.config.Admin.Usernames {
+		if adminUsername == user.Username {
+			isAdmin = true
+			break
+		}
+	}
+
+	// 确定用户角色
+	role := "user"
+	if isAdmin {
+		role = "admin"
+	}
+
 	// 构建前端期望的响应格式
 	response := gin.H{
 		"id":             user.ID,
@@ -455,6 +470,7 @@ func (h *UserHandler) returnUserProfile(c *gin.Context, userID uint) {
 		"avatar":         avatarURL, // 前端期望字段名为 avatar
 		"auth_status":    user.AuthStatus,
 		"account_status": user.AccountStatus,
+		"role":           role, // 添加角色字段
 		"profile": gin.H{
 			"nickname": nickname,
 			"bio":      bio,

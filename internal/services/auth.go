@@ -180,6 +180,26 @@ func (s *AuthService) Login(ctx context.Context, username, password, clientIP, p
 		"hasAvatar", extra.AvatarURL != "",
 		"profileQueryLatency", profileQueryLatency)
 
+	// 检查用户是否为管理员
+	isAdmin := false
+	for _, adminUsername := range s.config.Admin.Usernames {
+		if adminUsername == user.Username {
+			isAdmin = true
+			break
+		}
+	}
+
+	// 确定用户角色
+	role := "user"
+	if isAdmin {
+		role = "admin"
+	}
+
+	s.logger.Debug("【AuthService.Login】角色检查完成",
+		"userID", user.ID,
+		"username", user.Username,
+		"role", role)
+
 	// 返回登录成功响应（匹配前端期望格式）
 	response := &models.LoginResponse{
 		Code:    200,
@@ -198,6 +218,7 @@ func (s *AuthService) Login(ctx context.Context, username, password, clientIP, p
 				AvatarURL:     extra.AvatarURL, // 使用数据库中的头像URL
 				Nickname:      extra.Nickname,
 				Bio:           extra.Bio,
+				Role:          role, // 添加角色字段
 			},
 		},
 	}
@@ -426,6 +447,26 @@ func (s *AuthService) Register(ctx context.Context, username, password, email, c
 		"userID", user.ID,
 		"profileQueryLatency", profileQueryLatency)
 
+	// 检查用户是否为管理员
+	isAdmin := false
+	for _, adminUsername := range s.config.Admin.Usernames {
+		if adminUsername == user.Username {
+			isAdmin = true
+			break
+		}
+	}
+
+	// 确定用户角色
+	role := "user"
+	if isAdmin {
+		role = "admin"
+	}
+
+	s.logger.Debug("【AuthService.Register】角色检查完成",
+		"userID", user.ID,
+		"username", user.Username,
+		"role", role)
+
 	// 返回注册成功响应（匹配前端期望格式）
 	response := &models.LoginResponse{
 		Code:    201,
@@ -444,6 +485,7 @@ func (s *AuthService) Register(ctx context.Context, username, password, email, c
 				AvatarURL:     extra.AvatarURL, // 注册时通常为空
 				Nickname:      extra.Nickname,
 				Bio:           extra.Bio,
+				Role:          role, // 添加角色字段
 			},
 		},
 	}

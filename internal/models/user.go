@@ -27,6 +27,7 @@ type UserProfile struct {
 	AvatarURL     string `json:"avatar"` // 前端期望字段名为 avatar
 	Nickname      string `json:"nickname"`
 	Bio           string `json:"bio"`
+	Role          string `json:"role"` // 用户角色：admin 或 user
 }
 
 // LoginRequest 登录请求结构体

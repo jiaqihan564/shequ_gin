@@ -16,6 +16,7 @@ type Config struct {
 	Database         DatabaseConfig         `yaml:"database" json:"database"`
 	Log              LogConfig              `yaml:"log" json:"log"`
 	Security         SecurityConfig         `yaml:"security" json:"security"`
+	Admin            AdminConfig            `yaml:"admin" json:"admin"`
 	CORS             CORSConfig             `yaml:"cors" json:"cors"`
 	Assets           AssetsConfig           `yaml:"assets" json:"assets"`
 	MinIO            MinIOConfig            `yaml:"minio" json:"minio"`
@@ -66,6 +67,12 @@ type LogConfig struct {
 // SecurityConfig 安全配置
 type SecurityConfig struct {
 	MaxLoginAttempts int `yaml:"max_login_attempts" json:"max_login_attempts"`
+}
+
+// AdminConfig 管理员配置
+type AdminConfig struct {
+	Usernames       []string `yaml:"usernames" json:"usernames"`
+	DefaultPassword string   `yaml:"default_password" json:"default_password"` // 管理员默认密码（首次创建时使用）
 }
 
 // CORSConfig CORS配置
@@ -180,6 +187,10 @@ func getDefaultConfig() *Config {
 		},
 		Security: SecurityConfig{
 			MaxLoginAttempts: 5,
+		},
+		Admin: AdminConfig{
+			Usernames:       []string{"admin"}, // 默认管理员
+			DefaultPassword: "admin123",        // 默认密码
 		},
 		CORS: CORSConfig{
 			AllowOrigins:     []string{"*"},

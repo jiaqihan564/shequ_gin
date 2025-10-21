@@ -86,24 +86,10 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 			// 临时兼容旧的头像更新接口
 			auth.PUT("/auth/me/avatar", userHandler.UpdateMe)
 
-			// 统计相关接口（所有登录用户可访问）
-			auth.GET("/statistics/overview", statsHandler.GetOverview)
-			auth.GET("/statistics/users", statsHandler.GetUserStatistics)
-			auth.GET("/statistics/apis", statsHandler.GetApiStatistics)
-			auth.GET("/statistics/ranking", statsHandler.GetEndpointRanking)
-
 			// 历史记录接口（用户查看自己的历史）
 			auth.GET("/history/login", historyHandler.GetLoginHistory)
 			auth.GET("/history/operations", historyHandler.GetOperationHistory)
 			auth.GET("/history/profile-changes", historyHandler.GetProfileChangeHistory)
-
-			// 地区分布统计
-			auth.GET("/location/distribution", historyHandler.GetLocationDistribution)
-
-			// 累计统计接口（全站数据）
-			auth.GET("/cumulative-stats", cumulativeHandler.GetCumulativeStats)
-			auth.GET("/daily-metrics", cumulativeHandler.GetDailyMetrics)
-			auth.GET("/realtime-metrics", cumulativeHandler.GetRealtimeMetrics)
 
 			// 聊天室接口（所有登录用户可访问）
 			auth.POST("/chat/send", chatHandler.SendMessage)             // 发送消息
@@ -152,6 +138,26 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 			auth.POST("/upload/merge", chunkUploadHandler.MergeChunks)                // 合并分片
 			auth.GET("/upload/status/:upload_id", chunkUploadHandler.GetUploadStatus) // 查询进度
 			auth.POST("/upload/cancel/:upload_id", chunkUploadHandler.CancelUpload)   // 取消上传
+		}
+
+		// 管理员专用路由
+		admin := api.Group("/")
+		admin.Use(middleware.AuthMiddleware(cfg))
+		admin.Use(middleware.AdminMiddleware(cfg))
+		{
+			// 统计相关接口（仅管理员可访问）
+			admin.GET("/statistics/overview", statsHandler.GetOverview)
+			admin.GET("/statistics/users", statsHandler.GetUserStatistics)
+			admin.GET("/statistics/apis", statsHandler.GetApiStatistics)
+			admin.GET("/statistics/ranking", statsHandler.GetEndpointRanking)
+
+			// 地区分布统计
+			admin.GET("/location/distribution", historyHandler.GetLocationDistribution)
+
+			// 累计统计接口（全站数据）
+			admin.GET("/cumulative-stats", cumulativeHandler.GetCumulativeStats)
+			admin.GET("/daily-metrics", cumulativeHandler.GetDailyMetrics)
+			admin.GET("/realtime-metrics", cumulativeHandler.GetRealtimeMetrics)
 		}
 	}
 

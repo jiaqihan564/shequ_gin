@@ -42,6 +42,13 @@ log:
 security:
   max_login_attempts: 5
 
+# 管理员配置
+admin:
+  # 管理员用户名列表（精确匹配）
+  usernames:
+    - "admin"
+  default_password: "admin123"
+
 # CORS配置
 cors:
   allow_origins: ["*"]
