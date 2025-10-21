@@ -144,6 +144,7 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 			auth.POST("/code/execute", codeHandler.ExecuteCode)                  // 执行代码
 			auth.POST("/code/snippets", codeHandler.CreateSnippet)               // 保存代码片段
 			auth.GET("/code/snippets", codeHandler.GetSnippets)                  // 获取代码片段列表
+			auth.GET("/code/public", codeHandler.GetPublicSnippets)              // 获取公开代码片段列表
 			auth.GET("/code/snippets/:id", codeHandler.GetSnippetByID)           // 获取代码片段详情
 			auth.PUT("/code/snippets/:id", codeHandler.UpdateSnippet)            // 更新代码片段
 			auth.DELETE("/code/snippets/:id", codeHandler.DeleteSnippet)         // 删除代码片段

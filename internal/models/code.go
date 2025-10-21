@@ -99,7 +99,9 @@ type PistonExecuteRequest struct {
 	Files    []struct {
 		Content string `json:"content"`
 	} `json:"files"`
-	Stdin string `json:"stdin,omitempty"`
+	Stdin       string   `json:"stdin,omitempty"`
+	CompileArgs []string `json:"compile_args,omitempty"` // 编译参数（可选）
+	RunArgs     []string `json:"run_args,omitempty"`     // 运行参数（可选）
 }
 
 // PistonExecuteResponse Piston API 执行响应
@@ -125,3 +127,16 @@ type CodeSnippetListItem struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// CodeSnippetWithUser 代码片段及用户信息
+type CodeSnippetWithUser struct {
+	ID          uint      `json:"id"`
+	UserID      uint      `json:"user_id"`
+	Username    string    `json:"username"`
+	Title       string    `json:"title"`
+	Language    string    `json:"language"`
+	Code        string    `json:"code"`
+	Description string    `json:"description"`
+	ShareToken  *string   `json:"share_token,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}

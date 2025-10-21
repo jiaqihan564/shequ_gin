@@ -259,6 +259,12 @@ func (e *PistonCodeExecutor) Execute(ctx context.Context, language, code, stdin 
 		return nil, fmt.Errorf("不支持的语言: %s", language)
 	}
 
+	// 对于JVM语言，如果代码包含中文，尝试在代码层面处理编码
+	if language == "java" && containsChinese(code) {
+		code = wrapJavaCodeWithUTF8(code)
+		logger.Debug("为 Java 代码添加 UTF-8 编码设置")
+	}
+
 	// 构建 Piston API 请求
 	pistonReq := models.PistonExecuteRequest{
 		Language: langInfo.PistonName,
@@ -271,10 +277,45 @@ func (e *PistonCodeExecutor) Execute(ctx context.Context, language, code, stdin 
 		Stdin: stdin,
 	}
 
+	// 为 JVM 语言添加 UTF-8 编码参数，解决中文显示问题
+	// 尝试多种参数组合方式
+	switch language {
+	case "java":
+		// Java 需要编译和运行时都指定UTF-8
+		pistonReq.CompileArgs = []string{"-encoding", "UTF-8", "-J-Dfile.encoding=UTF-8"}
+		pistonReq.RunArgs = []string{"-Dfile.encoding=UTF-8", "-Duser.language=zh", "-Duser.country=CN"}
+		logger.Debug("为 Java 添加 UTF-8 编码参数",
+			"compile_args", pistonReq.CompileArgs,
+			"run_args", pistonReq.RunArgs)
+	case "scala":
+		// Scala 使用 scalac 编译器参数
+		pistonReq.CompileArgs = []string{"-encoding", "UTF-8"}
+		pistonReq.RunArgs = []string{"-Dfile.encoding=UTF-8", "-Duser.language=zh", "-Duser.country=CN"}
+		logger.Debug("为 Scala 添加 UTF-8 编码参数",
+			"compile_args", pistonReq.CompileArgs,
+			"run_args", pistonReq.RunArgs)
+	case "kotlin":
+		// Kotlin 编译器参数
+		pistonReq.CompileArgs = []string{"-Dfile.encoding=UTF-8"}
+		pistonReq.RunArgs = []string{"-Dfile.encoding=UTF-8", "-Duser.language=zh", "-Duser.country=CN"}
+		logger.Debug("为 Kotlin 添加 UTF-8 编码参数",
+			"compile_args", pistonReq.CompileArgs,
+			"run_args", pistonReq.RunArgs)
+	}
+
 	reqBody, err := json.Marshal(pistonReq)
 	if err != nil {
 		return nil, fmt.Errorf("序列化请求失败: %w", err)
 	}
+
+	// 记录完整的请求体（用于调试JVM编码问题）
+	logger.Debug("Piston API 请求详情",
+		"language", language,
+		"piston_name", langInfo.PistonName,
+		"version", langInfo.Version,
+		"compile_args", pistonReq.CompileArgs,
+		"run_args", pistonReq.RunArgs,
+		"request_body", string(reqBody))
 
 	// 记录开始时间
 	startTime := time.Now()
@@ -284,7 +325,7 @@ func (e *PistonCodeExecutor) Execute(ctx context.Context, language, code, stdin 
 	if err != nil {
 		return nil, fmt.Errorf("创建请求失败: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
 
 	// 发送请求
 	resp, err := e.client.Do(req)
@@ -307,6 +348,15 @@ func (e *PistonCodeExecutor) Execute(ctx context.Context, language, code, stdin 
 	if err := json.NewDecoder(resp.Body).Decode(&pistonResp); err != nil {
 		return nil, fmt.Errorf("解析响应失败: %w", err)
 	}
+
+	// 记录响应详情（用于调试编码问题）
+	logger.Debug("Piston API 响应详情",
+		"language", language,
+		"stdout_length", len(pistonResp.Run.Stdout),
+		"stderr_length", len(pistonResp.Run.Stderr),
+		"exit_code", pistonResp.Run.Code,
+		"stdout_preview", truncateString(pistonResp.Run.Stdout, 200),
+		"stderr_preview", truncateString(pistonResp.Run.Stderr, 200))
 
 	// 构建返回结果
 	result := &models.ExecuteCodeResponse{
@@ -344,4 +394,39 @@ func (e *PistonCodeExecutor) GetSupportedLanguages() []models.LanguageInfo {
 		languages = append(languages, lang)
 	}
 	return languages
+}
+
+// truncateString 截断字符串用于日志
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
+}
+
+// containsChinese 检查字符串是否包含中文字符
+func containsChinese(s string) bool {
+	for _, r := range s {
+		if r >= 0x4E00 && r <= 0x9FA5 {
+			return true
+		}
+	}
+	return false
+}
+
+// wrapJavaCodeWithUTF8 为Java代码包装UTF-8编码设置
+func wrapJavaCodeWithUTF8(code string) string {
+	// 在 System.out.println 调用前设置编码
+	// 注意：这是一个备用方案，主要依赖运行参数
+	wrapper := `import java.io.*;
+import java.nio.charset.StandardCharsets;
+
+// 原始代码开始
+`
+	// 检查是否已经有import语句
+	if !bytes.Contains([]byte(code), []byte("import")) {
+		return wrapper + code
+	}
+	// 如果已有import，直接返回原代码（避免重复包装）
+	return code
 }

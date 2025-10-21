@@ -65,8 +65,19 @@ func (h *CodeHandler) ExecuteCode(c *gin.Context) {
 	}
 
 	if err := h.repo.CreateExecution(execution); err != nil {
-		utils.GetLogger().Error("保存执行记录失败", "error", err, "user_id", userID)
+		utils.GetLogger().Error("保存执行记录失败",
+			"error", err,
+			"user_id", userID,
+			"language", req.Language,
+			"code_length", len(req.Code),
+			"execution_status", result.Status)
 		// 不影响返回结果，只记录错误
+	} else {
+		utils.GetLogger().Info("保存执行记录成功",
+			"execution_id", execution.ID,
+			"user_id", userID,
+			"language", req.Language,
+			"status", result.Status)
 	}
 
 	// 如果请求中包含保存标题，则保存代码片段
@@ -360,3 +371,33 @@ func (h *CodeHandler) GetLanguages(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "获取成功", languages)
 }
 
+// GetPublicSnippets 获取公开的代码片段列表
+func (h *CodeHandler) GetPublicSnippets(c *gin.Context) {
+	// 分页参数
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	language := c.Query("language") // 可选的语言筛选
+
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+
+	offset := (page - 1) * pageSize
+
+	snippets, total, err := h.repo.GetPublicSnippets(language, pageSize, offset)
+	if err != nil {
+		utils.GetLogger().Error("获取公开代码片段列表失败", "error", err, "language", language)
+		utils.InternalServerErrorResponse(c, "获取公开代码片段列表失败")
+		return
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "获取成功", gin.H{
+		"items":     snippets,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	})
+}

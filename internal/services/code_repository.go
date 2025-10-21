@@ -17,6 +17,7 @@ type CodeRepository interface {
 	CreateSnippet(snippet *models.CodeSnippet) error
 	GetSnippetByID(id uint) (*models.CodeSnippet, error)
 	GetSnippetsByUserID(userID uint, limit, offset int) ([]models.CodeSnippetListItem, int, error)
+	GetPublicSnippets(language string, limit, offset int) ([]models.CodeSnippetWithUser, int, error)
 	UpdateSnippet(snippet *models.CodeSnippet) error
 	DeleteSnippet(id uint, userID uint) error
 	GetSnippetByShareToken(token string) (*models.CodeSnippet, error)
@@ -429,4 +430,80 @@ func (r *CodeRepositoryImpl) UpdateCollaborationUsers(token string, activeUsers 
 		return fmt.Errorf("更新协作会话用户列表失败: %w", err)
 	}
 	return nil
+}
+
+// GetPublicSnippets 获取公开的代码片段列表
+func (r *CodeRepositoryImpl) GetPublicSnippets(language string, limit, offset int) ([]models.CodeSnippetWithUser, int, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 构建查询条件
+	var countQuery, listQuery string
+	var args []interface{}
+
+	if language != "" {
+		countQuery = `SELECT COUNT(*) FROM code_snippets WHERE is_public = 1 AND language = ?`
+		listQuery = `
+			SELECT cs.id, cs.user_id, u.username, cs.title, cs.language, cs.code, cs.description, cs.share_token, cs.created_at, cs.updated_at
+			FROM code_snippets cs
+			LEFT JOIN user_auth u ON cs.user_id = u.id
+			WHERE cs.is_public = 1 AND cs.language = ?
+			ORDER BY cs.created_at DESC
+			LIMIT ? OFFSET ?
+		`
+		args = []interface{}{language, limit, offset}
+	} else {
+		countQuery = `SELECT COUNT(*) FROM code_snippets WHERE is_public = 1`
+		listQuery = `
+			SELECT cs.id, cs.user_id, u.username, cs.title, cs.language, cs.code, cs.description, cs.share_token, cs.created_at, cs.updated_at
+			FROM code_snippets cs
+			LEFT JOIN user_auth u ON cs.user_id = u.id
+			WHERE cs.is_public = 1
+			ORDER BY cs.created_at DESC
+			LIMIT ? OFFSET ?
+		`
+		args = []interface{}{limit, offset}
+	}
+
+	// 查询总数
+	var total int
+	var countArgs []interface{}
+	if language != "" {
+		countArgs = []interface{}{language}
+	}
+	row := r.db.QueryRowWithCache(ctx, countQuery, countArgs...)
+	if err := row.Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("查询公开代码片段总数失败: %w", err)
+	}
+
+	// 查询列表
+	rows, err := r.db.QueryWithCache(ctx, listQuery, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("查询公开代码片段列表失败: %w", err)
+	}
+	defer rows.Close()
+
+	var snippets []models.CodeSnippetWithUser
+	for rows.Next() {
+		var snippet models.CodeSnippetWithUser
+		var username sql.NullString
+		if err := rows.Scan(&snippet.ID, &snippet.UserID, &username, &snippet.Title, &snippet.Language,
+			&snippet.Code, &snippet.Description, &snippet.ShareToken, &snippet.CreatedAt, &snippet.UpdatedAt); err != nil {
+			return nil, 0, fmt.Errorf("扫描公开代码片段失败: %w", err)
+		}
+		if username.Valid {
+			snippet.Username = username.String
+		} else {
+			snippet.Username = "未知用户"
+		}
+		snippets = append(snippets, snippet)
+	}
+
+	utils.GetLogger().Info("查询公开代码片段成功",
+		"total", total,
+		"language", language,
+		"limit", limit,
+		"offset", offset)
+
+	return snippets, total, nil
 }
