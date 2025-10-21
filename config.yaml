@@ -77,3 +77,10 @@ minio:
 resources_storage:
   bucket: "community-resources"
   public_base_url: "http://127.0.0.1:9000/community-resources"
+
+# 代码执行器配置
+code_executor:
+  piston_api_url: "https://emkc.org/api/v2/piston"
+  timeout: 10  # 执行超时时间（秒）
+  max_memory_mb: 128  # 最大内存限制（MB）
+  rate_limit: 10  # 每分钟执行次数限制

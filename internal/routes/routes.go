@@ -40,6 +40,7 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 	privateMsgHandler := handlers.NewPrivateMessageHandler(ctn.PrivateMsgRepo, ctn.UserRepo)
 	resourceHandler := handlers.NewResourceHandler(ctn.ResourceRepo, ctn.ResourceCommentRepo, ctn.ResourceStorage)
 	chunkUploadHandler := handlers.NewChunkUploadHandler(ctn.UploadMgr)
+	codeHandler := handlers.NewCodeHandler(ctn.CodeRepo, ctn.CodeExecutor)
 
 	// 健康检查路由
 	r.GET("/health", healthHandler.Check)
@@ -138,7 +139,21 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 			auth.POST("/upload/merge", chunkUploadHandler.MergeChunks)                // 合并分片
 			auth.GET("/upload/status/:upload_id", chunkUploadHandler.GetUploadStatus) // 查询进度
 			auth.POST("/upload/cancel/:upload_id", chunkUploadHandler.CancelUpload)   // 取消上传
+
+			// 在线代码执行相关接口
+			auth.POST("/code/execute", codeHandler.ExecuteCode)                  // 执行代码
+			auth.POST("/code/snippets", codeHandler.CreateSnippet)               // 保存代码片段
+			auth.GET("/code/snippets", codeHandler.GetSnippets)                  // 获取代码片段列表
+			auth.GET("/code/snippets/:id", codeHandler.GetSnippetByID)           // 获取代码片段详情
+			auth.PUT("/code/snippets/:id", codeHandler.UpdateSnippet)            // 更新代码片段
+			auth.DELETE("/code/snippets/:id", codeHandler.DeleteSnippet)         // 删除代码片段
+			auth.GET("/code/executions", codeHandler.GetExecutions)              // 获取执行记录
+			auth.POST("/code/snippets/:id/share", codeHandler.GenerateShareLink) // 生成分享链接
+			auth.GET("/code/languages", codeHandler.GetLanguages)                // 获取支持的语言列表
 		}
+
+		// 公开访问的代码分享（无需认证）
+		api.GET("/code/share/:token", codeHandler.GetSharedSnippet) // 通过分享令牌访问代码
 
 		// 管理员专用路由
 		admin := api.Group("/")

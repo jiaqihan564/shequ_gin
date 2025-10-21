@@ -21,6 +21,7 @@ type Config struct {
 	Assets           AssetsConfig           `yaml:"assets" json:"assets"`
 	MinIO            MinIOConfig            `yaml:"minio" json:"minio"`
 	ResourcesStorage ResourcesStorageConfig `yaml:"resources_storage" json:"resources_storage"`
+	CodeExecutor     CodeExecutorConfig     `yaml:"code_executor" json:"code_executor"`
 }
 
 // ServerConfig 服务器配置
@@ -106,6 +107,14 @@ type MinIOConfig struct {
 type ResourcesStorageConfig struct {
 	Bucket        string `yaml:"bucket" json:"bucket"`
 	PublicBaseURL string `yaml:"public_base_url" json:"public_base_url"`
+}
+
+// CodeExecutorConfig 代码执行器配置
+type CodeExecutorConfig struct {
+	PistonAPIURL string `yaml:"piston_api_url" json:"piston_api_url"`
+	Timeout      int    `yaml:"timeout" json:"timeout"`             // 超时时间（秒）
+	MaxMemoryMB  int    `yaml:"max_memory_mb" json:"max_memory_mb"` // 最大内存（MB）
+	RateLimit    int    `yaml:"rate_limit" json:"rate_limit"`       // 限流：每分钟执行次数
 }
 
 // Load 加载配置
@@ -230,6 +239,36 @@ func getDefaultConfig() *Config {
 			Bucket:        getEnv("RESOURCES_BUCKET", "community-resources"),
 			PublicBaseURL: getEnv("RESOURCES_PUBLIC_BASE_URL", "http://127.0.0.1:9000/community-resources"),
 		},
+		CodeExecutor: CodeExecutorConfig{
+			PistonAPIURL: getEnv("PISTON_API_URL", "https://emkc.org/api/v2/piston"),
+			Timeout: func() int {
+				if v := getEnv("CODE_EXECUTOR_TIMEOUT", ""); v != "" {
+					n := parseInt(v)
+					if n > 0 {
+						return n
+					}
+				}
+				return 10
+			}(),
+			MaxMemoryMB: func() int {
+				if v := getEnv("CODE_EXECUTOR_MAX_MEMORY", ""); v != "" {
+					n := parseInt(v)
+					if n > 0 {
+						return n
+					}
+				}
+				return 128
+			}(),
+			RateLimit: func() int {
+				if v := getEnv("CODE_EXECUTOR_RATE_LIMIT", ""); v != "" {
+					n := parseInt(v)
+					if n > 0 {
+						return n
+					}
+				}
+				return 10
+			}(),
+		},
 	}
 }
 
@@ -301,6 +340,12 @@ func overrideWithEnvVars(config *Config) {
 	// 资源存储配置
 	setEnvString(&config.ResourcesStorage.Bucket, "RESOURCES_BUCKET")
 	setEnvString(&config.ResourcesStorage.PublicBaseURL, "RESOURCES_PUBLIC_BASE_URL")
+
+	// 代码执行器配置
+	setEnvString(&config.CodeExecutor.PistonAPIURL, "PISTON_API_URL")
+	setEnvInt(&config.CodeExecutor.Timeout, "CODE_EXECUTOR_TIMEOUT")
+	setEnvInt(&config.CodeExecutor.MaxMemoryMB, "CODE_EXECUTOR_MAX_MEMORY")
+	setEnvInt(&config.CodeExecutor.RateLimit, "CODE_EXECUTOR_RATE_LIMIT")
 }
 
 // parseInt 解析整数

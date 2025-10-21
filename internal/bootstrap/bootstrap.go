@@ -4,6 +4,7 @@ import (
 	"gin/internal/config"
 	"gin/internal/services"
 	"gin/internal/utils"
+	"time"
 )
 
 // Container 应用容器（简单装配）
@@ -24,6 +25,8 @@ type Container struct {
 	ResourceStorage     *services.ResourceStorageService
 	UploadMgr           *services.UploadManager
 	CacheSvc            *services.CacheService // 缓存服务
+	CodeRepo            services.CodeRepository
+	CodeExecutor        services.CodeExecutor
 }
 
 // New 构建容器
@@ -58,6 +61,13 @@ func New(cfg *config.Config, db *services.Database) (*Container, error) {
 	// 初始化缓存服务
 	cacheService := services.NewCacheService(articleRepo)
 
+	// 初始化代码仓库和执行器
+	codeRepo := services.NewCodeRepository(db)
+	codeExecutor := services.NewPistonCodeExecutor(
+		cfg.CodeExecutor.PistonAPIURL,
+		time.Duration(cfg.CodeExecutor.Timeout)*time.Second,
+	)
+
 	return &Container{
 		DB:                  db,
 		Auth:                authService,
@@ -75,5 +85,7 @@ func New(cfg *config.Config, db *services.Database) (*Container, error) {
 		ResourceStorage:     resourceStorage,
 		UploadMgr:           uploadMgr,
 		CacheSvc:            cacheService,
+		CodeRepo:            codeRepo,
+		CodeExecutor:        codeExecutor,
 	}, nil
 }
