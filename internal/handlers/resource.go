@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"context"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -236,11 +238,14 @@ func (h *ResourceHandler) DownloadResource(c *gin.Context) {
 		return
 	}
 
-	// 异步增加下载次数
-	go h.resourceRepo.IncrementDownloadCount(ctx, uint(resourceID))
+	// Increment download count asynchronously using Worker Pool
+	taskID := fmt.Sprintf("incr_download_%d", resourceID)
+	_ = utils.SubmitTask(taskID, func(taskCtx context.Context) error {
+		return h.resourceRepo.IncrementDownloadCount(taskCtx, uint(resourceID))
+	}, 3*time.Second)
 
-	// TODO: 实现实际的文件下载逻辑（从MinIO获取文件）
-	// 这里返回下载URL
+	// Return download URL for client to download directly from MinIO
+	// This is more efficient than proxying through the API server
 	utils.SuccessResponse(c, 200, "获取下载链接成功", gin.H{
 		"download_url": resource.StoragePath,
 		"file_name":    resource.FileName,

@@ -8,6 +8,8 @@ type User struct {
 	Username         string     `json:"username" binding:"required" db:"username"`
 	PasswordHash     string     `json:"-" db:"password_hash"` // 不序列化密码字段
 	Email            string     `json:"email" db:"email"`
+	Avatar           string     `json:"avatar" db:"avatar"` // 头像URL
+	Role             string     `json:"role" db:"role"`     // 用户角色
 	AuthStatus       int        `json:"auth_status" db:"auth_status"`
 	AccountStatus    int        `json:"account_status" db:"account_status"`
 	LastLoginTime    *time.Time `json:"last_login_time" db:"last_login_time"`

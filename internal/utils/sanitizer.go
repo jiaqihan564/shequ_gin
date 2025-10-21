@@ -224,20 +224,12 @@ func SanitizeLogData(data string) string {
 	return result
 }
 
-// ValidateContentLength 验证内容长度
-func ValidateContentLength(content string, minLength, maxLength int) error {
-	length := utf8.RuneCountInString(content)
-
-	if length < minLength {
-		return ErrContentTooShort
-	}
-
-	if length > maxLength {
-		return ErrContentTooLong
-	}
-
-	return nil
-}
+// ValidateContentLength is now in helpers.go - use that instead
+// Keeping error definitions here for backward compatibility
+var (
+	ErrContentTooShort = NewAppError(ErrInvalidParameter, "内容太短", 400)
+	ErrContentTooLong  = NewAppError(ErrInvalidParameter, "内容太长", 400)
+)
 
 // ContainsProhibitedWords 检查是否包含禁用词
 func ContainsProhibitedWords(content string, prohibitedWords []string) bool {
@@ -252,21 +244,8 @@ func ContainsProhibitedWords(content string, prohibitedWords []string) bool {
 	return false
 }
 
-// NormalizeWhitespace 规范化空白字符
-func NormalizeWhitespace(input string) string {
-	// 替换所有连续空白为单个空格
-	result := regexp.MustCompile(`\s+`).ReplaceAllString(input, " ")
-	return strings.TrimSpace(result)
-}
-
-// TruncateText 截断字符串（按字符数）
-func TruncateText(input string, maxLength int) string {
-	runes := []rune(input)
-	if len(runes) <= maxLength {
-		return input
-	}
-	return string(runes[:maxLength])
-}
+// NormalizeWhitespace is now in helpers.go - use that instead
+// TruncateText is now in helpers.go - use that instead
 
 // DeepSanitize 深度清理（组合多种清理方法）
 func DeepSanitize(input string) (string, []string) {
@@ -293,9 +272,3 @@ func DeepSanitize(input string) (string, []string) {
 
 	return result, warnings
 }
-
-// 添加缺失的错误定义
-var (
-	ErrContentTooShort = NewAppError(ErrInvalidParameter, "内容太短", 400)
-	ErrContentTooLong  = NewAppError(ErrInvalidParameter, "内容太长", 400)
-)

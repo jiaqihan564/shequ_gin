@@ -274,7 +274,6 @@ func getCallerInfoDirect() (file string, line int) {
 	}
 
 	// 调试：打印完整路径
-	// fmt.Printf("DEBUG getCallerInfoDirect: fullPath=%s\n", fullPath)
 
 	// 方法1：查找最后一个 \internal\ 或 /internal/
 	sepInternal := string(filepath.Separator) + "internal" + string(filepath.Separator)
@@ -424,56 +423,7 @@ func CloseLogger() error {
 }
 
 // ==================== 日志辅助函数 ====================
-
-// SanitizeToken 脱敏token，只保留前后4个字符
-func SanitizeToken(token string) string {
-	if len(token) <= 8 {
-		return "***"
-	}
-	return token[:4] + "..." + token[len(token)-4:]
-}
-
-// SanitizeAuthHeader 脱敏Authorization头
-func SanitizeAuthHeader(header string) string {
-	if header == "" {
-		return ""
-	}
-	if len(header) > 20 {
-		return header[:7] + "..." + header[len(header)-4:]
-	}
-	return "Bearer ***"
-}
-
-// SanitizeEmail 脱敏邮箱地址
-func SanitizeEmail(email string) string {
-	if email == "" {
-		return ""
-	}
-	parts := make([]byte, 0, len(email))
-	atFound := false
-	for i, ch := range email {
-		if ch == '@' {
-			atFound = true
-			parts = append(parts, byte(ch))
-		} else if atFound || i < 2 {
-			parts = append(parts, byte(ch))
-		} else {
-			parts = append(parts, '*')
-		}
-	}
-	return string(parts)
-}
-
-// TruncateString 截断字符串到指定长度
-func TruncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	if maxLen <= 3 {
-		return "..."
-	}
-	return s[:maxLen-3] + "..."
-}
+// Note: Sanitization and truncation functions are now in helpers.go
 
 // SanitizeHeaders 脱敏HTTP头部
 func SanitizeHeaders(headers map[string][]string) map[string]interface{} {
@@ -513,26 +463,4 @@ func SanitizeParams(params map[string]interface{}) map[string]interface{} {
 }
 
 // FormatSQLParams 格式化SQL参数用于日志记录
-func FormatSQLParams(params []interface{}) []interface{} {
-	if params == nil {
-		return nil
-	}
-
-	result := make([]interface{}, len(params))
-	for i, p := range params {
-		switch v := p.(type) {
-		case string:
-			// 检查是否看起来像密码哈希或token
-			if len(v) > 50 && (len(v) == 60 || len(v) > 100) {
-				result[i] = "[HASH]"
-			} else if len(v) > 200 {
-				result[i] = TruncateString(v, 100)
-			} else {
-				result[i] = v
-			}
-		default:
-			result[i] = p
-		}
-	}
-	return result
-}
+// FormatSQLParams is now in helpers.go with improved formatting

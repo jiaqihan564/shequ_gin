@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -103,15 +104,15 @@ func (h *ArticleHandler) GetArticleDetail(c *gin.Context) {
 		return
 	}
 
-	// 增加浏览次数（异步，带超时保护）
-	// 使用独立的context避免请求结束后被取消，同时添加超时防止goroutine泄漏
-	go func() {
-		bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := h.articleRepo.IncrementViewCount(bgCtx, uint(articleID)); err != nil {
-			h.logger.Debug("异步更新浏览次数失败", "articleID", articleID, "error", err.Error())
-		}
-	}()
+	// 增加浏览次数（使用Worker Pool，避免无限制goroutine）
+	taskID := fmt.Sprintf("incr_view_%d", articleID)
+	err = utils.SubmitTask(taskID, func(taskCtx context.Context) error {
+		return h.articleRepo.IncrementViewCount(taskCtx, uint(articleID))
+	}, 3*time.Second)
+
+	if err != nil {
+		h.logger.Debug("提交浏览次数更新任务失败", "articleID", articleID, "error", err.Error())
+	}
 
 	h.logger.Info("获取文章详情成功", "articleID", articleID)
 	utils.SuccessResponse(c, 200, "获取成功", article)

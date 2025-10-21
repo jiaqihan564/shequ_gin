@@ -56,12 +56,41 @@ var (
 	ErrConfigNotFound = errors.New("配置文件不存在")
 )
 
-// 标准错误码字符串（与文档一致）
+// Standard Error Codes - 标准错误码（用于API响应）
 const (
-	ErrCodeAuthRequired      = "AUTH_REQUIRED"
+	// Authentication & Authorization - 认证和授权
+	ErrCodeAuthRequired       = "AUTH_REQUIRED"
+	ErrCodeInvalidToken       = "INVALID_TOKEN"
+	ErrCodeTokenExpired       = "TOKEN_EXPIRED"
+	ErrCodeInvalidCredentials = "INVALID_CREDENTIALS"
+	ErrCodePermissionDenied   = "PERMISSION_DENIED"
+
+	// User Management - 用户管理
+	ErrCodeUserNotFound = "USER_NOT_FOUND"
+	ErrCodeUserExists   = "USER_EXISTS"
+	ErrCodeEmailExists  = "EMAIL_EXISTS"
+
+	// Validation - 数据验证
+	ErrCodeInvalidInput     = "INVALID_INPUT"
+	ErrCodeMissingParam     = "MISSING_PARAMETER"
+	ErrCodeValidationFailed = "VALIDATION_FAILED"
+
+	// Upload - 文件上传
 	ErrCodeUploadInvalidType = "UPLOAD_INVALID_TYPE"
 	ErrCodeUploadTooLarge    = "UPLOAD_TOO_LARGE"
 	ErrCodeUploadFailed      = "UPLOAD_FAILED"
+
+	// Database - 数据库
+	ErrCodeDatabaseError  = "DATABASE_ERROR"
+	ErrCodeRecordNotFound = "RECORD_NOT_FOUND"
+	ErrCodeDuplicateEntry = "DUPLICATE_ENTRY"
+
+	// Rate Limiting - 限流
+	ErrCodeRateLimitExceeded = "RATE_LIMIT_EXCEEDED"
+
+	// System - 系统
+	ErrCodeInternalError      = "INTERNAL_ERROR"
+	ErrCodeServiceUnavailable = "SERVICE_UNAVAILABLE"
 )
 
 // AppError 应用错误（包含上下文信息）
@@ -112,15 +141,20 @@ func WrapError(err error, message string) error {
 	return fmt.Errorf("%s: %w", message, err)
 }
 
-// GetHTTPStatusCode 获取错误对应的HTTP状态码
+// GetHTTPStatusCode returns the HTTP status code for an error.
+// It checks if the error is an AppError first, then falls back to standard error mapping.
 func GetHTTPStatusCode(err error) int {
-	// 检查是否是AppError
+	if err == nil {
+		return 200
+	}
+
+	// Check if it's an AppError
 	var appErr *AppError
 	if errors.As(err, &appErr) {
 		return appErr.Code
 	}
 
-	// 标准错误映射
+	// Standard error mapping
 	switch {
 	case errors.Is(err, ErrUserNotAuthenticated) || errors.Is(err, ErrInvalidToken) || errors.Is(err, ErrTokenExpired):
 		return 401
@@ -147,5 +181,47 @@ func GetHTTPStatusCode(err error) int {
 		return 503
 	default:
 		return 500
+	}
+}
+
+// GetErrorCode returns the error code string for API responses.
+func GetErrorCode(err error) string {
+	if err == nil {
+		return ""
+	}
+
+	// Check if it's an AppError with custom error code
+	var appErr *AppError
+	if errors.As(err, &appErr) {
+		// Use the error type as code if available
+		if errCode, ok := appErr.Context["error_code"].(string); ok {
+			return errCode
+		}
+	}
+
+	// Map standard errors to error codes
+	switch {
+	case errors.Is(err, ErrUserNotAuthenticated) || errors.Is(err, ErrInvalidToken):
+		return ErrCodeAuthRequired
+	case errors.Is(err, ErrTokenExpired):
+		return ErrCodeTokenExpired
+	case errors.Is(err, ErrInvalidCredentials):
+		return ErrCodeInvalidCredentials
+	case errors.Is(err, ErrUserNotFound):
+		return ErrCodeUserNotFound
+	case errors.Is(err, ErrUserAlreadyExists):
+		return ErrCodeUserExists
+	case errors.Is(err, ErrEmailAlreadyExists):
+		return ErrCodeEmailExists
+	case errors.Is(err, ErrInvalidParameter) || errors.Is(err, ErrValidationFailed):
+		return ErrCodeInvalidInput
+	case errors.Is(err, ErrMissingParameter):
+		return ErrCodeMissingParam
+	case errors.Is(err, ErrRateLimitExceeded):
+		return ErrCodeRateLimitExceeded
+	case errors.Is(err, ErrDatabaseQuery) || errors.Is(err, ErrDatabaseConnection):
+		return ErrCodeDatabaseError
+	default:
+		return ErrCodeInternalError
 	}
 }

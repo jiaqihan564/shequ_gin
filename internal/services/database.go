@@ -49,8 +49,12 @@ func NewDatabase(cfg *config.Config) (*Database, error) {
 	db.SetMaxIdleConns(cfg.Database.MaxIdleConns)
 	db.SetConnMaxLifetime(cfg.Database.ConnMaxLifetime)
 
-	// 设置连接超时
-	db.SetConnMaxIdleTime(5 * time.Minute)
+	// 设置空闲连接超时（优化：更快释放空闲连接）
+	idleTimeout := 5 * time.Minute
+	if cfg.Database.ConnMaxIdleTime > 0 {
+		idleTimeout = cfg.Database.ConnMaxIdleTime
+	}
+	db.SetConnMaxIdleTime(idleTimeout)
 
 	// 创建数据库实例
 	dbInstance := &Database{
@@ -98,7 +102,9 @@ func NewDatabase(cfg *config.Config) (*Database, error) {
 		"port", cfg.Database.Port,
 		"database", cfg.Database.Database,
 		"maxOpenConns", cfg.Database.MaxOpenConns,
-		"maxIdleConns", cfg.Database.MaxIdleConns)
+		"maxIdleConns", cfg.Database.MaxIdleConns,
+		"connMaxLifetime", cfg.Database.ConnMaxLifetime,
+		"connMaxIdleTime", idleTimeout)
 
 	return dbInstance, nil
 }
@@ -208,13 +214,15 @@ func (d *Database) ExecWithCache(ctx context.Context, query string, args ...inte
 		"duration", duration,
 		"durationMs", duration.Milliseconds())
 
-	// 慢查询警告
-	if duration > 100*time.Millisecond {
+	// 慢查询警告（优化：降低阈值到50ms）
+	slowQueryThreshold := 50 * time.Millisecond
+	if duration > slowQueryThreshold {
 		d.logger.Warn("检测到慢查询[ExecWithCache]",
 			"query", utils.TruncateString(query, 200),
 			"duration", duration,
 			"durationMs", duration.Milliseconds(),
-			"threshold", "100ms")
+			"threshold", slowQueryThreshold.String(),
+			"params", utils.FormatSQLParams(args))
 	}
 
 	return result, nil
@@ -245,13 +253,15 @@ func (d *Database) QueryRowWithCache(ctx context.Context, query string, args ...
 		"duration", duration,
 		"durationMs", duration.Milliseconds())
 
-	// 慢查询警告
-	if duration > 100*time.Millisecond {
+	// 慢查询警告（优化：降低阈值到50ms）
+	slowQueryThreshold := 50 * time.Millisecond
+	if duration > slowQueryThreshold {
 		d.logger.Warn("检测到慢查询[QueryRowWithCache]",
 			"query", utils.TruncateString(query, 200),
 			"duration", duration,
 			"durationMs", duration.Milliseconds(),
-			"threshold", "100ms")
+			"threshold", slowQueryThreshold.String(),
+			"params", utils.FormatSQLParams(args))
 	}
 
 	return row
@@ -290,13 +300,15 @@ func (d *Database) QueryWithCache(ctx context.Context, query string, args ...int
 		"duration", duration,
 		"durationMs", duration.Milliseconds())
 
-	// 慢查询警告
-	if duration > 100*time.Millisecond {
+	// 慢查询警告（优化：降低阈值到50ms）
+	slowQueryThreshold := 50 * time.Millisecond
+	if duration > slowQueryThreshold {
 		d.logger.Warn("检测到慢查询[QueryWithCache]",
 			"query", utils.TruncateString(query, 200),
 			"duration", duration,
 			"durationMs", duration.Milliseconds(),
-			"threshold", "100ms")
+			"threshold", slowQueryThreshold.String(),
+			"params", utils.FormatSQLParams(args))
 	}
 
 	return rows, nil

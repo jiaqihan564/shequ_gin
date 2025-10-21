@@ -1,3 +1,28 @@
+// Package utils provides a Worker Pool implementation for controlled concurrency.
+// The WorkerPool manages a fixed number of goroutines to process tasks,
+// preventing goroutine explosion and providing better resource control.
+//
+// Features:
+//   - Fixed number of workers
+//   - Task queue with configurable size
+//   - Automatic timeout handling
+//   - Graceful shutdown
+//   - Performance metrics
+//
+// Example usage:
+//
+//	pool := NewWorkerPool(10, 1000) // 10 workers, queue size 1000
+//	defer pool.Shutdown(30 * time.Second)
+//
+//	task := Task{
+//	    ID: "task-1",
+//	    Execute: func(ctx context.Context) error {
+//	        // Task logic here
+//	        return nil
+//	    },
+//	    Timeout: 30 * time.Second,
+//	}
+//	pool.Submit(task)
 package utils
 
 import (

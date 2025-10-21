@@ -49,6 +49,7 @@ type DatabaseConfig struct {
 	MaxOpenConns    int           `yaml:"max_open_conns" json:"max_open_conns"`
 	MaxIdleConns    int           `yaml:"max_idle_conns" json:"max_idle_conns"`
 	ConnMaxLifetime time.Duration `yaml:"conn_max_lifetime" json:"conn_max_lifetime"`
+	ConnMaxIdleTime time.Duration `yaml:"conn_max_idle_time" json:"conn_max_idle_time"` // 空闲连接最大存活时间
 }
 
 // LogConfig 日志配置
@@ -117,26 +118,38 @@ type CodeExecutorConfig struct {
 	RateLimit    int    `yaml:"rate_limit" json:"rate_limit"`       // 限流：每分钟执行次数
 }
 
-// Load 加载配置
+// Load loads configuration from file and environment variables.
+// It follows the priority: Environment Variables > Config File > Defaults
+//
+// Configuration file search order:
+//  1. config.{env}.yaml (e.g., config.prod.yaml)
+//  2. config.yaml
+//
+// Environment variable APP_ENV determines which config file to use.
 func Load() *Config {
-	// 获取环境变量
+	// Get environment
 	env := getEnv("APP_ENV", "dev")
 	configFile := getConfigFile(env)
 
-	// 创建默认配置
+	// Create default configuration
 	config := getDefaultConfig()
 
-	// 从配置文件加载
+	// Load from configuration file
 	if configFile != "" {
 		if err := loadFromFile(config, configFile); err != nil {
-			fmt.Printf("警告: 加载配置文件失败 %s: %v\n", configFile, err)
+			fmt.Printf("Warning: Failed to load config file %s: %v\n", configFile, err)
 		} else {
-			fmt.Printf("已加载配置文件: %s\n", configFile)
+			fmt.Printf("Loaded configuration from: %s\n", configFile)
 		}
 	}
 
-	// 环境变量覆盖配置文件
+	// Override with environment variables
 	overrideWithEnvVars(config)
+
+	// Validate configuration
+	if err := config.Validate(); err != nil {
+		fmt.Printf("Warning: Configuration validation failed: %v\n", err)
+	}
 
 	return config
 }
@@ -181,6 +194,7 @@ func getDefaultConfig() *Config {
 			MaxOpenConns:    100,
 			MaxIdleConns:    10,
 			ConnMaxLifetime: time.Hour,
+			ConnMaxIdleTime: 5 * time.Minute, // 默认空闲5分钟
 		},
 		Log: LogConfig{
 			Level:      "info",
@@ -355,10 +369,72 @@ func parseInt(s string) int {
 	return result
 }
 
-// getEnv 获取环境变量，如果不存在则返回默认值
+// getEnv retrieves environment variable or returns default value if not set.
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
 	}
 	return defaultValue
+}
+
+// =============================================================================
+// Configuration Validation - 配置验证
+// =============================================================================
+
+// Validate validates the configuration and returns error if invalid.
+func (c *Config) Validate() error {
+	// Validate Server Config
+	if c.Server.Port == "" {
+		return fmt.Errorf("server.port is required")
+	}
+	if c.Server.Mode != "debug" && c.Server.Mode != "release" && c.Server.Mode != "test" {
+		return fmt.Errorf("server.mode must be one of: debug, release, test")
+	}
+
+	// Validate Database Config
+	if c.Database.Host == "" {
+		return fmt.Errorf("database.host is required")
+	}
+	if c.Database.Port == "" {
+		return fmt.Errorf("database.port is required")
+	}
+	if c.Database.Username == "" {
+		return fmt.Errorf("database.username is required")
+	}
+	if c.Database.Database == "" {
+		return fmt.Errorf("database.database is required")
+	}
+	if c.Database.MaxOpenConns <= 0 {
+		return fmt.Errorf("database.max_open_conns must be positive")
+	}
+	if c.Database.MaxIdleConns <= 0 {
+		return fmt.Errorf("database.max_idle_conns must be positive")
+	}
+	if c.Database.MaxIdleConns > c.Database.MaxOpenConns {
+		return fmt.Errorf("database.max_idle_conns cannot exceed max_open_conns")
+	}
+
+	// Validate JWT Config
+	if c.JWT.SecretKey == "" || c.JWT.SecretKey == "default_secret_key_change_in_production" {
+		fmt.Println("Warning: Using default JWT secret key. Change it in production!")
+	}
+	if c.JWT.ExpireHours <= 0 {
+		return fmt.Errorf("jwt.expire_hours must be positive")
+	}
+
+	// Validate MinIO Config
+	if c.MinIO.Endpoint == "" {
+		return fmt.Errorf("minio.endpoint is required")
+	}
+	if c.MinIO.AccessKeyID == "" {
+		return fmt.Errorf("minio.access_key_id is required")
+	}
+	if c.MinIO.SecretAccessKey == "" {
+		return fmt.Errorf("minio.secret_access_key is required")
+	}
+	if c.MinIO.Bucket == "" {
+		return fmt.Errorf("minio.bucket is required")
+	}
+
+	return nil
 }

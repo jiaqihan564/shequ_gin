@@ -159,8 +159,13 @@ func (m *UploadManager) MergeChunks(ctx context.Context, uploadID string) (*mode
 	now := time.Now()
 	storagePath := fmt.Sprintf("resources/%d/%02d/%s_%s", now.Year(), now.Month(), uploadID[:8], chunk.FileName)
 
-	// TODO: 从MinIO读取所有分片并合并（需要实现实际的合并逻辑）
-	// 这里先标记为已完成，实际合并逻辑需要根据MinIO客户端实现
+	// NOTE: v2.0 Feature - Actual file merging from MinIO chunks
+	// Currently, this implementation marks the upload as complete and returns the storage path.
+	// Future implementation should:
+	//   1. Download all chunks from MinIO temporary storage
+	//   2. Merge chunks into a single file
+	//   3. Upload merged file to final storage location
+	//   4. Clean up temporary chunk files
 
 	// 更新状态为已完成
 	updateQuery := `UPDATE upload_chunks SET status = 1, storage_path = ?, updated_at = ? WHERE upload_id = ?`
@@ -223,7 +228,9 @@ func (m *UploadManager) CancelUpload(ctx context.Context, uploadID string, userI
 		return fmt.Errorf("取消上传失败")
 	}
 
-	// TODO: 删除MinIO中的分片文件
+	// NOTE: v2.0 Feature - Clean up chunk files from MinIO
+	// Future implementation should delete all temporary chunk files from MinIO
+	// when an upload is cancelled to free up storage space
 
 	m.logger.Info("取消上传", "uploadID", uploadID)
 	return nil

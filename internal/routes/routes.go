@@ -20,6 +20,7 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 	// 添加中间件
 	r.Use(middleware.RequestIDMiddleware())                                   // 请求ID中间件
 	r.Use(middleware.CORSMiddleware(cfg))                                     // CORS跨域
+	r.Use(middleware.FastCompressionMiddleware())                             // 响应压缩（速度优先）
 	r.Use(middleware.LoggerMiddleware())                                      // 详细日志（包含请求/响应体）
 	r.Use(middleware.PerformanceMiddleware(ctn.DB))                           // 性能追踪（内存、CPU、数据库连接池）
 	r.Use(middleware.MetricsMiddleware())                                     // 性能监控中间件
@@ -49,6 +50,70 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 
 	// 性能监控路由
 	r.GET("/metrics", middleware.MetricsHandler)
+	r.GET("/metrics/compression", func(c *gin.Context) {
+		stats := middleware.GetCompressionStats()
+		c.JSON(200, gin.H{
+			"code":    200,
+			"message": "success",
+			"data":    stats,
+		})
+	})
+	r.GET("/metrics/cache", func(c *gin.Context) {
+		stats := ctn.CacheSvc.GetAllCacheStats()
+		c.JSON(200, gin.H{
+			"code":    200,
+			"message": "success",
+			"data":    stats,
+		})
+	})
+	r.GET("/metrics/performance", func(c *gin.Context) {
+		profiler := utils.GetGlobalProfiler()
+		report := profiler.GetFullReport()
+		c.JSON(200, gin.H{
+			"code":    200,
+			"message": "success",
+			"data": gin.H{
+				"uptime": report.Uptime.String(),
+				"latency": gin.H{
+					"p50": report.Latency.P50.String(),
+					"p95": report.Latency.P95.String(),
+					"p99": report.Latency.P99.String(),
+					"min": report.Latency.Min.String(),
+					"max": report.Latency.Max.String(),
+				},
+				"goroutine": report.Goroutine,
+				"memory": gin.H{
+					"alloc":      report.Memory.Alloc,
+					"totalAlloc": report.Memory.TotalAlloc,
+					"sys":        report.Memory.Sys,
+					"numGC":      report.Memory.NumGC,
+					"heapInuse":  report.Memory.HeapInuse,
+				},
+			},
+		})
+	})
+	r.GET("/metrics/slow-queries", func(c *gin.Context) {
+		detector := utils.GetGlobalSlowQueryDetector()
+		stats := detector.GetStats()
+		queries := detector.GetSlowQueries()
+		c.JSON(200, gin.H{
+			"code":    200,
+			"message": "success",
+			"data": gin.H{
+				"stats":   stats,
+				"queries": queries,
+			},
+		})
+	})
+	r.GET("/metrics/worker-pool", func(c *gin.Context) {
+		pool := utils.GetGlobalPool()
+		metrics := pool.GetMetrics()
+		c.JSON(200, gin.H{
+			"code":    200,
+			"message": "success",
+			"data":    metrics,
+		})
+	})
 
 	// API路由组
 	api := r.Group("/api")

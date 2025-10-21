@@ -16,15 +16,49 @@ type CacheService struct {
 	cache       *utils.MemoryCache
 	articleRepo *ArticleRepository
 	logger      utils.Logger
+
+	// 分组缓存（不同类型数据使用不同的LRU缓存）
+	articleCache *utils.LRUCache // 文章缓存
+	userCache    *utils.LRUCache // 用户缓存
+	listCache    *utils.LRUCache // 列表缓存
 }
 
 // NewCacheService 创建缓存服务
 func NewCacheService(articleRepo *ArticleRepository) *CacheService {
-	return &CacheService{
+	logger := utils.GetLogger()
+
+	service := &CacheService{
 		cache:       utils.GetCache(),
 		articleRepo: articleRepo,
-		logger:      utils.GetLogger(),
+		logger:      logger,
+
+		// 创建分组缓存
+		articleCache: utils.NewLRUCache(utils.LRUCacheConfig{
+			Capacity:   500,              // 最多缓存500篇文章
+			MaxMemory:  50 * 1024 * 1024, // 50MB
+			DefaultTTL: 5 * time.Minute,
+		}),
+		userCache: utils.NewLRUCache(utils.LRUCacheConfig{
+			Capacity:   1000,             // 最多缓存1000个用户
+			MaxMemory:  10 * 1024 * 1024, // 10MB
+			DefaultTTL: 10 * time.Minute,
+		}),
+		listCache: utils.NewLRUCache(utils.LRUCacheConfig{
+			Capacity:   100,              // 最多缓存100个列表查询
+			MaxMemory:  20 * 1024 * 1024, // 20MB
+			DefaultTTL: 2 * time.Minute,
+		}),
 	}
+
+	logger.Info("缓存服务已初始化",
+		"articleCacheCapacity", 500,
+		"userCacheCapacity", 1000,
+		"listCacheCapacity", 100)
+
+	// 启动缓存预热（异步）
+	go service.warmupCache()
+
+	return service
 }
 
 // Cache Keys
@@ -210,5 +244,39 @@ func (s *CacheService) GetCacheStats() map[string]interface{} {
 // ClearAllCache 清空所有缓存（谨慎使用）
 func (s *CacheService) ClearAllCache() {
 	s.cache.Clear()
+	s.articleCache.Clear()
+	s.userCache.Clear()
+	s.listCache.Clear()
 	s.logger.Warn("所有缓存已清空")
+}
+
+// warmupCache 缓存预热
+func (s *CacheService) warmupCache() {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	s.logger.Info("开始缓存预热...")
+
+	// 预热分类和标签（最常访问的数据）
+	if categories, err := s.articleRepo.GetAllCategories(ctx); err == nil {
+		s.cache.SetWithTTL(cacheKeyArticleCategories, categories, cacheTTLCategories)
+		s.logger.Info("分类数据已预热", "count", len(categories))
+	}
+
+	if tags, err := s.articleRepo.GetAllTags(ctx); err == nil {
+		s.cache.SetWithTTL(cacheKeyArticleTags, tags, cacheTTLTags)
+		s.logger.Info("标签数据已预热", "count", len(tags))
+	}
+
+	s.logger.Info("缓存预热完成")
+}
+
+// GetAllCacheStats 获取所有缓存统计
+func (s *CacheService) GetAllCacheStats() map[string]interface{} {
+	return map[string]interface{}{
+		"global":  s.cache.Stats(),
+		"article": s.articleCache.Stats(),
+		"user":    s.userCache.Stats(),
+		"list":    s.listCache.Stats(),
+	}
 }
