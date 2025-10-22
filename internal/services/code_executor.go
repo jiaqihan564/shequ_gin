@@ -358,10 +358,10 @@ func (e *PistonCodeExecutor) Execute(ctx context.Context, language, code, stdin 
 		"stdout_preview", truncateString(pistonResp.Run.Stdout, 200),
 		"stderr_preview", truncateString(pistonResp.Run.Stderr, 200))
 
-	// 构建返回结果
+	// 构建返回结果（不包含内存数据，因为公共 Piston API 不提供真实内存信息）
 	result := &models.ExecuteCodeResponse{
 		ExecutionTime: executionTime,
-		MemoryUsage:   0, // Piston API 不提供内存使用信息
+		MemoryUsage:   0, // 不再提供内存数据
 	}
 
 	// 判断执行状态

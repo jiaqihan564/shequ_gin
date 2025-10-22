@@ -112,6 +112,7 @@ type PistonExecuteResponse struct {
 		Code   int    `json:"code"`
 		Signal string `json:"signal"`
 		Output string `json:"output"`
+		Memory int64  `json:"memory"` // 内存使用（KB）
 	} `json:"run"`
 	Language string `json:"language"`
 	Version  string `json:"version"`
