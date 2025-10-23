@@ -774,9 +774,14 @@ func (r *ArticleRepository) GetComments(ctx context.Context, articleID uint, pag
 
 	// 第三步：批量获取所有子评论（优化递归N+1）
 	childCommentsMap := r.batchGetChildComments(ctx, articleID, commentIDs, userID)
+	r.logger.Info("批量获取文章子评论", "commentCount", len(commentIDs), "childMapSize", len(childCommentsMap))
 	for i := range comments {
-		if children, exists := childCommentsMap[comments[i].ID]; exists {
+		// 确保所有评论都有 Replies 字段（即使为空数组）
+		if children, exists := childCommentsMap[comments[i].ID]; exists && len(children) > 0 {
 			comments[i].Replies = children
+			r.logger.Info("设置评论的子回复", "commentID", comments[i].ID, "repliesCount", len(children))
+		} else {
+			comments[i].Replies = make([]models.CommentDetailResponse, 0)
 		}
 	}
 
@@ -912,24 +917,47 @@ func (r *ArticleRepository) batchGetChildComments(ctx context.Context, articleID
 	}
 
 	// 构建评论树（在内存中组装）
-	commentByID := make(map[uint]*models.CommentDetailResponse)
+	// 按parent_id分组
+	commentsByParent := make(map[uint][]models.CommentDetailResponse)
 	for i := range allChildren {
-		commentByID[allChildren[i].ID] = &allChildren[i]
+		// 确保每个评论都有Replies字段初始化
+		if allChildren[i].Replies == nil {
+			allChildren[i].Replies = make([]models.CommentDetailResponse, 0)
+		}
+		parentID := allChildren[i].ParentID
+		commentsByParent[parentID] = append(commentsByParent[parentID], allChildren[i])
 	}
 
-	// 组装树形结构
-	for i := range allChildren {
-		parentID := allChildren[i].ParentID
+	r.logger.Info("开始组装文章评论树", "totalChildren", len(allChildren), "topLevelParents", len(childMap))
 
-		// 如果父评论在一级评论中，直接添加
-		if _, isTopLevel := childMap[parentID]; isTopLevel {
-			childMap[parentID] = append(childMap[parentID], allChildren[i])
-		} else if parent, exists := commentByID[parentID]; exists {
-			// 如果父评论是子评论，添加到父评论的Replies中
-			parent.Replies = append(parent.Replies, allChildren[i])
+	// 递归函数：为评论填充其子回复
+	var fillReplies func(*models.CommentDetailResponse)
+	fillReplies = func(comment *models.CommentDetailResponse) {
+		if children, exists := commentsByParent[comment.ID]; exists {
+			comment.Replies = make([]models.CommentDetailResponse, len(children))
+			copy(comment.Replies, children)
+			// 递归为每个子评论填充其子回复
+			for i := range comment.Replies {
+				fillReplies(&comment.Replies[i])
+			}
+			r.logger.Info("填充评论的子回复", "commentID", comment.ID, "repliesCount", len(comment.Replies))
 		}
 	}
 
+	// 为所有一级评论填充子回复树
+	for parentID, children := range commentsByParent {
+		if _, isTopLevel := childMap[parentID]; isTopLevel {
+			childMap[parentID] = make([]models.CommentDetailResponse, len(children))
+			copy(childMap[parentID], children)
+			// 为每个一级子评论递归填充其子回复
+			for i := range childMap[parentID] {
+				fillReplies(&childMap[parentID][i])
+			}
+			r.logger.Info("设置一级评论的子回复", "parentID", parentID, "childrenCount", len(children))
+		}
+	}
+
+	r.logger.Info("完成组装文章评论树", "childMapSize", len(childMap))
 	return childMap
 }
 

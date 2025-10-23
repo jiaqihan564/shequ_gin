@@ -36,6 +36,9 @@ func (r *ResourceCommentRepository) CreateComment(ctx context.Context, comment *
 	query := `INSERT INTO resource_comments (resource_id, user_id, parent_id, root_id, reply_to_user_id, 
 	          content, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 
+	r.logger.Info("准备插入评论", "resourceID", comment.ResourceID, "userID", comment.UserID,
+		"parentID", comment.ParentID, "rootID", comment.RootID, "replyToUserID", comment.ReplyToUserID)
+
 	result, err := tx.ExecContext(ctx, query, comment.ResourceID, comment.UserID, comment.ParentID,
 		comment.RootID, comment.ReplyToUserID, comment.Content, comment.CreatedAt, comment.UpdatedAt)
 
@@ -127,6 +130,7 @@ func (r *ResourceCommentRepository) GetCommentsByResourceID(ctx context.Context,
 
 	// 第三步：批量查询所有评论的回复（优化N+1）
 	repliesMap := r.batchGetReplies(ctx, commentIDs, userID)
+	r.logger.Info("批量查询评论回复", "commentCount", len(commentIDs), "repliesMapSize", len(repliesMap))
 
 	// 第四步：组装数据
 	for i := range comments {
@@ -135,9 +139,11 @@ func (r *ResourceCommentRepository) GetCommentsByResourceID(ctx context.Context,
 			comments[i].User = user
 		}
 
-		// 设置回复
-		if replies, exists := repliesMap[comments[i].ID]; exists {
+		// 设置回复，确保始终有 Replies 字段（即使为空数组）
+		if replies, exists := repliesMap[comments[i].ID]; exists && len(replies) > 0 {
 			comments[i].Replies = replies
+		} else {
+			comments[i].Replies = make([]models.ResourceCommentResponse, 0)
 		}
 	}
 
@@ -294,6 +300,7 @@ func (r *ResourceCommentRepository) batchGetReplies(ctx context.Context, comment
 
 	rows, err := r.db.DB.QueryContext(ctx, query, args...)
 	if err != nil {
+		r.logger.Error("批量查询回复失败", "error", err.Error())
 		// 返回空map，每个评论都有空数组
 		for _, id := range commentIDs {
 			repliesMap[id] = make([]models.ResourceCommentResponse, 0)
@@ -310,18 +317,23 @@ func (r *ResourceCommentRepository) batchGetReplies(ctx context.Context, comment
 	// 收集所有回复和用户ID
 	allReplies := make([]models.ResourceCommentResponse, 0)
 	replyUserIDs := make([]uint, 0)
+	childCommentIDs := make([]uint, 0)
 
 	for rows.Next() {
 		reply, err := r.scanComment(rows, userID)
 		if err != nil {
+			r.logger.Warn("扫描回复失败", "error", err.Error())
 			continue
 		}
 		allReplies = append(allReplies, reply)
 		replyUserIDs = append(replyUserIDs, reply.UserID)
+		childCommentIDs = append(childCommentIDs, reply.ID)
 		if reply.ReplyToUser != nil && reply.ReplyToUser.ID > 0 {
 			replyUserIDs = append(replyUserIDs, reply.ReplyToUser.ID)
 		}
 	}
+
+	r.logger.Info("收集回复数据", "allRepliesCount", len(allReplies), "childCommentIDs", len(childCommentIDs))
 
 	// 批量查询回复的用户信息
 	if len(replyUserIDs) > 0 {
@@ -340,10 +352,26 @@ func (r *ResourceCommentRepository) batchGetReplies(ctx context.Context, comment
 					allReplies[i].ReplyToUser = replyToUser
 				}
 			}
-
-			// 添加到对应的父评论
-			repliesMap[allReplies[i].ParentID] = append(repliesMap[allReplies[i].ParentID], allReplies[i])
 		}
+	}
+
+	// 递归获取子评论的子评论（支持多层嵌套）
+	if len(childCommentIDs) > 0 {
+		childRepliesMap := r.batchGetReplies(ctx, childCommentIDs, userID)
+
+		// 为每个回复设置其子回复，确保总是有 Replies 字段
+		for i := range allReplies {
+			if childReplies, exists := childRepliesMap[allReplies[i].ID]; exists && len(childReplies) > 0 {
+				allReplies[i].Replies = childReplies
+			} else {
+				allReplies[i].Replies = make([]models.ResourceCommentResponse, 0)
+			}
+		}
+	}
+
+	// 添加到对应的父评论
+	for i := range allReplies {
+		repliesMap[allReplies[i].ParentID] = append(repliesMap[allReplies[i].ParentID], allReplies[i])
 	}
 
 	return repliesMap
