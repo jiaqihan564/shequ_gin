@@ -23,17 +23,19 @@ type UploadHandler struct {
 	storage            services.StorageClient
 	resourceStorage    *services.ResourceStorageService
 	userService        services.UserServiceInterface
+	historyRepo        *services.HistoryRepository
 	logger             utils.Logger
 	maxAvatarSizeBytes int64
 	maxAvatarHistory   int
 }
 
 // NewUploadHandler 创建上传处理器
-func NewUploadHandler(storage services.StorageClient, resourceStorage *services.ResourceStorageService, userService services.UserServiceInterface, maxAvatarSizeBytes int64, maxAvatarHistory int) *UploadHandler {
+func NewUploadHandler(storage services.StorageClient, resourceStorage *services.ResourceStorageService, userService services.UserServiceInterface, maxAvatarSizeBytes int64, maxAvatarHistory int, historyRepo *services.HistoryRepository) *UploadHandler {
 	return &UploadHandler{
 		storage:            storage,
 		resourceStorage:    resourceStorage,
 		userService:        userService,
+		historyRepo:        historyRepo,
 		logger:             utils.GetLogger(),
 		maxAvatarSizeBytes: maxAvatarSizeBytes,
 		maxAvatarHistory:   maxAvatarHistory,
@@ -167,6 +169,14 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 	if h.userService != nil {
 		h.logger.Debug("【UploadAvatar】开始更新数据库头像URL", "userID", userID)
 		dbUpdateStart := time.Now()
+
+		// 先获取旧头像URL（用于历史记录）
+		oldProfile, _ := h.userService.GetUserProfile(c.Request.Context(), userID)
+		oldAvatarURL := ""
+		if oldProfile != nil {
+			oldAvatarURL = oldProfile.AvatarURL
+		}
+
 		prof := &models.UserExtraProfile{
 			UserID:    userID,
 			AvatarURL: url, // 使用不带时间戳的URL存储到数据库
@@ -186,6 +196,16 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 				"userID", userID,
 				"url", url,
 				"dbUpdateLatency", dbUpdateLatency)
+
+			// 异步记录头像修改历史
+			if h.historyRepo != nil {
+				go func() {
+					h.historyRepo.RecordProfileChange(userID, "avatar", oldAvatarURL, url, clientIP)
+					h.historyRepo.RecordOperationHistory(userID, username, "修改头像",
+						fmt.Sprintf("上传新头像: %s", fileHeader.Filename), clientIP)
+					h.logger.Debug("【UploadAvatar】头像修改历史已记录", "userID", userID)
+				}()
+			}
 		}
 	}
 

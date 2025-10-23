@@ -32,7 +32,7 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 	authHandler := handlers.NewAuthHandler(ctn.Auth)
 	userHandler := handlers.NewUserHandler(ctn.UserSvc, ctn.HistoryRepo, cfg)
 	healthHandler := handlers.NewHealthHandler(ctn.DB)
-	uploadHandler := handlers.NewUploadHandler(ctn.Storage, ctn.ResourceStorage, ctn.UserSvc, uploadMaxBytes, cfg.Assets.MaxAvatarHistory)
+	uploadHandler := handlers.NewUploadHandler(ctn.Storage, ctn.ResourceStorage, ctn.UserSvc, uploadMaxBytes, cfg.Assets.MaxAvatarHistory, ctn.HistoryRepo)
 	statsHandler := handlers.NewStatisticsHandler(ctn.StatsRepo)
 	historyHandler := handlers.NewHistoryHandler(ctn.HistoryRepo)
 	cumulativeHandler := handlers.NewCumulativeStatsHandler(ctn.CumulativeRepo)

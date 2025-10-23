@@ -282,12 +282,16 @@ func (r *UserRepository) GetUserProfile(ctx context.Context, userID uint) (*mode
 	defer cancel()
 
 	prof := &models.UserExtraProfile{}
+
+	// 使用 sql.NullString 处理可能为NULL的字段
+	var nickname, bio, avatarURL sql.NullString
+
 	// 使用缓存的prepared statement
 	err := r.db.QueryRowWithCache(ctx, query, userID).Scan(
 		&prof.UserID,
-		&prof.Nickname,
-		&prof.Bio,
-		&prof.AvatarURL,
+		&nickname,  // 使用 NullString
+		&bio,       // 使用 NullString
+		&avatarURL, // 使用 NullString
 		&prof.CreatedAt,
 		&prof.UpdatedAt,
 	)
@@ -300,6 +304,11 @@ func (r *UserRepository) GetUserProfile(ctx context.Context, userID uint) (*mode
 		r.logger.Error("查询用户扩展资料失败", "userID", userID, "error", err.Error())
 		return nil, utils.ErrDatabaseQuery
 	}
+
+	// 安全地转换 NullString 为 string（NULL -> 空字符串）
+	prof.Nickname = nickname.String
+	prof.Bio = bio.String
+	prof.AvatarURL = avatarURL.String
 
 	return prof, nil
 }

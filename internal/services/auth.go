@@ -173,11 +173,22 @@ func (s *AuthService) Login(ctx context.Context, username, password, clientIP, p
 	profileQueryStart := time.Now()
 	extra, _ := s.userRepo.GetUserProfile(ctx, user.ID)
 	profileQueryLatency := time.Since(profileQueryStart)
+
+	// 安全检查 nil，避免空指针引用
+	hasNickname := false
+	hasBio := false
+	hasAvatar := false
+	if extra != nil {
+		hasNickname = extra.Nickname != ""
+		hasBio = extra.Bio != ""
+		hasAvatar = extra.AvatarURL != ""
+	}
+
 	s.logger.Debug("【AuthService.Login】扩展资料读取完成",
 		"userID", user.ID,
-		"hasNickname", extra.Nickname != "",
-		"hasBio", extra.Bio != "",
-		"hasAvatar", extra.AvatarURL != "",
+		"hasNickname", hasNickname,
+		"hasBio", hasBio,
+		"hasAvatar", hasAvatar,
 		"profileQueryLatency", profileQueryLatency)
 
 	// 检查用户是否为管理员
@@ -200,6 +211,16 @@ func (s *AuthService) Login(ctx context.Context, username, password, clientIP, p
 		"username", user.Username,
 		"role", role)
 
+	// 安全获取扩展资料字段（防止 nil 指针）
+	avatarURL := ""
+	nickname := ""
+	bio := ""
+	if extra != nil {
+		avatarURL = extra.AvatarURL
+		nickname = extra.Nickname
+		bio = extra.Bio
+	}
+
 	// 返回登录成功响应（匹配前端期望格式）
 	response := &models.LoginResponse{
 		Code:    200,
@@ -215,10 +236,10 @@ func (s *AuthService) Login(ctx context.Context, username, password, clientIP, p
 				Email:         user.Email,
 				AuthStatus:    user.AuthStatus,
 				AccountStatus: user.AccountStatus,
-				AvatarURL:     extra.AvatarURL, // 使用数据库中的头像URL
-				Nickname:      extra.Nickname,
-				Bio:           extra.Bio,
-				Role:          role, // 添加角色字段
+				AvatarURL:     avatarURL, // 安全访问
+				Nickname:      nickname,  // 安全访问
+				Bio:           bio,       // 安全访问
+				Role:          role,      // 添加角色字段
 			},
 		},
 	}
@@ -467,6 +488,16 @@ func (s *AuthService) Register(ctx context.Context, username, password, email, c
 		"username", user.Username,
 		"role", role)
 
+	// 安全获取扩展资料字段（防止 nil 指针）
+	regAvatarURL := ""
+	regNickname := ""
+	regBio := ""
+	if extra != nil {
+		regAvatarURL = extra.AvatarURL
+		regNickname = extra.Nickname
+		regBio = extra.Bio
+	}
+
 	// 返回注册成功响应（匹配前端期望格式）
 	response := &models.LoginResponse{
 		Code:    201,
@@ -482,10 +513,10 @@ func (s *AuthService) Register(ctx context.Context, username, password, email, c
 				Email:         user.Email,
 				AuthStatus:    user.AuthStatus,
 				AccountStatus: user.AccountStatus,
-				AvatarURL:     extra.AvatarURL, // 注册时通常为空
-				Nickname:      extra.Nickname,
-				Bio:           extra.Bio,
-				Role:          role, // 添加角色字段
+				AvatarURL:     regAvatarURL, // 安全访问（注册时通常为空）
+				Nickname:      regNickname,  // 安全访问
+				Bio:           regBio,       // 安全访问
+				Role:          role,         // 添加角色字段
 			},
 		},
 	}

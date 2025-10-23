@@ -83,6 +83,9 @@ func (p *SlicePool) Get() []interface{} {
 }
 
 // Put 归还切片（会先清空）
+// Note: 切片是引用类型，不需要使用指针参数
+//
+//nolint:gocritic
 func (p *SlicePool) Put(s []interface{}) {
 	// 清空切片
 	s = s[:0]

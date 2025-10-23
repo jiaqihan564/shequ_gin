@@ -7,7 +7,6 @@ require (
 	github.com/go-sql-driver/mysql v1.7.1
 	github.com/golang-jwt/jwt/v4 v4.5.0
 	github.com/google/uuid v1.3.0
-	github.com/gorilla/websocket v1.5.3
 	github.com/minio/minio-go/v7 v7.0.63
 	golang.org/x/crypto v0.17.0
 	gopkg.in/yaml.v3 v3.0.1

@@ -12,7 +12,6 @@ import (
 // Profiler 性能分析工具
 type Profiler struct {
 	startTime time.Time
-	mu        sync.RWMutex
 
 	// 延迟统计（P50, P95, P99）
 	latencies    []time.Duration
