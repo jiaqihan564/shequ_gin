@@ -33,7 +33,7 @@ type AppLogger struct {
 	fatalLogger *log.Logger
 	config      *config.LogConfig
 
-	// async pipeline
+	// 异步管道
 	asyncEnabled bool
 	queue        chan logEvent
 	dropPolicy   string // block | drop_new | drop_oldest
@@ -423,7 +423,7 @@ func CloseLogger() error {
 }
 
 // ==================== 日志辅助函数 ====================
-// Note: Sanitization and truncation functions are now in helpers.go
+// 注意：清理和截断函数已移至 helpers.go
 
 // SanitizeHeaders 脱敏HTTP头部
 func SanitizeHeaders(headers map[string][]string) map[string]interface{} {
@@ -463,4 +463,4 @@ func SanitizeParams(params map[string]interface{}) map[string]interface{} {
 }
 
 // FormatSQLParams 格式化SQL参数用于日志记录
-// FormatSQLParams is now in helpers.go with improved formatting
+// FormatSQLParams 已移至 helpers.go 并改进了格式化

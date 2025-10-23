@@ -224,8 +224,7 @@ func SanitizeLogData(data string) string {
 	return result
 }
 
-// ValidateContentLength is now in helpers.go - use that instead
-// Keeping error definitions here for backward compatibility
+// ValidateContentLength 已移至 helpers.go
 var (
 	ErrContentTooShort = NewAppError(ErrInvalidParameter, "内容太短", 400)
 	ErrContentTooLong  = NewAppError(ErrInvalidParameter, "内容太长", 400)
@@ -244,8 +243,7 @@ func ContainsProhibitedWords(content string, prohibitedWords []string) bool {
 	return false
 }
 
-// NormalizeWhitespace is now in helpers.go - use that instead
-// TruncateText is now in helpers.go - use that instead
+// NormalizeWhitespace 和 TruncateText 已移至 helpers.go
 
 // DeepSanitize 深度清理（组合多种清理方法）
 func DeepSanitize(input string) (string, []string) {

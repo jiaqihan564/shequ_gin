@@ -73,7 +73,6 @@ func (r *ArticleRepository) GetArticleByIDOptimized(ctx context.Context, article
 		categories []models.ArticleCategory
 		tags       []models.ArticleTag
 		isLiked    bool
-		err        error
 	}
 
 	resultChan := make(chan queryResult, 1)

@@ -983,6 +983,8 @@ func (r *ArticleRepository) batchGetCommentUsers(ctx context.Context, userIDs []
 }
 
 // getChildComments 递归获取子评论（内部使用）
+//
+//nolint:unused
 func (r *ArticleRepository) getChildComments(ctx context.Context, parentID uint, userID uint) []models.CommentDetailResponse {
 	query := `SELECT ac.id, ac.article_id, ac.user_id, ac.parent_id, ac.root_id, ac.reply_to_user_id, ac.content,
 					 ac.like_count, ac.reply_count, ac.status, ac.created_at, ac.updated_at,

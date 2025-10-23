@@ -1,5 +1,4 @@
-// Package utils provides common utility functions used across the application.
-// It includes string manipulation, formatting, validation, and sanitization utilities.
+// Package utils 提供通用工具函数
 package utils
 
 import (
@@ -8,25 +7,7 @@ import (
 	"unicode/utf8"
 )
 
-// =============================================================================
-// String Utilities - 字符串工具函数
-// =============================================================================
-
-// TruncateString truncates a string to the specified maximum length.
-// If the string is longer than maxLen, it appends "..." at the end.
-//
-// Example:
-//
-//	TruncateString("Hello, World!", 8) // Returns: "Hello..."
-//	TruncateString("Short", 10)        // Returns: "Short"
-//
-// Parameters:
-//   - s: The input string to truncate
-//   - maxLen: Maximum length (including the "..." if truncated)
-//
-// Returns:
-//
-//	The truncated string
+// TruncateString 截断字符串到指定最大长度
 func TruncateString(s string, maxLen int) string {
 	if len(s) <= maxLen {
 		return s
@@ -37,8 +18,7 @@ func TruncateString(s string, maxLen int) string {
 	return s[:maxLen-3] + "..."
 }
 
-// TruncateText truncates a string by rune count (Unicode-aware).
-// This is useful for handling multi-byte characters correctly.
+// TruncateText 按字符数截断字符串（支持Unicode）
 func TruncateText(input string, maxLength int) string {
 	runes := []rune(input)
 	if len(runes) <= maxLength {
@@ -47,19 +27,13 @@ func TruncateText(input string, maxLength int) string {
 	return string(runes[:maxLength])
 }
 
-// NormalizeWhitespace normalizes whitespace in a string.
-// It replaces all consecutive whitespace characters with a single space.
+// NormalizeWhitespace 规范化字符串中的空格
 func NormalizeWhitespace(input string) string {
-	// Split by whitespace and rejoin
 	words := strings.Fields(input)
 	return strings.Join(words, " ")
 }
 
-// =============================================================================
-// Formatting Utilities - 格式化工具函数
-// =============================================================================
-
-// FormatBytes formats bytes into human-readable format (KB, MB, GB, etc.)
+// FormatBytes 格式化字节为可读格式
 func FormatBytes(bytes uint64) string {
 	const unit = 1024
 	if bytes < unit {
@@ -80,8 +54,7 @@ func FormatBytes(bytes uint64) string {
 	return fmt.Sprintf("%.1f %s", float64(bytes)/float64(div), units[exp])
 }
 
-// FormatSQLParams formats SQL parameters for logging.
-// It handles various types and truncates long values.
+// FormatSQLParams 格式化SQL参数用于日志记录
 func FormatSQLParams(params []interface{}) string {
 	if len(params) == 0 {
 		return "[]"
@@ -114,11 +87,7 @@ func FormatSQLParams(params []interface{}) string {
 	return "[" + strings.Join(parts, ", ") + "]"
 }
 
-// =============================================================================
-// Validation Utilities - 验证工具函数
-// =============================================================================
-
-// ValidateContentLength validates content length in runes (Unicode-aware).
+// ValidateContentLength 验证内容长度
 func ValidateContentLength(content string, minLength, maxLength int) error {
 	length := utf8.RuneCountInString(content)
 
@@ -133,16 +102,12 @@ func ValidateContentLength(content string, minLength, maxLength int) error {
 	return nil
 }
 
-// IsEmpty checks if a string is empty or contains only whitespace.
+// IsEmpty 检查字符串是否为空
 func IsEmpty(s string) bool {
 	return strings.TrimSpace(s) == ""
 }
 
-// =============================================================================
-// Sanitization Utilities - 数据清理工具函数
-// =============================================================================
-
-// SanitizeToken sanitizes a token for logging by keeping only first and last 4 chars.
+// SanitizeToken 清理token用于日志记录
 func SanitizeToken(token string) string {
 	if len(token) <= 8 {
 		return "***"
@@ -150,7 +115,7 @@ func SanitizeToken(token string) string {
 	return token[:4] + "..." + token[len(token)-4:]
 }
 
-// SanitizeAuthHeader sanitizes Authorization header for logging.
+// SanitizeAuthHeader 清理授权头用于日志记录
 func SanitizeAuthHeader(header string) string {
 	if header == "" {
 		return ""
@@ -161,8 +126,7 @@ func SanitizeAuthHeader(header string) string {
 	return "Bearer ***"
 }
 
-// SanitizeEmail sanitizes email address for logging.
-// Example: user@example.com -> us***@example.com
+// SanitizeEmail 清理邮箱地址用于日志记录
 func SanitizeEmail(email string) string {
 	if email == "" {
 		return ""
@@ -182,11 +146,7 @@ func SanitizeEmail(email string) string {
 	return masked + "@" + parts[1]
 }
 
-// =============================================================================
-// Slice Utilities - 切片工具函数
-// =============================================================================
-
-// ContainsString checks if a string slice contains a specific string.
+// ContainsString 检查字符串切片是否包含指定字符串
 func ContainsString(slice []string, str string) bool {
 	for _, s := range slice {
 		if s == str {
@@ -196,7 +156,7 @@ func ContainsString(slice []string, str string) bool {
 	return false
 }
 
-// UniqueStrings removes duplicate strings from a slice.
+// UniqueStrings 移除字符串切片中的重复项
 func UniqueStrings(slice []string) []string {
 	seen := make(map[string]bool, len(slice))
 	result := make([]string, 0, len(slice))
@@ -211,7 +171,7 @@ func UniqueStrings(slice []string) []string {
 	return result
 }
 
-// UniqueUints removes duplicate uints from a slice.
+// UniqueUints 移除uint切片中的重复项
 func UniqueUints(slice []uint) []uint {
 	seen := make(map[uint]bool, len(slice))
 	result := make([]uint, 0, len(slice))

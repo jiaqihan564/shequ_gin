@@ -245,7 +245,7 @@ func (h *ResourceHandler) DownloadResource(c *gin.Context) {
 	}, 3*time.Second)
 
 	// Return download URL for client to download directly from MinIO
-	// This is more efficient than proxying through the API server
+	// 直接返回下载链接比代理更高效
 	utils.SuccessResponse(c, 200, "获取下载链接成功", gin.H{
 		"download_url": resource.StoragePath,
 		"file_name":    resource.FileName,

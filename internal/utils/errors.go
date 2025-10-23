@@ -56,49 +56,49 @@ var (
 	ErrConfigNotFound = errors.New("配置文件不存在")
 )
 
-// Standard Error Codes - 标准错误码（用于API响应）
+// 标准错误码（用于API响应）
 const (
-	// Authentication & Authorization - 认证和授权
+	// 认证和授权
 	ErrCodeAuthRequired       = "AUTH_REQUIRED"
 	ErrCodeInvalidToken       = "INVALID_TOKEN"
 	ErrCodeTokenExpired       = "TOKEN_EXPIRED"
 	ErrCodeInvalidCredentials = "INVALID_CREDENTIALS"
 	ErrCodePermissionDenied   = "PERMISSION_DENIED"
 
-	// User Management - 用户管理
+	// 用户管理
 	ErrCodeUserNotFound = "USER_NOT_FOUND"
 	ErrCodeUserExists   = "USER_EXISTS"
 	ErrCodeEmailExists  = "EMAIL_EXISTS"
 
-	// Validation - 数据验证
+	// 数据验证
 	ErrCodeInvalidInput     = "INVALID_INPUT"
 	ErrCodeMissingParam     = "MISSING_PARAMETER"
 	ErrCodeValidationFailed = "VALIDATION_FAILED"
 
-	// Upload - 文件上传
+	// 文件上传
 	ErrCodeUploadInvalidType = "UPLOAD_INVALID_TYPE"
 	ErrCodeUploadTooLarge    = "UPLOAD_TOO_LARGE"
 	ErrCodeUploadFailed      = "UPLOAD_FAILED"
 
-	// Database - 数据库
+	// 数据库
 	ErrCodeDatabaseError  = "DATABASE_ERROR"
 	ErrCodeRecordNotFound = "RECORD_NOT_FOUND"
 	ErrCodeDuplicateEntry = "DUPLICATE_ENTRY"
 
-	// Rate Limiting - 限流
+	// 限流
 	ErrCodeRateLimitExceeded = "RATE_LIMIT_EXCEEDED"
 
-	// System - 系统
+	// 系统
 	ErrCodeInternalError      = "INTERNAL_ERROR"
 	ErrCodeServiceUnavailable = "SERVICE_UNAVAILABLE"
 )
 
-// AppError 应用错误（包含上下文信息）
+// AppError 应用错误
 type AppError struct {
-	Err     error                  // 原始错误
-	Message string                 // 用户友好的错误消息
-	Code    int                    // HTTP状态码
-	Context map[string]interface{} // 上下文信息
+	Err     error
+	Message string
+	Code    int
+	Context map[string]interface{}
 }
 
 // Error 实现error接口
@@ -141,20 +141,19 @@ func WrapError(err error, message string) error {
 	return fmt.Errorf("%s: %w", message, err)
 }
 
-// GetHTTPStatusCode returns the HTTP status code for an error.
-// It checks if the error is an AppError first, then falls back to standard error mapping.
+// GetHTTPStatusCode 返回错误对应的HTTP状态码
 func GetHTTPStatusCode(err error) int {
 	if err == nil {
 		return 200
 	}
 
-	// Check if it's an AppError
+	// 检查是否为AppError
 	var appErr *AppError
 	if errors.As(err, &appErr) {
 		return appErr.Code
 	}
 
-	// Standard error mapping
+	// 标准错误映射
 	switch {
 	case errors.Is(err, ErrUserNotAuthenticated) || errors.Is(err, ErrInvalidToken) || errors.Is(err, ErrTokenExpired):
 		return 401
@@ -184,22 +183,21 @@ func GetHTTPStatusCode(err error) int {
 	}
 }
 
-// GetErrorCode returns the error code string for API responses.
+// GetErrorCode 返回API响应的错误码字符串
 func GetErrorCode(err error) string {
 	if err == nil {
 		return ""
 	}
 
-	// Check if it's an AppError with custom error code
+	// 检查自定义错误码
 	var appErr *AppError
 	if errors.As(err, &appErr) {
-		// Use the error type as code if available
 		if errCode, ok := appErr.Context["error_code"].(string); ok {
 			return errCode
 		}
 	}
 
-	// Map standard errors to error codes
+	// 映射标准错误到错误码
 	switch {
 	case errors.Is(err, ErrUserNotAuthenticated) || errors.Is(err, ErrInvalidToken):
 		return ErrCodeAuthRequired

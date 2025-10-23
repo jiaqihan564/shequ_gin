@@ -1,20 +1,4 @@
-// Package utils provides object pooling utilities to reduce memory allocations.
-// Object pools (sync.Pool) reuse objects instead of allocating new ones,
-// which significantly reduces GC pressure and improves performance.
-//
-// Available pools:
-//   - BufferPool: For bytes.Buffer reuse
-//   - StringBuilderPool: For string building operations
-//   - MapPool: For temporary map operations
-//   - SlicePool: For temporary slice operations
-//   - ResponsePool: For HTTP response objects
-//
-// Example usage:
-//
-//	buf := GetBuffer()
-//	defer PutBuffer(buf)
-//	buf.WriteString("data")
-//	result := buf.String()
+// Package utils 提供对象池工具以减少内存分配
 package utils
 
 import (

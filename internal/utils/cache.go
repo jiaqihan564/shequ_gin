@@ -1,18 +1,4 @@
-// Package utils provides caching utilities including LRU cache with TTL support.
-// The LRUCache implements an in-memory cache with Least Recently Used eviction policy,
-// capacity limits, and time-to-live (TTL) expiration.
-//
-// Example usage:
-//
-//	cache := NewLRUCache(LRUCacheConfig{
-//	    Capacity:   1000,
-//	    MaxMemory:  100 * 1024 * 1024, // 100MB
-//	    DefaultTTL: 5 * time.Minute,
-//	})
-//	cache.Set("key", "value")
-//	if val, ok := cache.Get("key"); ok {
-//	    fmt.Println(val)
-//	}
+// Package utils 提供缓存工具包括带TTL的LRU缓存
 package utils
 
 import (

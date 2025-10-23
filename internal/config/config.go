@@ -118,23 +118,16 @@ type CodeExecutorConfig struct {
 	RateLimit    int    `yaml:"rate_limit" json:"rate_limit"`       // 限流：每分钟执行次数
 }
 
-// Load loads configuration from file and environment variables.
-// It follows the priority: Environment Variables > Config File > Defaults
-//
-// Configuration file search order:
-//  1. config.{env}.yaml (e.g., config.prod.yaml)
-//  2. config.yaml
-//
-// Environment variable APP_ENV determines which config file to use.
+// Load 加载配置（优先级：环境变量 > 配置文件 > 默认值）
 func Load() *Config {
-	// Get environment
+	// 获取环境变量
 	env := getEnv("APP_ENV", "dev")
 	configFile := getConfigFile(env)
 
-	// Create default configuration
+	// 创建默认配置
 	config := getDefaultConfig()
 
-	// Load from configuration file
+	// 从配置文件加载
 	if configFile != "" {
 		if err := loadFromFile(config, configFile); err != nil {
 			fmt.Printf("Warning: Failed to load config file %s: %v\n", configFile, err)
@@ -143,10 +136,10 @@ func Load() *Config {
 		}
 	}
 
-	// Override with environment variables
+	// 使用环境变量覆盖
 	overrideWithEnvVars(config)
 
-	// Validate configuration
+	// 验证配置
 	if err := config.Validate(); err != nil {
 		fmt.Printf("Warning: Configuration validation failed: %v\n", err)
 	}
@@ -369,7 +362,7 @@ func parseInt(s string) int {
 	return result
 }
 
-// getEnv retrieves environment variable or returns default value if not set.
+// getEnv 获取环境变量或返回默认值
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
@@ -377,13 +370,9 @@ func getEnv(key, defaultValue string) string {
 	return defaultValue
 }
 
-// =============================================================================
-// Configuration Validation - 配置验证
-// =============================================================================
-
-// Validate validates the configuration and returns error if invalid.
+// Validate 验证配置并返回错误（如果无效）
 func (c *Config) Validate() error {
-	// Validate Server Config
+	// 验证服务器配置
 	if c.Server.Port == "" {
 		return fmt.Errorf("server.port is required")
 	}
@@ -391,7 +380,7 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("server.mode must be one of: debug, release, test")
 	}
 
-	// Validate Database Config
+	// 验证数据库配置
 	if c.Database.Host == "" {
 		return fmt.Errorf("database.host is required")
 	}
@@ -414,7 +403,7 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("database.max_idle_conns cannot exceed max_open_conns")
 	}
 
-	// Validate JWT Config
+	// 验证JWT配置
 	if c.JWT.SecretKey == "" || c.JWT.SecretKey == "default_secret_key_change_in_production" {
 		fmt.Println("Warning: Using default JWT secret key. Change it in production!")
 	}
@@ -422,7 +411,7 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("jwt.expire_hours must be positive")
 	}
 
-	// Validate MinIO Config
+	// 验证MinIO配置
 	if c.MinIO.Endpoint == "" {
 		return fmt.Errorf("minio.endpoint is required")
 	}

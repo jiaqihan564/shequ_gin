@@ -1,16 +1,4 @@
-// Package middleware provides HTTP middleware components for the Gin framework.
-// This file implements enhanced Gzip compression middleware with the following features:
-//   - Multiple compression levels (BestSpeed, Default, BestCompression)
-//   - Minimum size threshold (only compress responses > 1KB)
-//   - Content-Type detection (only compress text-based responses)
-//   - Compression statistics (compression rate, bytes saved)
-//   - Object pooling for gzip writers (reduces allocations)
-//
-// Usage:
-//
-//	router.Use(middleware.FastCompressionMiddleware()) // Speed-oriented
-//	router.Use(middleware.DefaultCompressionMiddleware()) // Balanced
-//	router.Use(middleware.BestCompressionMiddleware()) // Compression-oriented
+// Package middleware 提供Gin框架的HTTP中间件组件
 package middleware
 
 import (
