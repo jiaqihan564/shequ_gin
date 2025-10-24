@@ -231,13 +231,13 @@ func (r *ResourceCommentRepository) ToggleCommentLike(ctx context.Context, comme
 
 // batchGetUserInfo 批量获取用户信息（优化N+1）
 func (r *ResourceCommentRepository) batchGetUserInfo(ctx context.Context, userIDs []uint) map[uint]*models.CommentUser {
-	userMap := make(map[uint]*models.CommentUser)
+	userMap := make(map[uint]*models.CommentUser, len(userIDs)) // 预分配容量
 	if len(userIDs) == 0 {
 		return userMap
 	}
 
-	// 去重
-	uniqueIDs := make(map[uint]bool)
+	// 去重（预分配容量）
+	uniqueIDs := make(map[uint]bool, len(userIDs))
 	for _, id := range userIDs {
 		uniqueIDs[id] = true
 	}
@@ -280,7 +280,7 @@ func (r *ResourceCommentRepository) batchGetUserInfo(ctx context.Context, userID
 
 // batchGetReplies 批量获取评论回复（优化N+1）
 func (r *ResourceCommentRepository) batchGetReplies(ctx context.Context, commentIDs []uint, userID uint) map[uint][]models.ResourceCommentResponse {
-	repliesMap := make(map[uint][]models.ResourceCommentResponse)
+	repliesMap := make(map[uint][]models.ResourceCommentResponse, len(commentIDs)) // 预分配容量
 
 	if len(commentIDs) == 0 {
 		return repliesMap

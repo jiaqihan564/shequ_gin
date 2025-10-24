@@ -15,13 +15,25 @@ type RequestContext struct {
 	StartTime time.Time
 }
 
-// extractRequestContext 提取请求上下文信息
+// extractRequestContext 提取请求上下文信息（优化：缓存多次调用的值）
 func extractRequestContext(c *gin.Context) RequestContext {
-	return RequestContext{
+	// 尝试从context获取已缓存的值，避免重复计算
+	if ctx, exists := c.Get("_request_context"); exists {
+		if reqCtx, ok := ctx.(RequestContext); ok {
+			return reqCtx
+		}
+	}
+
+	// 创建新的上下文（只执行一次）
+	reqCtx := RequestContext{
 		ClientIP:  c.ClientIP(),
 		UserAgent: c.Request.UserAgent(),
 		StartTime: time.Now(),
 	}
+
+	// 缓存到context中
+	c.Set("_request_context", reqCtx)
+	return reqCtx
 }
 
 // getUserIDOrFail 获取用户ID，失败时自动返回错误响应

@@ -4,6 +4,7 @@ import (
 	"html"
 	"regexp"
 	"strings"
+	"sync"
 	"unicode/utf8"
 )
 
@@ -44,37 +45,63 @@ var (
 	// 路径遍历模式
 	pathTraversalRegex = regexp.MustCompile(`\.\.(/|\\)`)
 
-	// Email 提取正则（用于脱敏）
-	emailMaskRegex = regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`)
-
-	// 手机号正则（中国）
-	phoneRegex = regexp.MustCompile(`1[3-9]\d{9}`)
-
-	// 身份证号正则（中国）
-	idCardRegex = regexp.MustCompile(`\d{17}[\dXx]`)
+	// 预编译的正则表达式（性能优化，避免在函数中重复编译）
+	controlCharsRegex = regexp.MustCompile(`[\x00-\x1f\x7f]`)
+	whitespaceRegex   = regexp.MustCompile(`\s+`)
+	onEventAttrRegex  = regexp.MustCompile(`(?i)\s+on\w+\s*=\s*["'][^"']*["']`)
 )
 
-// SanitizeHTML 清理 HTML 内容，移除危险标签和属性
+// 预编译的危险标签正则（性能优化）
+var dangerousTagRegexes map[string]*regexp.Regexp
+var dangerousAttrRegexes map[string]*regexp.Regexp
+var compiledOnce sync.Once
+
+// initRegexes 初始化正则表达式（只执行一次）
+func initRegexes() {
+	dangerousTagRegexes = make(map[string]*regexp.Regexp, len(dangerousTags))
+	for _, tag := range dangerousTags {
+		dangerousTagRegexes[tag+"_open"] = regexp.MustCompile(`(?i)<\s*` + tag + `[^>]*>`)
+		dangerousTagRegexes[tag+"_close"] = regexp.MustCompile(`(?i)</\s*` + tag + `[^>]*>`)
+	}
+
+	dangerousAttrRegexes = make(map[string]*regexp.Regexp, len(dangerousAttrs))
+	for _, attr := range dangerousAttrs {
+		if !strings.HasPrefix(attr, "on") {
+			dangerousAttrRegexes[attr] = regexp.MustCompile(`(?i)\s+` + regexp.QuoteMeta(attr) + `\s*=\s*["'][^"']*["']`)
+		}
+	}
+}
+
+// SanitizeHTML 清理 HTML 内容，移除危险标签和属性（性能优化）
 func SanitizeHTML(input string) string {
 	if input == "" {
 		return ""
 	}
 
-	// 1. 移除危险标签
+	// 确保正则表达式已编译
+	compiledOnce.Do(initRegexes)
+
+	// 1. 移除危险标签（使用预编译的正则）
 	result := input
 	for _, tag := range dangerousTags {
-		// 移除开标签和闭标签
-		result = regexp.MustCompile(`(?i)<\s*`+tag+`[^>]*>`).ReplaceAllString(result, "")
-		result = regexp.MustCompile(`(?i)</\s*`+tag+`[^>]*>`).ReplaceAllString(result, "")
+		if openRe, ok := dangerousTagRegexes[tag+"_open"]; ok {
+			result = openRe.ReplaceAllString(result, "")
+		}
+		if closeRe, ok := dangerousTagRegexes[tag+"_close"]; ok {
+			result = closeRe.ReplaceAllString(result, "")
+		}
 	}
 
-	// 2. 移除危险属性
+	// 2. 移除危险属性（使用预编译的正则）
+	// 移除所有 on* 事件属性
+	result = onEventAttrRegex.ReplaceAllString(result, "")
+
+	// 移除其他危险属性
 	for _, attr := range dangerousAttrs {
-		if strings.HasPrefix(attr, "on") {
-			// 移除所有 on* 事件属性
-			result = regexp.MustCompile(`(?i)\s+on\w+\s*=\s*["'][^"']*["']`).ReplaceAllString(result, "")
-		} else {
-			result = regexp.MustCompile(`(?i)\s+`+regexp.QuoteMeta(attr)+`\s*=\s*["'][^"']*["']`).ReplaceAllString(result, "")
+		if !strings.HasPrefix(attr, "on") {
+			if re, ok := dangerousAttrRegexes[attr]; ok {
+				result = re.ReplaceAllString(result, "")
+			}
 		}
 	}
 
@@ -96,9 +123,9 @@ func StripHTML(input string) string {
 	// 解码 HTML 实体
 	result = html.UnescapeString(result)
 
-	// 清理多余空白
+	// 清理多余空白（使用预编译的正则）
 	result = strings.TrimSpace(result)
-	result = regexp.MustCompile(`\s+`).ReplaceAllString(result, " ")
+	result = whitespaceRegex.ReplaceAllString(result, " ")
 
 	return result
 }
@@ -158,8 +185,8 @@ func SanitizeFilename(filename string) string {
 	result = strings.ReplaceAll(result, "\\", "_")
 	result = strings.ReplaceAll(result, "..", "_")
 
-	// 移除控制字符
-	result = regexp.MustCompile(`[\x00-\x1f\x7f]`).ReplaceAllString(result, "")
+	// 移除控制字符（使用预编译的正则）
+	result = controlCharsRegex.ReplaceAllString(result, "")
 
 	// 限制长度
 	if utf8.RuneCountInString(result) > 255 {

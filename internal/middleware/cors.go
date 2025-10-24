@@ -9,8 +9,16 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// CORSMiddleware CORS中间件
+// CORSMiddleware CORS中间件（优化：缓存header字符串）
 func CORSMiddleware(cfg *config.Config) gin.HandlerFunc {
+	// 预先拼接header字符串（避免每次请求都拼接）
+	allowMethods := strings.Join(cfg.CORS.AllowMethods, ", ")
+	allowHeaders := strings.Join(cfg.CORS.AllowHeaders, ", ")
+	allowCredentials := "false"
+	if cfg.CORS.AllowCredentials {
+		allowCredentials = "true"
+	}
+
 	return func(c *gin.Context) {
 		// 设置允许的源
 		origin := c.Request.Header.Get("Origin")
@@ -20,20 +28,18 @@ func CORSMiddleware(cfg *config.Config) gin.HandlerFunc {
 			c.Header("Access-Control-Allow-Origin", "*")
 		}
 
-		// 设置允许的方法
-		if len(cfg.CORS.AllowMethods) > 0 {
-			c.Header("Access-Control-Allow-Methods", strings.Join(cfg.CORS.AllowMethods, ", "))
+		// 设置允许的方法（使用预拼接的字符串）
+		if allowMethods != "" {
+			c.Header("Access-Control-Allow-Methods", allowMethods)
 		}
 
-		// 设置允许的头部
-		if len(cfg.CORS.AllowHeaders) > 0 {
-			c.Header("Access-Control-Allow-Headers", strings.Join(cfg.CORS.AllowHeaders, ", "))
+		// 设置允许的头部（使用预拼接的字符串）
+		if allowHeaders != "" {
+			c.Header("Access-Control-Allow-Headers", allowHeaders)
 		}
 
-		// 设置是否允许凭证
-		if cfg.CORS.AllowCredentials {
-			c.Header("Access-Control-Allow-Credentials", "true")
-		}
+		// 设置是否允许凭证（使用预计算的字符串）
+		c.Header("Access-Control-Allow-Credentials", allowCredentials)
 
 		// 设置预检请求的缓存时间
 		c.Header("Access-Control-Max-Age", "86400") // 24小时

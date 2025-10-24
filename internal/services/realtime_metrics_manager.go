@@ -35,7 +35,7 @@ var (
 func GetRealtimeMetricsManager() *RealtimeMetricsManager {
 	realtimeMetricsOnce.Do(func() {
 		globalRealtimeMetricsManager = &RealtimeMetricsManager{
-			onlineUsers: make(map[uint]time.Time),
+			onlineUsers: make(map[uint]time.Time, 1000), // 预分配容量（性能优化）
 			startTime:   time.Now(),
 		}
 

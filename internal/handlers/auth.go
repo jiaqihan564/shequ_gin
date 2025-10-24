@@ -141,9 +141,24 @@ func (h *AuthHandler) validateLoginRequest(req *models.LoginRequest) error {
 	// 清理输入
 	req.Username = utils.SanitizeString(req.Username)
 
+	// 安全检查：防止SQL注入和XSS
+	if utils.DetectSQLInjection(req.Username) {
+		h.logger.Warn("检测到SQL注入尝试", "username", req.Username)
+		return utils.ErrInvalidUsername
+	}
+	if utils.DetectXSS(req.Username) {
+		h.logger.Warn("检测到XSS攻击尝试", "username", req.Username)
+		return utils.ErrInvalidUsername
+	}
+
 	// 验证用户名格式
 	if !utils.ValidateUsername(req.Username) {
 		return utils.ErrInvalidUsername
+	}
+
+	// 验证密码长度（不验证复杂度，因为是登录不是注册）
+	if len(req.Password) < 6 || len(req.Password) > 100 {
+		return utils.ErrInvalidPassword
 	}
 
 	return nil
@@ -159,6 +174,20 @@ func (h *AuthHandler) validateRegisterRequest(req *models.RegisterRequest) error
 	req.Username = utils.SanitizeString(req.Username)
 	req.Email = utils.SanitizeString(req.Email)
 
+	// 安全检查：防止SQL注入和XSS
+	if utils.DetectSQLInjection(req.Username) || utils.DetectSQLInjection(req.Email) {
+		h.logger.Warn("检测到SQL注入尝试",
+			"username", req.Username,
+			"email", utils.SanitizeEmail(req.Email))
+		return utils.ErrInvalidParameter
+	}
+	if utils.DetectXSS(req.Username) || utils.DetectXSS(req.Email) {
+		h.logger.Warn("检测到XSS攻击尝试",
+			"username", req.Username,
+			"email", utils.SanitizeEmail(req.Email))
+		return utils.ErrInvalidParameter
+	}
+
 	// 验证用户名格式
 	if !utils.ValidateUsername(req.Username) {
 		return utils.ErrInvalidUsername
@@ -166,7 +195,8 @@ func (h *AuthHandler) validateRegisterRequest(req *models.RegisterRequest) error
 
 	// 验证密码强度
 	if !utils.ValidatePassword(req.Password) {
-		return utils.ErrInvalidPassword
+		return utils.NewAppError(utils.ErrInvalidPassword,
+			"密码必须至少6位，并包含字母和数字", 400)
 	}
 
 	// 验证邮箱格式

@@ -21,6 +21,8 @@ type Database struct {
 	stopMonitor chan struct{} // 用于停止监控goroutine
 	stmtCache   map[string]*sql.Stmt
 	stmtMutex   sync.RWMutex
+	ctx         context.Context
+	cancel      context.CancelFunc
 }
 
 // NewDatabase 创建数据库连接
@@ -56,6 +58,9 @@ func NewDatabase(cfg *config.Config) (*Database, error) {
 	}
 	db.SetConnMaxIdleTime(idleTimeout)
 
+	// 创建上下文
+	ctx, cancel := context.WithCancel(context.Background())
+
 	// 创建数据库实例
 	dbInstance := &Database{
 		DB:          db,
@@ -63,6 +68,8 @@ func NewDatabase(cfg *config.Config) (*Database, error) {
 		logger:      logger,
 		stopMonitor: make(chan struct{}),
 		stmtCache:   make(map[string]*sql.Stmt),
+		ctx:         ctx,
+		cancel:      cancel,
 	}
 
 	// 启动连接池监控
@@ -88,7 +95,7 @@ func NewDatabase(cfg *config.Config) (*Database, error) {
 	}()
 
 	// 测试连接
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
@@ -106,7 +113,37 @@ func NewDatabase(cfg *config.Config) (*Database, error) {
 		"connMaxLifetime", cfg.Database.ConnMaxLifetime,
 		"connMaxIdleTime", idleTimeout)
 
+	// 预热连接池（创建初始连接，避免首次请求慢）
+	go dbInstance.warmupConnectionPool(cfg.Database.MaxIdleConns)
+
 	return dbInstance, nil
+}
+
+// warmupConnectionPool 预热连接池
+func (d *Database) warmupConnectionPool(targetConns int) {
+	if targetConns <= 0 {
+		targetConns = 5
+	}
+
+	d.logger.Info("开始预热数据库连接池", "targetConns", targetConns)
+	start := time.Now()
+
+	// 并发创建连接
+	errCount := 0
+	for i := 0; i < targetConns; i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		if err := d.DB.PingContext(ctx); err != nil {
+			errCount++
+		}
+		cancel()
+	}
+
+	stats := d.DB.Stats()
+	d.logger.Info("连接池预热完成",
+		"duration", time.Since(start),
+		"openConnections", stats.OpenConnections,
+		"idle", stats.Idle,
+		"errors", errCount)
 }
 
 // Close 关闭数据库连接
@@ -114,8 +151,14 @@ func (d *Database) Close() error {
 	if d.DB != nil {
 		d.logger.Info("正在关闭数据库连接")
 
+		// 取消上下文
+		if d.cancel != nil {
+			d.cancel()
+		}
+
 		// 关闭所有缓存的prepared statements
 		d.stmtMutex.Lock()
+		stmtCount := len(d.stmtCache)
 		for key, stmt := range d.stmtCache {
 			if err := stmt.Close(); err != nil {
 				d.logger.Warn("关闭prepared statement失败", "key", key, "error", err.Error())
@@ -123,12 +166,21 @@ func (d *Database) Close() error {
 		}
 		d.stmtCache = make(map[string]*sql.Stmt)
 		d.stmtMutex.Unlock()
+		d.logger.Info("已清理prepared statements", "count", stmtCount)
 
 		// 停止监控goroutine
 		close(d.stopMonitor)
 		// 等待一小段时间让goroutine退出
-		time.Sleep(100 * time.Millisecond)
-		return d.DB.Close()
+		time.Sleep(200 * time.Millisecond)
+
+		// 关闭数据库连接
+		if err := d.DB.Close(); err != nil {
+			d.logger.Error("关闭数据库连接失败", "error", err.Error())
+			return err
+		}
+
+		d.logger.Info("数据库连接已安全关闭")
+		return nil
 	}
 	return nil
 }
@@ -140,11 +192,126 @@ func (d *Database) Ping() error {
 	return d.DB.PingContext(ctx)
 }
 
-//
-
 // HealthCheck 健康检查
 func (d *Database) HealthCheck() error {
 	return d.Ping()
+}
+
+// GetStats 获取数据库连接池统计信息
+func (d *Database) GetStats() sql.DBStats {
+	return d.DB.Stats()
+}
+
+// WithTransaction 事务辅助方法
+func (d *Database) WithTransaction(ctx context.Context, fn func(*sql.Tx) error) error {
+	tx, err := d.DB.BeginTx(ctx, &sql.TxOptions{
+		Isolation: sql.LevelReadCommitted,
+	})
+	if err != nil {
+		d.logger.Error("开始事务失败", "error", err.Error())
+		return fmt.Errorf("开始事务失败: %w", err)
+	}
+
+	// 确保事务被提交或回滚
+	defer func() {
+		if p := recover(); p != nil {
+			// 发生panic，回滚事务
+			_ = tx.Rollback()
+			d.logger.Error("事务执行panic，已回滚", "panic", p)
+			panic(p) // 重新抛出panic
+		}
+	}()
+
+	// 执行业务逻辑
+	if err := fn(tx); err != nil {
+		// 业务逻辑失败，回滚事务
+		if rbErr := tx.Rollback(); rbErr != nil {
+			d.logger.Error("回滚事务失败", "error", rbErr.Error(), "originalError", err.Error())
+			return fmt.Errorf("回滚事务失败: %v (原始错误: %w)", rbErr, err)
+		}
+		d.logger.Info("事务已回滚", "reason", err.Error())
+		return err
+	}
+
+	// 业务逻辑成功，提交事务
+	if err := tx.Commit(); err != nil {
+		d.logger.Error("提交事务失败", "error", err.Error())
+		return fmt.Errorf("提交事务失败: %w", err)
+	}
+
+	d.logger.Debug("事务提交成功")
+	return nil
+}
+
+// RetryQuery 带重试的查询执行
+func (d *Database) RetryQuery(ctx context.Context, maxRetries int, fn func() error) error {
+	var err error
+	for i := 0; i < maxRetries; i++ {
+		err = fn()
+		if err == nil {
+			return nil
+		}
+
+		// 判断是否为可重试错误
+		if !isRetriableError(err) {
+			return err
+		}
+
+		// 指数退避
+		if i < maxRetries-1 {
+			backoff := time.Duration(1<<uint(i)) * 100 * time.Millisecond
+			d.logger.Warn("查询失败，准备重试",
+				"attempt", i+1,
+				"maxRetries", maxRetries,
+				"backoff", backoff,
+				"error", err.Error())
+
+			select {
+			case <-time.After(backoff):
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+	}
+
+	d.logger.Error("查询重试次数已用尽", "maxRetries", maxRetries, "error", err.Error())
+	return fmt.Errorf("查询重试%d次后仍然失败: %w", maxRetries, err)
+}
+
+// isRetriableError 判断是否为可重试的错误
+func isRetriableError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	errMsg := err.Error()
+	// MySQL可重试错误
+	retriableErrors := []string{
+		"connection refused",
+		"connection reset",
+		"broken pipe",
+		"too many connections",
+		"lock wait timeout",
+		"deadlock",
+	}
+
+	for _, retryErr := range retriableErrors {
+		if contains(errMsg, retryErr) {
+			return true
+		}
+	}
+	return false
+}
+
+// contains 检查字符串是否包含子串
+func contains(s, substr string) bool {
+	// 使用简单的字符串包含检查
+	for i := 0; i+len(substr) <= len(s); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
 
 // PrepareStmt 获取或创建prepared statement（带缓存）

@@ -6,6 +6,11 @@ server:
   host: "localhost"
   port: "3001"
   mode: "release"  # debug, release, test
+  max_header_bytes: 1048576  # 1MB - 最大请求头大小
+  read_timeout: 30  # 读取超时（秒）
+  write_timeout: 30  # 写入超时（秒）
+  idle_timeout: 120  # 空闲超时（秒）
+  shutdown_timeout: 30  # 优雅关闭超时（秒）
 
 # 数据库配置
 database:
@@ -42,6 +47,11 @@ log:
 # 安全配置
 security:
   max_login_attempts: 5
+  max_request_size_mb: 10  # 最大请求体大小（MB）
+  enable_security_headers: true  # 启用安全响应头
+  enable_rate_limit: true  # 启用限流
+  bcrypt_cost: 10  # bcrypt 加密成本（4-31，建议10-12）
+  session_timeout_hours: 24  # 会话超时（小时）
 
 # 管理员配置
 admin:

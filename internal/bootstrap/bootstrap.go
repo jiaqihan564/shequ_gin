@@ -31,6 +31,9 @@ type Container struct {
 
 // New 构建容器
 func New(cfg *config.Config, db *services.Database) (*Container, error) {
+	// 初始化管理员检查器（性能优化）
+	utils.InitAdminChecker(cfg)
+
 	userRepo := services.NewUserRepository(db)
 	statsRepo := services.NewStatisticsRepository(db)
 	historyRepo := services.NewHistoryRepository(db)

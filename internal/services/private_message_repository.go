@@ -219,8 +219,8 @@ func (r *PrivateMessageRepository) GetConversationMessages(ctx context.Context, 
 	}
 	defer rows.Close()
 
-	// 初始化为空数组，避免返回null
-	messages := make([]models.PrivateMessage, 0)
+	// 预分配slice容量（性能优化）
+	messages := make([]models.PrivateMessage, 0, limit)
 	for rows.Next() {
 		var msg models.PrivateMessage
 		var isRead int

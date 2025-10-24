@@ -94,14 +94,8 @@ func (s *AuthService) Login(ctx context.Context, username, password, clientIP, p
 	// 读取扩展资料
 	extra, _ := s.userRepo.GetUserProfile(ctx, user.ID)
 
-	// 检查用户是否为管理员
-	role := "user"
-	for _, adminUsername := range s.config.Admin.Usernames {
-		if adminUsername == user.Username {
-			role = "admin"
-			break
-		}
-	}
+	// 检查用户是否为管理员（优化：使用AdminChecker，O(1)查找）
+	role := utils.GetUserRole(s.config, user.Username)
 
 	// 安全获取扩展资料字段
 	avatarURL, nickname, bio := "", "", ""
@@ -243,14 +237,8 @@ func (s *AuthService) Register(ctx context.Context, username, password, email, c
 	// 读取扩展资料
 	extra, _ := s.userRepo.GetUserProfile(ctx, user.ID)
 
-	// 检查用户是否为管理员
-	role := "user"
-	for _, adminUsername := range s.config.Admin.Usernames {
-		if adminUsername == user.Username {
-			role = "admin"
-			break
-		}
-	}
+	// 检查用户是否为管理员（优化：使用AdminChecker，O(1)查找）
+	role := utils.GetUserRole(s.config, user.Username)
 
 	// 安全获取扩展资料字段
 	regAvatarURL, regNickname, regBio := "", "", ""

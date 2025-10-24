@@ -240,11 +240,19 @@ print "Hello, World!\\n";`,
 
 // NewPistonCodeExecutor 创建新的 Piston 代码执行器
 func NewPistonCodeExecutor(apiURL string, timeout time.Duration) CodeExecutor {
+	// 优化HTTP Client配置
 	return &PistonCodeExecutor{
 		apiURL:  apiURL,
 		timeout: timeout,
 		client: &http.Client{
 			Timeout: timeout,
+			Transport: &http.Transport{
+				MaxIdleConns:        100,              // 最大空闲连接数
+				MaxIdleConnsPerHost: 10,               // 每个host的最大空闲连接
+				IdleConnTimeout:     90 * time.Second, // 空闲连接超时
+				DisableCompression:  false,            // 启用压缩
+				DisableKeepAlives:   false,            // 启用keep-alive
+			},
 		},
 	}
 }
@@ -301,8 +309,13 @@ func (e *PistonCodeExecutor) Execute(ctx context.Context, language, code, stdin 
 	// 记录开始时间
 	startTime := time.Now()
 
+	// 使用对象池创建请求体（优化内存分配）
+	buf := utils.GetBuffer()
+	defer utils.PutBuffer(buf)
+	buf.Write(reqBody)
+
 	// 创建 HTTP 请求
-	req, err := http.NewRequestWithContext(ctx, "POST", e.apiURL+"/execute", bytes.NewBuffer(reqBody))
+	req, err := http.NewRequestWithContext(ctx, "POST", e.apiURL+"/execute", bytes.NewReader(buf.Bytes()))
 	if err != nil {
 		return nil, fmt.Errorf("创建请求失败: %w", err)
 	}
@@ -366,14 +379,6 @@ func (e *PistonCodeExecutor) GetSupportedLanguages() []models.LanguageInfo {
 		languages = append(languages, lang)
 	}
 	return languages
-}
-
-// truncateString 截断字符串用于日志
-func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen] + "..."
 }
 
 // containsChinese 检查字符串是否包含中文字符

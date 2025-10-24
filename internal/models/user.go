@@ -104,3 +104,49 @@ type PasswordResetToken struct {
 	Used      bool      `json:"used" db:"used"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 }
+
+// IsExpired 检查token是否过期
+func (t *PasswordResetToken) IsExpired() bool {
+	return time.Now().After(t.ExpiresAt)
+}
+
+// IsValid 检查token是否有效
+func (t *PasswordResetToken) IsValid() bool {
+	return !t.Used && !t.IsExpired()
+}
+
+// Validate 验证用户数据
+func (u *User) Validate() error {
+	if u.Username == "" {
+		return &ValidationError{Field: "username", Message: "用户名不能为空"}
+	}
+	if len(u.Username) < 3 || len(u.Username) > 20 {
+		return &ValidationError{Field: "username", Message: "用户名长度必须在3-20之间"}
+	}
+	if u.Email == "" {
+		return &ValidationError{Field: "email", Message: "邮箱不能为空"}
+	}
+	return nil
+}
+
+// SanitizeForJSON 清理敏感字段后返回用于JSON序列化
+func (u *User) SanitizeForJSON() *UserProfile {
+	return &UserProfile{
+		ID:            u.ID,
+		Username:      u.Username,
+		Email:         u.Email,
+		AuthStatus:    u.AuthStatus,
+		AccountStatus: u.AccountStatus,
+		Role:          u.Role,
+	}
+}
+
+// ValidationError 验证错误
+type ValidationError struct {
+	Field   string
+	Message string
+}
+
+func (e *ValidationError) Error() string {
+	return e.Message
+}

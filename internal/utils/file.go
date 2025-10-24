@@ -5,7 +5,15 @@ import (
 	"errors"
 	"io"
 	"mime/multipart"
+	"sync"
 )
+
+// 魔数验证buffer池（性能优化）
+var magicNumberBufferPool = sync.Pool{
+	New: func() interface{} {
+		return make([]byte, 16)
+	},
+}
 
 // FileValidator 文件验证器
 type FileValidator struct {
@@ -45,7 +53,7 @@ func (fv *FileValidator) Validate(file *multipart.FileHeader) error {
 	return nil
 }
 
-// validateMagicNumber 验证文件魔数
+// validateMagicNumber 验证文件魔数（优化：使用对象池）
 func (fv *FileValidator) validateMagicNumber(fileHeader *multipart.FileHeader) error {
 	file, err := fileHeader.Open()
 	if err != nil {
@@ -53,8 +61,10 @@ func (fv *FileValidator) validateMagicNumber(fileHeader *multipart.FileHeader) e
 	}
 	defer file.Close()
 
-	// 读取前16字节用于魔数验证
-	buf := make([]byte, 16)
+	// 从对象池获取buffer（性能优化）
+	buf := magicNumberBufferPool.Get().([]byte)
+	defer magicNumberBufferPool.Put(buf)
+
 	n, err := io.ReadFull(file, buf)
 	if err != nil && err != io.ErrUnexpectedEOF {
 		return WrapError(err, "读取文件失败")

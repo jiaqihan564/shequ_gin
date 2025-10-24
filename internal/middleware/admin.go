@@ -7,13 +7,21 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// AdminMiddleware 管理员权限验证中间件
+// AdminMiddleware 管理员权限验证中间件（优化：使用map代替循环查找）
 func AdminMiddleware(cfg *config.Config) gin.HandlerFunc {
+	// 预先构建管理员map（O(1)查找，优于O(n)循环）
+	adminMap := make(map[string]bool, len(cfg.Admin.Usernames))
+	for _, adminUsername := range cfg.Admin.Usernames {
+		adminMap[adminUsername] = true
+	}
+
+	logger := utils.GetLogger()
+
 	return func(c *gin.Context) {
 		// 获取当前用户名
 		username, exists := c.Get("username")
 		if !exists {
-			utils.GetLogger().Warn("管理员验证失败：无法获取用户名",
+			logger.Warn("管理员验证失败：无法获取用户名",
 				"path", c.Request.URL.Path,
 				"ip", c.ClientIP())
 			utils.ForbiddenResponse(c, "需要管理员权限")
@@ -23,7 +31,7 @@ func AdminMiddleware(cfg *config.Config) gin.HandlerFunc {
 
 		usernameStr, ok := username.(string)
 		if !ok {
-			utils.GetLogger().Warn("管理员验证失败：用户名类型错误",
+			logger.Warn("管理员验证失败：用户名类型错误",
 				"path", c.Request.URL.Path,
 				"ip", c.ClientIP())
 			utils.ForbiddenResponse(c, "需要管理员权限")
@@ -31,17 +39,9 @@ func AdminMiddleware(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		// 检查是否在管理员列表中
-		isAdmin := false
-		for _, adminUsername := range cfg.Admin.Usernames {
-			if adminUsername == usernameStr {
-				isAdmin = true
-				break
-			}
-		}
-
-		if !isAdmin {
-			utils.GetLogger().Warn("管理员验证失败：用户不是管理员",
+		// 使用map查找（O(1)，比循环O(n)快）
+		if !adminMap[usernameStr] {
+			logger.Warn("管理员验证失败：用户不是管理员",
 				"username", usernameStr,
 				"path", c.Request.URL.Path,
 				"ip", c.ClientIP())
@@ -50,7 +50,7 @@ func AdminMiddleware(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		utils.GetLogger().Debug("管理员验证成功",
+		logger.Debug("管理员验证成功",
 			"username", usernameStr,
 			"path", c.Request.URL.Path)
 

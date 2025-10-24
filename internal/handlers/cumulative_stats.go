@@ -38,9 +38,10 @@ func (h *CumulativeStatsHandler) GetCumulativeStats(c *gin.Context) {
 
 // GetDailyMetrics 获取每日指标
 func (h *CumulativeStatsHandler) GetDailyMetrics(c *gin.Context) {
-	// 获取日期范围，默认最近30天
-	endDate := c.DefaultQuery("end", time.Now().Format("2006-01-02"))
-	startDate := c.DefaultQuery("start", time.Now().AddDate(0, 0, -30).Format("2006-01-02"))
+	// 获取日期范围，默认最近30天（优化：缓存time.Now()调用）
+	now := time.Now()
+	endDate := c.DefaultQuery("end", now.Format("2006-01-02"))
+	startDate := c.DefaultQuery("start", now.AddDate(0, 0, -30).Format("2006-01-02"))
 
 	// 获取趋势数据
 	trend, err := h.cumulativeRepo.GetDailyMetrics(startDate, endDate)

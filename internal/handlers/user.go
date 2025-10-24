@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -220,10 +221,11 @@ func (h *UserHandler) UpdateMe(c *gin.Context) {
 			return
 		}
 
-		// 异步记录资料修改历史
+		// 使用Worker Pool记录资料修改历史（避免goroutine泄漏）
 		if h.historyRepo != nil && currentUser != nil {
 			username := currentUser.Username
-			go func() {
+			taskID := fmt.Sprintf("profile_history_%d_%d", userID, time.Now().Unix())
+			_ = utils.SubmitTask(taskID, func(taskCtx context.Context) error {
 				// 记录昵称修改
 				if payload.Profile.Nickname != "" && payload.Profile.Nickname != currentProfile.Nickname {
 					h.historyRepo.RecordProfileChange(userID, "nickname", currentProfile.Nickname, prof.Nickname, reqCtx.ClientIP)
@@ -234,7 +236,8 @@ func (h *UserHandler) UpdateMe(c *gin.Context) {
 					h.historyRepo.RecordProfileChange(userID, "bio", currentProfile.Bio, prof.Bio, reqCtx.ClientIP)
 					h.historyRepo.RecordOperationHistory(userID, username, "修改简介", "修改个人简介", reqCtx.ClientIP)
 				}
-			}()
+				return nil
+			}, 5*time.Second)
 		}
 	}
 
@@ -285,20 +288,8 @@ func (h *UserHandler) returnUserProfile(c *gin.Context, userID uint) {
 		bio = extra.Bio
 	}
 
-	// 检查用户是否为管理员
-	isAdmin := false
-	for _, adminUsername := range h.config.Admin.Usernames {
-		if adminUsername == user.Username {
-			isAdmin = true
-			break
-		}
-	}
-
-	// 确定用户角色
-	role := "user"
-	if isAdmin {
-		role = "admin"
-	}
+	// 检查用户是否为管理员（优化：使用AdminChecker，O(1)查找）
+	role := utils.GetUserRole(h.config, user.Username)
 
 	// 构建前端期望的响应格式
 	response := gin.H{

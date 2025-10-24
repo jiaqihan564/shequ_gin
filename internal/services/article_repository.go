@@ -359,16 +359,8 @@ func (r *ArticleRepository) ListArticles(ctx context.Context, query models.Artic
 		orderBy = "a.view_count DESC, a.like_count DESC, a.created_at DESC"
 	}
 
-	// 查询总数
+	// 并行执行COUNT和列表查询（优化性能）
 	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM articles a %s", whereClause)
-	var total int
-	err := r.db.DB.QueryRowContext(ctx, countQuery, args...).Scan(&total)
-	if err != nil {
-		r.logger.Error("查询文章总数失败", "error", err.Error())
-		return nil, utils.ErrDatabaseQuery
-	}
-
-	// 查询列表
 	listQuery := fmt.Sprintf(`
 		SELECT a.id, a.user_id, a.title, a.description, a.view_count, a.like_count, a.comment_count, a.created_at, a.updated_at,
 			   ua.username, COALESCE(up.nickname, ua.username) as nickname, COALESCE(up.avatar_url, '') as avatar
@@ -379,18 +371,62 @@ func (r *ArticleRepository) ListArticles(ctx context.Context, query models.Artic
 		ORDER BY %s
 		LIMIT ? OFFSET ?`, whereClause, orderBy)
 
-	args = append(args, query.PageSize, offset)
-	rows, err := r.db.DB.QueryContext(ctx, listQuery, args...)
-	if err != nil {
-		r.logger.Error("查询文章列表失败", "error", err.Error())
+	// 准备参数
+	countArgs := make([]interface{}, len(args))
+	copy(countArgs, args)
+	listArgs := append(args, query.PageSize, offset)
+
+	// 并行查询
+	type countResult struct {
+		total int
+		err   error
+	}
+	type listResult struct {
+		rows *sql.Rows
+		err  error
+	}
+
+	countChan := make(chan countResult, 1)
+	listChan := make(chan listResult, 1)
+
+	// 并行执行COUNT
+	go func() {
+		var total int
+		err := r.db.DB.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total)
+		countChan <- countResult{total: total, err: err}
+	}()
+
+	// 并行执行列表查询
+	go func() {
+		rows, err := r.db.DB.QueryContext(ctx, listQuery, listArgs...)
+		listChan <- listResult{rows: rows, err: err}
+	}()
+
+	// 收集结果
+	countRes := <-countChan
+	listRes := <-listChan
+
+	if countRes.err != nil {
+		if listRes.rows != nil {
+			listRes.rows.Close()
+		}
+		r.logger.Error("查询文章总数失败", "error", countRes.err.Error())
 		return nil, utils.ErrDatabaseQuery
 	}
+
+	if listRes.err != nil {
+		r.logger.Error("查询文章列表失败", "error", listRes.err.Error())
+		return nil, utils.ErrDatabaseQuery
+	}
+
+	total := countRes.total
+	rows := listRes.rows
 	defer rows.Close()
 
-	// 初始化为空数组而不是nil，确保JSON序列化时返回[]而不是null
-	articles := make([]models.ArticleListItem, 0)
-	articleIDs := make([]uint, 0)
-	articleMap := make(map[uint]*models.ArticleListItem)
+	// 预分配容量（性能优化）
+	articles := make([]models.ArticleListItem, 0, query.PageSize)
+	articleIDs := make([]uint, 0, query.PageSize)
+	articleMap := make(map[uint]*models.ArticleListItem, query.PageSize)
 
 	// 第一步：收集所有文章信息
 	for rows.Next() {
@@ -753,16 +789,9 @@ func (r *ArticleRepository) GetComments(ctx context.Context, articleID uint, pag
 	}
 	offset := (page - 1) * pageSize
 
-	// 查询总数
-	var total int
+	// 并行执行COUNT和评论列表查询
 	countQuery := `SELECT COUNT(*) FROM article_comments WHERE article_id = ? AND parent_id = 0 AND status = 1`
-	err := r.db.DB.QueryRowContext(ctx, countQuery, articleID).Scan(&total)
-	if err != nil {
-		return nil, utils.ErrDatabaseQuery
-	}
-
-	// 查询一级评论
-	query := `SELECT ac.id, ac.article_id, ac.user_id, ac.parent_id, ac.root_id, ac.reply_to_user_id, ac.content, 
+	listQuery := `SELECT ac.id, ac.article_id, ac.user_id, ac.parent_id, ac.root_id, ac.reply_to_user_id, ac.content, 
 					 ac.like_count, ac.reply_count, ac.status, ac.created_at, ac.updated_at,
 					 ua.username, COALESCE(up.nickname, ua.username) as nickname, COALESCE(up.avatar_url, '') as avatar
 			  FROM article_comments ac
@@ -772,11 +801,48 @@ func (r *ArticleRepository) GetComments(ctx context.Context, articleID uint, pag
 			  ORDER BY ac.created_at DESC
 			  LIMIT ? OFFSET ?`
 
-	rows, err := r.db.DB.QueryContext(ctx, query, articleID, pageSize, offset)
-	if err != nil {
-		r.logger.Error("查询评论失败", "error", err.Error())
+	type countResult struct {
+		total int
+		err   error
+	}
+	type listResult struct {
+		rows *sql.Rows
+		err  error
+	}
+
+	countChan := make(chan countResult, 1)
+	listChan := make(chan listResult, 1)
+
+	// 并行执行
+	go func() {
+		var total int
+		err := r.db.DB.QueryRowContext(ctx, countQuery, articleID).Scan(&total)
+		countChan <- countResult{total: total, err: err}
+	}()
+
+	go func() {
+		rows, err := r.db.DB.QueryContext(ctx, listQuery, articleID, pageSize, offset)
+		listChan <- listResult{rows: rows, err: err}
+	}()
+
+	// 收集结果
+	countRes := <-countChan
+	listRes := <-listChan
+
+	if countRes.err != nil {
+		if listRes.rows != nil {
+			listRes.rows.Close()
+		}
 		return nil, utils.ErrDatabaseQuery
 	}
+
+	if listRes.err != nil {
+		r.logger.Error("查询评论失败", "error", listRes.err.Error())
+		return nil, utils.ErrDatabaseQuery
+	}
+
+	total := countRes.total
+	rows := listRes.rows
 	defer rows.Close()
 
 	// 初始化为空数组，避免返回null
@@ -848,7 +914,7 @@ func (r *ArticleRepository) GetComments(ctx context.Context, articleID uint, pag
 
 // batchCheckCommentLikes 批量检查评论点赞状态（优化N+1）
 func (r *ArticleRepository) batchCheckCommentLikes(ctx context.Context, commentIDs []uint, userID uint) map[uint]bool {
-	likedMap := make(map[uint]bool)
+	likedMap := make(map[uint]bool, len(commentIDs)) // 预分配容量
 
 	if len(commentIDs) == 0 || userID == 0 {
 		return likedMap
@@ -887,7 +953,7 @@ func (r *ArticleRepository) batchCheckCommentLikes(ctx context.Context, commentI
 
 // batchGetChildComments 批量获取子评论（优化递归N+1）
 func (r *ArticleRepository) batchGetChildComments(ctx context.Context, articleID uint, parentIDs []uint, userID uint) map[uint][]models.CommentDetailResponse {
-	childMap := make(map[uint][]models.CommentDetailResponse)
+	childMap := make(map[uint][]models.CommentDetailResponse, len(parentIDs)) // 预分配容量
 
 	if len(parentIDs) == 0 {
 		return childMap
@@ -965,8 +1031,8 @@ func (r *ArticleRepository) batchGetChildComments(ctx context.Context, articleID
 	}
 
 	// 构建评论树（在内存中组装）
-	// 按parent_id分组
-	commentsByParent := make(map[uint][]models.CommentDetailResponse)
+	// 按parent_id分组（预分配容量）
+	commentsByParent := make(map[uint][]models.CommentDetailResponse, len(parentIDs))
 	for i := range allChildren {
 		// 确保每个评论都有Replies字段初始化
 		if allChildren[i].Replies == nil {
@@ -1011,14 +1077,14 @@ func (r *ArticleRepository) batchGetChildComments(ctx context.Context, articleID
 
 // batchGetCommentUsers 批量获取评论用户信息
 func (r *ArticleRepository) batchGetCommentUsers(ctx context.Context, userIDs []uint) map[uint]*models.CommentAuthor {
-	userMap := make(map[uint]*models.CommentAuthor)
+	userMap := make(map[uint]*models.CommentAuthor, len(userIDs)) // 预分配容量
 
 	if len(userIDs) == 0 {
 		return userMap
 	}
 
-	// 去重
-	uniqueIDs := make(map[uint]bool)
+	// 去重（预分配容量）
+	uniqueIDs := make(map[uint]bool, len(userIDs))
 	for _, id := range userIDs {
 		uniqueIDs[id] = true
 	}

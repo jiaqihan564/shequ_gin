@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"runtime"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -50,7 +51,7 @@ func (p *Profiler) RecordLatency(latency time.Duration) {
 	p.latencies = append(p.latencies, latency)
 }
 
-// GetLatencyStats 获取延迟统计（P50, P95, P99）
+// GetLatencyStats 获取延迟统计（P50, P95, P99）（优化：使用sort.Slice）
 func (p *Profiler) GetLatencyStats() LatencyStats {
 	p.latencyMutex.Lock()
 	defer p.latencyMutex.Unlock()
@@ -59,18 +60,14 @@ func (p *Profiler) GetLatencyStats() LatencyStats {
 		return LatencyStats{}
 	}
 
-	// 复制并排序
+	// 复制并排序（使用标准库sort，比冒泡排序快得多）
 	sorted := make([]time.Duration, len(p.latencies))
 	copy(sorted, p.latencies)
 
-	// 简单的冒泡排序（对于小数据集足够快）
-	for i := 0; i < len(sorted)-1; i++ {
-		for j := 0; j < len(sorted)-i-1; j++ {
-			if sorted[j] > sorted[j+1] {
-				sorted[j], sorted[j+1] = sorted[j+1], sorted[j]
-			}
-		}
-	}
+	// 使用sort.Slice（O(n log n)，比冒泡排序O(n²)快得多）
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i] < sorted[j]
+	})
 
 	return LatencyStats{
 		P50:   percentile(sorted, 50),

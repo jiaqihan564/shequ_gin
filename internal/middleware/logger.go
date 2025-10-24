@@ -119,8 +119,11 @@ func LoggerMiddleware() gin.HandlerFunc {
 					bodyBytes, err := io.ReadAll(c.Request.Body)
 					if err == nil {
 						requestBodySize = int64(len(bodyBytes))
-						// 重新设置body以供后续处理使用
-						c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+						// 使用对象池重新设置body（优化内存分配）
+						buf := utils.GetBuffer()
+						buf.Write(bodyBytes)
+						c.Request.Body = io.NopCloser(buf)
+						// 注意：这里不能PutBuffer，因为body还要被后续使用
 
 						// 截断大请求体，只记录前512字节（减少内存占用）
 						if len(bodyBytes) > 512 {
@@ -150,11 +153,15 @@ func LoggerMiddleware() gin.HandlerFunc {
 		// 只在需要详细日志时包装ResponseWriter（减少性能开销）
 		var blw *responseWriter
 		if needDetailLog {
+			// 使用对象池获取Buffer
+			buf := utils.GetBuffer()
 			blw = &responseWriter{
 				ResponseWriter: c.Writer,
-				body:           bytes.NewBufferString(""),
+				body:           buf,
 			}
 			c.Writer = blw
+			// 在请求结束后归还Buffer
+			defer utils.PutBuffer(buf)
 		}
 
 		// 处理请求

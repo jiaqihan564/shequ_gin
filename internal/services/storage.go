@@ -85,8 +85,10 @@ func (s *StorageService) PutObject(ctx context.Context, objectPath string, conte
 		return "", fmt.Errorf("MinIO 客户端未初始化")
 	}
 	if size < 0 {
-		// 将未知大小的 Reader 读入内存缓冲（头像通常较小）
-		buf := new(bytes.Buffer)
+		// 使用对象池获取Buffer（减少内存分配）
+		buf := utils.GetBuffer()
+		defer utils.PutBuffer(buf)
+
 		if _, err := io.Copy(buf, reader); err != nil {
 			return "", err
 		}

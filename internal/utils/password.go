@@ -6,15 +6,42 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+const (
+	// DefaultBcryptCost 默认bcrypt成本（推荐10-12之间）
+	// cost=10: ~100ms, cost=12: ~400ms, cost=14: ~1.6s
+	DefaultBcryptCost = 12
+	// MinBcryptCost 最小允许的bcrypt成本
+	MinBcryptCost = 10
+	// MaxBcryptCost 最大允许的bcrypt成本
+	MaxBcryptCost = 14
+)
+
 // HashPassword 生成密码哈希
-// 使用 bcrypt cost 14 提供更强的安全性
+// 使用可配置的 bcrypt cost 提供安全性与性能的平衡
 func HashPassword(password string) (string, error) {
+	return HashPasswordWithCost(password, DefaultBcryptCost)
+}
+
+// HashPasswordWithCost 使用指定成本生成密码哈希
+func HashPasswordWithCost(password string, cost int) (string, error) {
 	// 验证密码长度，防止过长密码导致DoS
 	if len(password) > 72 {
 		return "", ErrInvalidPassword
 	}
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)
-	return string(bytes), err
+
+	// 验证成本范围
+	if cost < MinBcryptCost {
+		cost = MinBcryptCost
+	}
+	if cost > MaxBcryptCost {
+		cost = MaxBcryptCost
+	}
+
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), cost)
+	if err != nil {
+		return "", WrapError(err, "密码加密失败")
+	}
+	return string(bytes), nil
 }
 
 // CheckPasswordHash 验证密码哈希

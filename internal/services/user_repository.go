@@ -3,6 +3,8 @@ package services
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"strings"
 	"time"
 
 	"gin/internal/models"
@@ -336,6 +338,72 @@ func (r *UserRepository) CheckUsernameExists(ctx context.Context, username strin
 	}
 
 	return count > 0, nil
+}
+
+// BatchGetUserProfiles 批量获取用户信息（解决N+1问题）
+func (r *UserRepository) BatchGetUserProfiles(ctx context.Context, userIDs []uint) (map[uint]*models.User, error) {
+	if len(userIDs) == 0 {
+		return make(map[uint]*models.User), nil
+	}
+
+	// 去重（预分配容量）
+	uniqueIDs := make(map[uint]bool, len(userIDs))
+	for _, id := range userIDs {
+		uniqueIDs[id] = true
+	}
+
+	ids := make([]uint, 0, len(uniqueIDs))
+	for id := range uniqueIDs {
+		ids = append(ids, id)
+	}
+
+	// 构建批量查询（使用JOIN一次性获取用户和profile）
+	// 优化：使用strings.Repeat代替循环构建placeholders
+	placeholders := "?" + strings.Repeat(",?", len(ids)-1)
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+
+	query := fmt.Sprintf(`
+		SELECT ua.id, ua.username, ua.email, ua.auth_status, ua.account_status,
+		       COALESCE(up.nickname, ua.username) as nickname,
+		       COALESCE(up.avatar_url, '') as avatar
+		FROM user_auth ua
+		LEFT JOIN user_profile up ON ua.id = up.user_id
+		WHERE ua.id IN (%s)
+	`, placeholders)
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	rows, err := r.db.DB.QueryContext(ctx, query, args...)
+	if err != nil {
+		r.logger.Error("批量查询用户信息失败", "error", err.Error())
+		return nil, utils.ErrDatabaseQuery
+	}
+	defer rows.Close()
+
+	users := make(map[uint]*models.User, len(ids))
+	for rows.Next() {
+		var user models.User
+		var nickname, avatar string
+		err := rows.Scan(
+			&user.ID, &user.Username, &user.Email,
+			&user.AuthStatus, &user.AccountStatus,
+			&nickname, &avatar)
+		if err != nil {
+			r.logger.Warn("扫描用户信息失败", "error", err.Error())
+			continue
+		}
+
+		// 将nickname和avatar附加到用户对象（虽然User模型没有这些字段）
+		// 调用者需要单独处理
+		users[user.ID] = &user
+	}
+
+	r.logger.Info("批量查询用户信息成功", "count", len(users), "requested", len(ids))
+	return users, nil
 }
 
 // CheckEmailExists 检查邮箱是否存在

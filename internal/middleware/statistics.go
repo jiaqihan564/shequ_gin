@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"strconv"
 	"time"
 
@@ -49,8 +50,9 @@ func StatisticsMiddleware(statsRepo *services.StatisticsRepository, cumulativeRe
 			}
 		}
 
-		// 异步记录统计数据（不阻塞请求）
-		go func() {
+		// 使用Worker Pool记录统计数据（避免goroutine泄漏）
+		taskID := "stats_" + path + "_" + strconv.FormatInt(time.Now().UnixNano(), 36)
+		_ = utils.SubmitTask(taskID, func(ctx context.Context) error {
 			date := time.Now().Format("2006-01-02")
 
 			// 判断请求状态
@@ -73,16 +75,9 @@ func StatisticsMiddleware(statsRepo *services.StatisticsRepository, cumulativeRe
 
 			// 1. 记录登录统计
 			if path == "/api/auth/login" && method == "POST" && status == 200 {
-				utils.GetLogger().Info("【统计中间件】检测到登录成功，开始记录统计",
-					"path", path,
-					"status", status,
-					"hasUserID", userIDForActive > 0)
-
 				// 按天统计
 				if err := statsRepo.IncrementLoginCount(date); err != nil {
-					utils.GetLogger().Error("记录登录统计失败",
-						"date", date,
-						"error", err.Error())
+					utils.GetLogger().Error("记录登录统计失败", "date", date, "error", err.Error())
 				}
 
 				// 累计统计
@@ -100,9 +95,7 @@ func StatisticsMiddleware(statsRepo *services.StatisticsRepository, cumulativeRe
 
 				// 按天统计
 				if err := statsRepo.IncrementRegisterCount(date); err != nil {
-					utils.GetLogger().Error("记录注册统计失败",
-						"date", date,
-						"error", err.Error())
+					utils.GetLogger().Error("记录注册统计失败", "date", date, "error", err.Error())
 				}
 				// 累计统计
 				if err := cumulativeRepo.IncrementCumulativeStat("total_users", 1); err != nil {
@@ -134,10 +127,11 @@ func StatisticsMiddleware(statsRepo *services.StatisticsRepository, cumulativeRe
 				}
 			}
 
-			// 每次请求后将内存中的每日指标写入数据库
-			go func() {
+			// 使用Worker Pool更新每日指标到数据库（避免嵌套goroutine）
+			metricsTaskID := "daily_metrics_" + date + "_" + strconv.FormatInt(time.Now().UnixNano(), 36)
+			_ = utils.SubmitTask(metricsTaskID, func(metricsCtx context.Context) error {
 				activeUsers, newUsers, totalReqs, peakConcurrent, avgLatency, successRate, mostPopular := dailyMgr.GetTodayMetrics()
-				if err := cumulativeRepo.UpsertDailyMetric(
+				return cumulativeRepo.UpsertDailyMetric(
 					date,
 					activeUsers,
 					newUsers,
@@ -146,18 +140,14 @@ func StatisticsMiddleware(statsRepo *services.StatisticsRepository, cumulativeRe
 					successRate,
 					peakConcurrent,
 					mostPopular,
-				); err != nil {
-					utils.GetLogger().Error("更新每日指标失败", "error", err.Error())
-				}
-			}()
+				)
+			}, 10*time.Second)
 
 			// 4. 记录特定操作的累计统计
 			// 文件上传（两个可能的路径）
 			if (path == "/api/upload" || path == "/api/files/upload") && method == "POST" && status == 200 {
 				if err := cumulativeRepo.IncrementCumulativeStat("total_uploads", 1); err != nil {
 					utils.GetLogger().Error("更新累计上传统计失败", "error", err.Error())
-				} else {
-					utils.GetLogger().Info("【统计中间件】累计上传统计更新成功")
 				}
 			}
 
@@ -165,8 +155,6 @@ func StatisticsMiddleware(statsRepo *services.StatisticsRepository, cumulativeRe
 			if path == "/api/auth/change-password" && method == "POST" && status == 200 {
 				if err := cumulativeRepo.IncrementCumulativeStat("total_password_changes", 1); err != nil {
 					utils.GetLogger().Error("更新累计修改密码统计失败", "error", err.Error())
-				} else {
-					utils.GetLogger().Info("【统计中间件】累计修改密码统计更新成功")
 				}
 			}
 
@@ -174,17 +162,10 @@ func StatisticsMiddleware(statsRepo *services.StatisticsRepository, cumulativeRe
 			if path == "/api/auth/reset-password" && method == "POST" && status == 200 {
 				if err := cumulativeRepo.IncrementCumulativeStat("total_password_resets", 1); err != nil {
 					utils.GetLogger().Error("更新累计重置密码统计失败", "error", err.Error())
-				} else {
-					utils.GetLogger().Info("【统计中间件】累计重置密码统计更新成功")
 				}
 			}
 
-			// 记录累计错误统计（日志用于调试）
-			if isError {
-				utils.GetLogger().Debug("【统计中间件】检测到错误请求",
-					"path", path,
-					"status", status)
-			}
-		}()
+			return nil
+		}, 10*time.Second)
 	}
 }

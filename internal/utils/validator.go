@@ -95,13 +95,17 @@ func ValidateBio(bio string) bool {
 	return true
 }
 
-// ValidateURL 验证URL格式
+// ValidateURL 验证URL格式（优化：提前返回）
 func ValidateURL(url string) bool {
 	if url == "" {
 		return false
 	}
-	// 简单的URL验证
-	return strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://")
+	// 简单的URL验证（优化：使用len检查避免多次调用HasPrefix）
+	if len(url) < 7 { // "http://" 最短7个字符
+		return false
+	}
+	// 检查前缀
+	return (len(url) >= 7 && url[:7] == "http://") || (len(url) >= 8 && url[:8] == "https://")
 }
 
 // ValidatePhoneNumber 验证手机号码（中国）

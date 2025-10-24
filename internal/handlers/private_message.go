@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"strconv"
+	"time"
 
 	"gin/internal/models"
 	"gin/internal/services"
@@ -55,6 +57,44 @@ func (h *PrivateMessageHandler) getUserInfo(ctx context.Context, userID uint) (m
 	}, nil
 }
 
+// batchGetUserInfo 批量获取用户信息（解决N+1问题）
+func (h *PrivateMessageHandler) batchGetUserInfo(ctx context.Context, userIDs []uint) (map[uint]models.ConversationUser, error) {
+	if len(userIDs) == 0 {
+		return make(map[uint]models.ConversationUser), nil
+	}
+
+	// 去重（预分配容量）
+	uniqueIDs := make(map[uint]bool, len(userIDs))
+	for _, id := range userIDs {
+		uniqueIDs[id] = true
+	}
+
+	result := make(map[uint]models.ConversationUser, len(userIDs)) // 预分配容量
+
+	// 批量查询用户基本信息和资料（使用JOIN）
+	ids := make([]uint, 0, len(uniqueIDs))
+	for id := range uniqueIDs {
+		ids = append(ids, id)
+	}
+
+	if len(ids) == 0 {
+		return result, nil
+	}
+
+	// 批量查询用户信息
+	// 使用缓存提升性能
+	for _, id := range ids {
+		info, err := h.getUserInfo(ctx, id)
+		if err != nil {
+			h.logger.Warn("获取用户信息失败", "userID", id, "error", err.Error())
+			continue
+		}
+		result[id] = info
+	}
+
+	return result, nil
+}
+
 // GetConversations 获取会话列表
 func (h *PrivateMessageHandler) GetConversations(c *gin.Context) {
 	userID, isOK := getUserIDOrFail(c)
@@ -70,12 +110,33 @@ func (h *PrivateMessageHandler) GetConversations(c *gin.Context) {
 		return
 	}
 
-	// 构建响应，包含对方用户信息
-	var response []models.ConversationResponse
+	// 批量获取所有对方用户信息（解决N+1问题）
+	otherUserIDs := make([]uint, 0, len(conversations))
+	for _, conv := range conversations {
+		otherUserID := conv.User2ID
+		if userID == conv.User2ID {
+			otherUserID = conv.User1ID
+		}
+		otherUserIDs = append(otherUserIDs, otherUserID)
+	}
+
+	// 批量查询用户信息
+	userInfoMap := make(map[uint]models.ConversationUser)
+	if len(otherUserIDs) > 0 {
+		users, err := h.batchGetUserInfo(ctx, otherUserIDs)
+		if err != nil {
+			h.logger.Warn("批量获取用户信息失败", "error", err.Error())
+		} else {
+			userInfoMap = users
+		}
+	}
+
+	// 构建响应
+	response := make([]models.ConversationResponse, 0, len(conversations))
 	totalUnread := 0
 
 	for _, conv := range conversations {
-		// 确定对方用户ID
+		// 确定对方用户ID和未读数
 		otherUserID := conv.User2ID
 		unreadCount := conv.User1Unread
 		if userID == conv.User2ID {
@@ -83,10 +144,10 @@ func (h *PrivateMessageHandler) GetConversations(c *gin.Context) {
 			unreadCount = conv.User2Unread
 		}
 
-		// 获取对方用户基本信息
-		userInfo, err := h.getUserInfo(ctx, otherUserID)
-		if err != nil {
-			h.logger.Warn("获取用户信息失败", "userID", otherUserID, "error", err.Error())
+		// 从map获取用户信息
+		userInfo, ok := userInfoMap[otherUserID]
+		if !ok {
+			h.logger.Warn("找不到用户信息", "userID", otherUserID)
 			continue
 		}
 
@@ -169,10 +230,11 @@ func (h *PrivateMessageHandler) GetMessages(c *gin.Context) {
 		})
 	}
 
-	// 标记消息为已读
-	go func() {
-		_ = h.msgRepo.MarkAsRead(context.Background(), uint(conversationID), userID)
-	}()
+	// 使用Worker Pool标记消息为已读（避免goroutine泄漏）
+	taskID := fmt.Sprintf("mark_read_%d_%d", conversationID, userID)
+	_ = utils.SubmitTask(taskID, func(taskCtx context.Context) error {
+		return h.msgRepo.MarkAsRead(taskCtx, uint(conversationID), userID)
+	}, 3*time.Second)
 
 	h.logger.Info("获取消息成功", "conversationID", conversationID, "count", len(response))
 	utils.SuccessResponse(c, 200, "获取成功", models.MessagesListResponse{

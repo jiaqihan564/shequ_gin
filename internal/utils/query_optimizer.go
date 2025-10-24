@@ -9,6 +9,7 @@ import (
 )
 
 // QueryOptimizer 查询优化器
+// 提供常用的查询优化工具
 type QueryOptimizer struct {
 	db     *sql.DB
 	logger Logger
@@ -22,62 +23,18 @@ func NewQueryOptimizer(db *sql.DB) *QueryOptimizer {
 	}
 }
 
-// BatchQuery 批量查询优化（解决N+1问题）
-// 示例: 批量查询多个用户的信息
-func (o *QueryOptimizer) BatchQuery(
-	ctx context.Context,
-	baseQuery string,
-	ids []uint,
-	scanFunc func(*sql.Rows) error,
-) error {
-	if len(ids) == 0 {
-		return nil
-	}
-
-	// 构建IN查询
-	placeholders := make([]string, len(ids))
-	args := make([]interface{}, len(ids))
-	for i, id := range ids {
-		placeholders[i] = "?"
-		args[i] = id
-	}
-
-	query := strings.ReplaceAll(baseQuery, "?", strings.Join(placeholders, ","))
-
-	start := time.Now()
-	rows, err := o.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		o.logger.Error("批量查询失败", "error", err.Error(), "idsCount", len(ids))
-		return err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		if err := scanFunc(rows); err != nil {
-			o.logger.Warn("扫描行失败", "error", err.Error())
-			continue
-		}
-	}
-
-	o.logger.Debug("批量查询完成",
-		"idsCount", len(ids),
-		"duration", time.Since(start))
-
-	return rows.Err()
-}
-
-// ExplainQuery 分析查询计划
-func (o *QueryOptimizer) ExplainQuery(ctx context.Context, query string, args ...interface{}) (map[string]interface{}, error) {
-	explainQuery := "EXPLAIN " + query
-
-	row := o.db.QueryRowContext(ctx, explainQuery, args...)
+// EstimateCount 估算总数（大表优化）
+// 对于大表，使用估算值代替精确COUNT，提升性能
+func (qo *QueryOptimizer) EstimateCount(ctx context.Context, table string, whereClause string, args []interface{}) (int, bool, error) {
+	// 先尝试使用EXPLAIN获取估算行数
+	explainQuery := fmt.Sprintf("EXPLAIN SELECT COUNT(*) FROM %s %s", table, whereClause)
 
 	var (
-		id           int
-		selectType   string
-		table        string
+		id           sql.NullInt64
+		selectType   sql.NullString
+		tableName    sql.NullString
 		partitions   sql.NullString
-		typ          string
+		typeStr      sql.NullString
 		possibleKeys sql.NullString
 		key          sql.NullString
 		keyLen       sql.NullString
@@ -87,265 +44,328 @@ func (o *QueryOptimizer) ExplainQuery(ctx context.Context, query string, args ..
 		extra        sql.NullString
 	)
 
-	err := row.Scan(
-		&id, &selectType, &table, &partitions, &typ,
-		&possibleKeys, &key, &keyLen, &ref, &rows,
-		&filtered, &extra)
+	err := qo.db.QueryRowContext(ctx, explainQuery, args...).Scan(
+		&id, &selectType, &tableName, &partitions, &typeStr,
+		&possibleKeys, &key, &keyLen, &ref, &rows, &filtered, &extra,
+	)
 
-	if err != nil {
-		return nil, err
+	if err == nil && rows.Valid && rows.Int64 < 10000 {
+		// 小表（<10000行），直接返回估算值
+		return int(rows.Int64), true, nil
 	}
 
-	result := map[string]interface{}{
-		"id":            id,
-		"select_type":   selectType,
-		"table":         table,
-		"type":          typ,
-		"possible_keys": possibleKeys.String,
-		"key":           key.String,
-		"key_len":       keyLen.String,
-		"ref":           ref.String,
-		"rows":          rows.Int64,
-		"filtered":      filtered.Float64,
-		"extra":         extra.String,
-	}
-
-	// 检查是否使用了索引
-	if !key.Valid || key.String == "" {
-		o.logger.Warn("查询未使用索引",
-			"table", table,
-			"type", typ,
-			"rows", rows.Int64)
-	}
-
-	return result, nil
+	// 大表或估算失败，返回需要精确查询的信号
+	return 0, false, nil
 }
 
-// OptimizeBulkInsert 优化批量插入
-func (o *QueryOptimizer) OptimizeBulkInsert(
-	ctx context.Context,
-	baseQuery string,
-	valueGroups [][]interface{},
-	batchSize int,
-) error {
-	if len(valueGroups) == 0 {
-		return nil
-	}
+// CachedCount 带缓存的COUNT查询
+// 对于变化不频繁的数据，使用缓存减少COUNT查询
+func (qo *QueryOptimizer) CachedCount(ctx context.Context, cacheKey string, countQuery string, args []interface{}, cacheTTL time.Duration) (int, error) {
+	cache := GetCache()
 
-	// 设置默认批量大小
-	if batchSize <= 0 {
-		batchSize = 100
-	}
-
-	start := time.Now()
-	totalInserted := 0
-
-	// 分批插入
-	for i := 0; i < len(valueGroups); i += batchSize {
-		end := i + batchSize
-		if end > len(valueGroups) {
-			end = len(valueGroups)
+	// 尝试从缓存获取
+	if cached, ok := cache.Get(cacheKey); ok {
+		if count, ok := cached.(int); ok {
+			qo.logger.Debug("COUNT查询缓存命中", "cacheKey", cacheKey, "count", count)
+			return count, nil
 		}
+	}
 
-		batch := valueGroups[i:end]
-		if err := o.executeBulkInsert(ctx, baseQuery, batch); err != nil {
+	// 缓存未命中，执行查询
+	var count int
+	err := qo.db.QueryRowContext(ctx, countQuery, args...).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+
+	// 写入缓存
+	cache.SetWithTTL(cacheKey, count, cacheTTL)
+	qo.logger.Debug("COUNT查询结果已缓存", "cacheKey", cacheKey, "count", count, "ttl", cacheTTL)
+
+	return count, nil
+}
+
+// OptimizedPagination 优化的分页查询
+// 使用游标分页代替OFFSET（更适合深分页）
+func (qo *QueryOptimizer) OptimizedPagination(
+	ctx context.Context,
+	table string,
+	columns []string,
+	whereClause string,
+	orderBy string,
+	limit int,
+	lastID uint,
+	args []interface{},
+) (*sql.Rows, error) {
+	// 构建查询
+	selectColumns := strings.Join(columns, ", ")
+
+	// 如果有lastID，使用游标分页
+	if lastID > 0 {
+		if whereClause != "" {
+			whereClause += " AND id > ?"
+		} else {
+			whereClause = "WHERE id > ?"
+		}
+		args = append(args, lastID)
+	}
+
+	query := fmt.Sprintf(
+		"SELECT %s FROM %s %s ORDER BY %s LIMIT ?",
+		selectColumns, table, whereClause, orderBy,
+	)
+	args = append(args, limit)
+
+	return qo.db.QueryContext(ctx, query, args...)
+}
+
+// BatchQuery 批量查询优化（避免大结果集一次性加载）
+// 使用流式处理，边查询边处理
+type RowProcessor func(*sql.Rows) error
+
+func (qo *QueryOptimizer) BatchQuery(
+	ctx context.Context,
+	query string,
+	args []interface{},
+	batchSize int,
+	processor RowProcessor,
+) error {
+	if batchSize <= 0 {
+		batchSize = 1000
+	}
+
+	offset := 0
+	start := time.Now()
+	totalProcessed := 0
+
+	for {
+		// 分批查询
+		batchQuery := fmt.Sprintf("%s LIMIT %d OFFSET %d", query, batchSize, offset)
+		rows, err := qo.db.QueryContext(ctx, batchQuery, args...)
+		if err != nil {
 			return err
 		}
 
-		totalInserted += len(batch)
+		hasData := false
+		for rows.Next() {
+			hasData = true
+			if err := processor(rows); err != nil {
+				rows.Close()
+				return err
+			}
+			totalProcessed++
+		}
+		rows.Close()
+
+		if !hasData {
+			break
+		}
+
+		offset += batchSize
 	}
 
-	o.logger.Info("批量插入完成",
-		"total", totalInserted,
-		"batches", (len(valueGroups)+batchSize-1)/batchSize,
+	qo.logger.Info("批量查询处理完成",
+		"totalProcessed", totalProcessed,
+		"batchSize", batchSize,
 		"duration", time.Since(start))
 
 	return nil
 }
 
-// executeBulkInsert 执行单批插入
-func (o *QueryOptimizer) executeBulkInsert(
+// OptimizeLIKEQuery 优化LIKE查询
+// 返回优化建议和改进的查询
+func (qo *QueryOptimizer) OptimizeLIKEQuery(keyword string) (optimized string, useFullText bool) {
+	// 去除首尾的%
+	trimmed := strings.Trim(keyword, "%")
+
+	// 如果是前缀匹配（keyword%），可以使用索引
+	if strings.HasSuffix(keyword, "%") && !strings.HasPrefix(keyword, "%") {
+		return trimmed + "%", false
+	}
+
+	// 如果是双边模糊匹配（%keyword%），建议使用全文索引
+	if strings.HasPrefix(keyword, "%") && strings.HasSuffix(keyword, "%") {
+		return trimmed, true
+	}
+
+	return keyword, false
+}
+
+// GetQueryPlan 获取查询执行计划（用于调试）
+func (qo *QueryOptimizer) GetQueryPlan(ctx context.Context, query string, args []interface{}) (string, error) {
+	explainQuery := "EXPLAIN " + query
+	rows, err := qo.db.QueryContext(ctx, explainQuery, args...)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+
+	var plan strings.Builder
+	plan.WriteString("查询执行计划:\n")
+
+	// 获取列名
+	cols, _ := rows.Columns()
+	plan.WriteString(fmt.Sprintf("Columns: %v\n", cols))
+
+	// 读取行
+	rowNum := 0
+	for rows.Next() {
+		// 创建扫描目标
+		values := make([]interface{}, len(cols))
+		valuePtrs := make([]interface{}, len(cols))
+		for i := range values {
+			valuePtrs[i] = &values[i]
+		}
+
+		if err := rows.Scan(valuePtrs...); err != nil {
+			continue
+		}
+
+		rowNum++
+		plan.WriteString(fmt.Sprintf("Row %d: ", rowNum))
+		for i, col := range cols {
+			plan.WriteString(fmt.Sprintf("%s=%v ", col, values[i]))
+		}
+		plan.WriteString("\n")
+	}
+
+	return plan.String(), nil
+}
+
+// UseIndexHint 添加索引提示（强制使用某个索引）
+func (qo *QueryOptimizer) UseIndexHint(table, indexName string) string {
+	return fmt.Sprintf("%s USE INDEX (%s)", table, indexName)
+}
+
+// ForceIndexHint 强制使用索引
+func (qo *QueryOptimizer) ForceIndexHint(table, indexName string) string {
+	return fmt.Sprintf("%s FORCE INDEX (%s)", table, indexName)
+}
+
+// IgnoreIndexHint 忽略某个索引
+func (qo *QueryOptimizer) IgnoreIndexHint(table, indexName string) string {
+	return fmt.Sprintf("%s IGNORE INDEX (%s)", table, indexName)
+}
+
+// ParallelCountAndQuery 并行执行COUNT和列表查询（优化分页性能）
+func (qo *QueryOptimizer) ParallelCountAndQuery(
 	ctx context.Context,
-	baseQuery string,
-	valueGroups [][]interface{},
-) error {
-	if len(valueGroups) == 0 {
-		return nil
+	countQuery string,
+	listQuery string,
+	countArgs []interface{},
+	listArgs []interface{},
+) (int, *sql.Rows, error) {
+	// 使用channel并行执行
+	type countResult struct {
+		count int
+		err   error
+	}
+	type queryResult struct {
+		rows *sql.Rows
+		err  error
 	}
 
-	// 构建VALUES部分
-	placeholderCount := len(valueGroups[0])
-	placeholder := "(" + strings.Repeat("?,", placeholderCount-1) + "?)"
+	countChan := make(chan countResult, 1)
+	queryChan := make(chan queryResult, 1)
 
-	placeholders := make([]string, len(valueGroups))
-	args := make([]interface{}, 0, len(valueGroups)*placeholderCount)
+	// 并行执行COUNT查询
+	go func() {
+		var count int
+		err := qo.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&count)
+		countChan <- countResult{count: count, err: err}
+	}()
 
-	for i, values := range valueGroups {
-		placeholders[i] = placeholder
-		args = append(args, values...)
+	// 并行执行列表查询
+	go func() {
+		rows, err := qo.db.QueryContext(ctx, listQuery, listArgs...)
+		queryChan <- queryResult{rows: rows, err: err}
+	}()
+
+	// 收集结果
+	countRes := <-countChan
+	queryRes := <-queryChan
+
+	if countRes.err != nil {
+		if queryRes.rows != nil {
+			queryRes.rows.Close()
+		}
+		return 0, nil, countRes.err
 	}
 
-	query := baseQuery + " VALUES " + strings.Join(placeholders, ",")
+	if queryRes.err != nil {
+		return 0, nil, queryRes.err
+	}
 
-	_, err := o.db.ExecContext(ctx, query, args...)
-	return err
+	return countRes.count, queryRes.rows, nil
 }
 
-// AnalyzeSlowQuery 分析慢查询
-func (o *QueryOptimizer) AnalyzeSlowQuery(ctx context.Context, threshold time.Duration) ([]SlowQuery, error) {
-	// 查询慢查询日志（需要启用MySQL慢查询日志）
+// OptimizeIN 优化IN查询（大量ID时拆分为多个查询）
+func (qo *QueryOptimizer) OptimizeIN(ids []uint, maxBatchSize int) [][]uint {
+	if maxBatchSize <= 0 {
+		maxBatchSize = 1000 // MySQL默认推荐
+	}
+
+	if len(ids) <= maxBatchSize {
+		return [][]uint{ids}
+	}
+
+	// 拆分为多个批次
+	batches := make([][]uint, 0)
+	for i := 0; i < len(ids); i += maxBatchSize {
+		end := i + maxBatchSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+		batches = append(batches, ids[i:end])
+	}
+
+	qo.logger.Info("IN查询已拆分为多个批次",
+		"totalIDs", len(ids),
+		"batchSize", maxBatchSize,
+		"batches", len(batches))
+
+	return batches
+}
+
+// GetSlowQueryLog 获取慢查询日志（需要开启慢查询日志）
+func (qo *QueryOptimizer) GetSlowQueryLog(ctx context.Context, limit int) ([]map[string]interface{}, error) {
 	query := `
-		SELECT 
-			sql_text,
-			start_time,
-			query_time,
-			lock_time,
-			rows_sent,
-			rows_examined
+		SELECT sql_text, start_time, query_time, lock_time, rows_sent, rows_examined
 		FROM mysql.slow_log
-		WHERE query_time > ?
-		ORDER BY start_time DESC
-		LIMIT 100
+		ORDER BY query_time DESC
+		LIMIT ?
 	`
 
-	rows, err := o.db.QueryContext(ctx, query, threshold.Seconds())
+	rows, err := qo.db.QueryContext(ctx, query, limit)
 	if err != nil {
-		// 如果慢查询日志未启用，返回空结果
-		if strings.Contains(err.Error(), "slow_log") {
-			o.logger.Warn("慢查询日志未启用")
-			return []SlowQuery{}, nil
-		}
 		return nil, err
 	}
 	defer rows.Close()
 
-	slowQueries := []SlowQuery{}
+	results := make([]map[string]interface{}, 0)
 	for rows.Next() {
-		var sq SlowQuery
-		var queryTime, lockTime float64
-
-		err := rows.Scan(
-			&sq.SQLText,
-			&sq.StartTime,
-			&queryTime,
-			&lockTime,
-			&sq.RowsSent,
-			&sq.RowsExamined,
+		var (
+			sqlText      string
+			startTime    time.Time
+			queryTime    time.Duration
+			lockTime     time.Duration
+			rowsSent     int
+			rowsExamined int
 		)
-		if err != nil {
+
+		if err := rows.Scan(&sqlText, &startTime, &queryTime, &lockTime, &rowsSent, &rowsExamined); err != nil {
 			continue
 		}
 
-		sq.QueryTime = time.Duration(queryTime * float64(time.Second))
-		sq.LockTime = time.Duration(lockTime * float64(time.Second))
-		slowQueries = append(slowQueries, sq)
-	}
-
-	return slowQueries, nil
-}
-
-// SlowQuery 慢查询信息
-type SlowQuery struct {
-	SQLText      string
-	StartTime    time.Time
-	QueryTime    time.Duration
-	LockTime     time.Duration
-	RowsSent     int64
-	RowsExamined int64
-}
-
-// String 格式化慢查询信息
-func (sq SlowQuery) String() string {
-	return fmt.Sprintf(
-		"Query: %s\nTime: %v\nRows: sent=%d, examined=%d\nLock: %v\n",
-		TruncateString(sq.SQLText, 200),
-		sq.QueryTime,
-		sq.RowsSent,
-		sq.RowsExamined,
-		sq.LockTime,
-	)
-}
-
-// IndexUsageStats 索引使用统计
-type IndexUsageStats struct {
-	TableName  string
-	IndexName  string
-	UsageCount int64
-	LastUsed   time.Time
-}
-
-// GetIndexUsageStats 获取索引使用统计
-func (o *QueryOptimizer) GetIndexUsageStats(ctx context.Context) ([]IndexUsageStats, error) {
-	query := `
-		SELECT 
-			object_schema AS table_schema,
-			object_name AS table_name,
-			index_name,
-			count_star AS usage_count
-		FROM performance_schema.table_io_waits_summary_by_index_usage
-		WHERE object_schema = DATABASE()
-		  AND index_name IS NOT NULL
-		  AND count_star > 0
-		ORDER BY count_star DESC
-		LIMIT 100
-	`
-
-	rows, err := o.db.QueryContext(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	stats := []IndexUsageStats{}
-	for rows.Next() {
-		var schema, tableName, indexName string
-		var usageCount int64
-
-		if err := rows.Scan(&schema, &tableName, &indexName, &usageCount); err != nil {
-			continue
-		}
-
-		stats = append(stats, IndexUsageStats{
-			TableName:  tableName,
-			IndexName:  indexName,
-			UsageCount: usageCount,
+		results = append(results, map[string]interface{}{
+			"sql_text":      sqlText,
+			"start_time":    startTime,
+			"query_time":    queryTime,
+			"lock_time":     lockTime,
+			"rows_sent":     rowsSent,
+			"rows_examined": rowsExamined,
 		})
 	}
 
-	return stats, nil
-}
-
-// SuggestIndexes 建议创建的索引
-func (o *QueryOptimizer) SuggestIndexes(ctx context.Context) ([]string, error) {
-	// 查询未使用索引的查询
-	query := `
-		SELECT DISTINCT
-			table_name,
-			column_name
-		FROM information_schema.STATISTICS
-		WHERE table_schema = DATABASE()
-		  AND index_name = 'PRIMARY'
-	`
-
-	rows, err := o.db.QueryContext(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	suggestions := []string{}
-	for rows.Next() {
-		var tableName, columnName string
-		if err := rows.Scan(&tableName, &columnName); err != nil {
-			continue
-		}
-
-		// 这里可以基于查询模式给出索引建议
-		// 简化版本：基于常见查询模式
-		suggestions = append(suggestions,
-			fmt.Sprintf("CREATE INDEX idx_%s_%s ON %s(%s);",
-				tableName, columnName, tableName, columnName))
-	}
-
-	return suggestions, nil
+	return results, nil
 }

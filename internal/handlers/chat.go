@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -40,10 +41,10 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 		return
 	}
 
-	// 从数据库获取用户基本信息
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
+	// 从请求上下文获取，避免重复查询
+	ctx := c.Request.Context()
 
+	// 使用缓存获取用户信息（减少数据库查询）
 	user, err := h.userRepo.GetUserByID(ctx, userID)
 	if err != nil {
 		h.logger.Error("获取用户信息失败", "userID", userID, "error", err.Error())
@@ -52,11 +53,13 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 	}
 
 	// 获取用户扩展信息（昵称和头像）
-	profile, err := h.userRepo.GetUserProfile(ctx, userID)
-	nickname := ""
+	profile, _ := h.userRepo.GetUserProfile(ctx, userID)
+	nickname := user.Username // 默认使用username
 	avatar := ""
-	if err == nil && profile != nil {
-		nickname = profile.Nickname
+	if profile != nil {
+		if profile.Nickname != "" {
+			nickname = profile.Nickname
+		}
 		avatar = profile.AvatarURL
 	}
 
@@ -124,14 +127,17 @@ func (h *ChatHandler) GetNewMessages(c *gin.Context) {
 		return
 	}
 
-	// 更新在线用户心跳（轮询视为在线）
+	// 使用Worker Pool异步更新在线用户心跳（避免阻塞响应）
 	userID, err := utils.GetUserIDFromContext(c)
 	if err == nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		if user, err := h.userRepo.GetUserByID(ctx, userID); err == nil {
-			_ = h.chatRepo.UpdateOnlineUser(userID, user.Username)
-		}
+		taskID := fmt.Sprintf("heartbeat_%d_%d", userID, time.Now().Unix())
+		_ = utils.SubmitTask(taskID, func(taskCtx context.Context) error {
+			user, err := h.userRepo.GetUserByID(taskCtx, userID)
+			if err != nil {
+				return err
+			}
+			return h.chatRepo.UpdateOnlineUser(userID, user.Username)
+		}, 3*time.Second)
 	}
 
 	utils.SuccessResponse(c, 200, "获取成功", models.GetMessagesResponse{

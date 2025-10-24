@@ -163,9 +163,11 @@ func (s *ResourceStorageService) MoveResourceImages(ctx context.Context, tempURL
 func (s *ResourceStorageService) uploadFile(ctx context.Context, reader io.Reader, objectPath string, size int64, contentType string) (string, error) {
 	bucket := s.cfg.ResourcesStorage.Bucket
 
-	// 如果size未知，读入内存
+	// 如果size未知，读入内存（使用对象池优化）
 	if size < 0 {
-		buf := new(bytes.Buffer)
+		buf := utils.GetBuffer()
+		defer utils.PutBuffer(buf)
+
 		if _, err := io.Copy(buf, reader); err != nil {
 			return "", err
 		}

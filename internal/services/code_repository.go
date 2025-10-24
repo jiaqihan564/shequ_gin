@@ -102,34 +102,67 @@ func (r *CodeRepositoryImpl) GetSnippetByID(id uint) (*models.CodeSnippet, error
 	return &snippet, nil
 }
 
-// GetSnippetsByUserID 获取用户的代码片段列表
+// GetSnippetsByUserID 获取用户的代码片段列表（优化：并行查询）
 func (r *CodeRepositoryImpl) GetSnippetsByUserID(userID uint, limit, offset int) ([]models.CodeSnippetListItem, int, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// 查询总数
-	var total int
+	// 并行执行COUNT和列表查询
 	countQuery := `SELECT COUNT(*) FROM code_snippets WHERE user_id = ?`
-	row := r.db.QueryRowWithCache(ctx, countQuery, userID)
-	if err := row.Scan(&total); err != nil {
-		return nil, 0, fmt.Errorf("查询代码片段总数失败: %w", err)
-	}
-
-	// 查询列表
-	query := `
+	listQuery := `
 		SELECT id, title, language, is_public, created_at, updated_at
 		FROM code_snippets
 		WHERE user_id = ?
 		ORDER BY updated_at DESC
 		LIMIT ? OFFSET ?
 	`
-	rows, err := r.db.QueryWithCache(ctx, query, userID, limit, offset)
-	if err != nil {
-		return nil, 0, fmt.Errorf("查询代码片段列表失败: %w", err)
+
+	type countResult struct {
+		total int
+		err   error
 	}
+	type listResult struct {
+		rows *sql.Rows
+		err  error
+	}
+
+	countChan := make(chan countResult, 1)
+	listChan := make(chan listResult, 1)
+
+	// 并行执行COUNT
+	go func() {
+		var total int
+		row := r.db.QueryRowWithCache(ctx, countQuery, userID)
+		err := row.Scan(&total)
+		countChan <- countResult{total: total, err: err}
+	}()
+
+	// 并行执行列表查询
+	go func() {
+		rows, err := r.db.QueryWithCache(ctx, listQuery, userID, limit, offset)
+		listChan <- listResult{rows: rows, err: err}
+	}()
+
+	// 收集结果
+	countRes := <-countChan
+	listRes := <-listChan
+
+	if countRes.err != nil {
+		if listRes.rows != nil {
+			listRes.rows.Close()
+		}
+		return nil, 0, fmt.Errorf("查询代码片段总数失败: %w", countRes.err)
+	}
+
+	if listRes.err != nil {
+		return nil, 0, fmt.Errorf("查询代码片段列表失败: %w", listRes.err)
+	}
+
+	rows := listRes.rows
 	defer rows.Close()
 
-	var snippets []models.CodeSnippetListItem
+	// 预分配slice（性能优化）
+	snippets := make([]models.CodeSnippetListItem, 0, limit)
 	for rows.Next() {
 		var snippet models.CodeSnippetListItem
 		if err := rows.Scan(&snippet.ID, &snippet.Title, &snippet.Language, &snippet.IsPublic,
@@ -139,7 +172,7 @@ func (r *CodeRepositoryImpl) GetSnippetsByUserID(userID uint, limit, offset int)
 		snippets = append(snippets, snippet)
 	}
 
-	return snippets, total, nil
+	return snippets, countRes.total, nil
 }
 
 // UpdateSnippet 更新代码片段
@@ -296,34 +329,67 @@ func (r *CodeRepositoryImpl) CreateExecution(execution *models.CodeExecution) er
 	return nil
 }
 
-// GetExecutionsByUserID 获取用户的执行记录列表
+// GetExecutionsByUserID 获取用户的执行记录列表（优化：并行查询）
 func (r *CodeRepositoryImpl) GetExecutionsByUserID(userID uint, limit, offset int) ([]models.CodeExecution, int, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// 查询总数
-	var total int
+	// 并行执行COUNT和列表查询
 	countQuery := `SELECT COUNT(*) FROM code_executions WHERE user_id = ?`
-	row := r.db.QueryRowWithCache(ctx, countQuery, userID)
-	if err := row.Scan(&total); err != nil {
-		return nil, 0, fmt.Errorf("查询执行记录总数失败: %w", err)
-	}
-
-	// 查询列表
-	query := `
+	listQuery := `
 		SELECT id, snippet_id, user_id, language, code, stdin, output, error, execution_time, memory_usage, status, created_at
 		FROM code_executions
 		WHERE user_id = ?
 		ORDER BY created_at DESC
 		LIMIT ? OFFSET ?
 	`
-	rows, err := r.db.QueryWithCache(ctx, query, userID, limit, offset)
-	if err != nil {
-		return nil, 0, fmt.Errorf("查询执行记录列表失败: %w", err)
+
+	type countResult struct {
+		total int
+		err   error
 	}
+	type listResult struct {
+		rows *sql.Rows
+		err  error
+	}
+
+	countChan := make(chan countResult, 1)
+	listChan := make(chan listResult, 1)
+
+	// 并行执行COUNT
+	go func() {
+		var total int
+		row := r.db.QueryRowWithCache(ctx, countQuery, userID)
+		err := row.Scan(&total)
+		countChan <- countResult{total: total, err: err}
+	}()
+
+	// 并行执行列表查询
+	go func() {
+		rows, err := r.db.QueryWithCache(ctx, listQuery, userID, limit, offset)
+		listChan <- listResult{rows: rows, err: err}
+	}()
+
+	// 收集结果
+	countRes := <-countChan
+	listRes := <-listChan
+
+	if countRes.err != nil {
+		if listRes.rows != nil {
+			listRes.rows.Close()
+		}
+		return nil, 0, fmt.Errorf("查询执行记录总数失败: %w", countRes.err)
+	}
+
+	if listRes.err != nil {
+		return nil, 0, fmt.Errorf("查询执行记录列表失败: %w", listRes.err)
+	}
+
+	rows := listRes.rows
 	defer rows.Close()
 
-	var executions []models.CodeExecution
+	// 预分配slice（性能优化）
+	executions := make([]models.CodeExecution, 0, limit)
 	for rows.Next() {
 		var execution models.CodeExecution
 		if err := rows.Scan(&execution.ID, &execution.SnippetID, &execution.UserID, &execution.Language,
@@ -334,7 +400,7 @@ func (r *CodeRepositoryImpl) GetExecutionsByUserID(userID uint, limit, offset in
 		executions = append(executions, execution)
 	}
 
-	return executions, total, nil
+	return executions, countRes.total, nil
 }
 
 // GetExecutionsBySnippetID 获取代码片段的执行记录
@@ -465,22 +531,55 @@ func (r *CodeRepositoryImpl) GetPublicSnippets(language string, limit, offset in
 		args = []interface{}{limit, offset}
 	}
 
-	// 查询总数
-	var total int
+	// 并行执行COUNT和列表查询（优化性能）
 	var countArgs []interface{}
 	if language != "" {
 		countArgs = []interface{}{language}
 	}
-	row := r.db.QueryRowWithCache(ctx, countQuery, countArgs...)
-	if err := row.Scan(&total); err != nil {
-		return nil, 0, fmt.Errorf("查询公开代码片段总数失败: %w", err)
+
+	type countResult struct {
+		total int
+		err   error
+	}
+	type listResult struct {
+		rows *sql.Rows
+		err  error
 	}
 
-	// 查询列表
-	rows, err := r.db.QueryWithCache(ctx, listQuery, args...)
-	if err != nil {
-		return nil, 0, fmt.Errorf("查询公开代码片段列表失败: %w", err)
+	countChan := make(chan countResult, 1)
+	listChan := make(chan listResult, 1)
+
+	// 并行执行COUNT
+	go func() {
+		var total int
+		row := r.db.QueryRowWithCache(ctx, countQuery, countArgs...)
+		err := row.Scan(&total)
+		countChan <- countResult{total: total, err: err}
+	}()
+
+	// 并行执行列表查询
+	go func() {
+		rows, err := r.db.QueryWithCache(ctx, listQuery, args...)
+		listChan <- listResult{rows: rows, err: err}
+	}()
+
+	// 收集结果
+	countRes := <-countChan
+	listRes := <-listChan
+
+	if countRes.err != nil {
+		if listRes.rows != nil {
+			listRes.rows.Close()
+		}
+		return nil, 0, fmt.Errorf("查询公开代码片段总数失败: %w", countRes.err)
 	}
+
+	if listRes.err != nil {
+		return nil, 0, fmt.Errorf("查询公开代码片段列表失败: %w", listRes.err)
+	}
+
+	total := countRes.total
+	rows := listRes.rows
 	defer rows.Close()
 
 	var snippets []models.CodeSnippetWithUser

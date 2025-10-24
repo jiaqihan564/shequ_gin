@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 
 	"gin/internal/models"
@@ -50,33 +51,61 @@ func (r *ResourceRepository) CreateResource(ctx context.Context, resource *model
 	resourceID, _ := result.LastInsertId()
 	resource.ID = uint(resourceID)
 
-	// 插入预览图
-	r.logger.Info("开始插入预览图", "resourceID", resource.ID, "imageCount", len(imageURLs))
+	// 批量插入预览图（性能优化）
 	if len(imageURLs) > 0 {
-		imgQuery := `INSERT INTO resource_images (resource_id, image_url, image_order, is_cover, created_at) VALUES (?, ?, ?, ?, ?)`
+		r.logger.Info("开始批量插入预览图", "resourceID", resource.ID, "imageCount", len(imageURLs))
+
+		// 构建批量插入SQL
+		imgQuery := `INSERT INTO resource_images (resource_id, image_url, image_order, is_cover, created_at) VALUES `
+		imgValues := make([]string, 0, len(imageURLs))
+		imgArgs := make([]interface{}, 0, len(imageURLs)*5)
+		now := time.Now()
+
 		for i, url := range imageURLs {
 			isCover := 0
 			if i == 0 {
 				isCover = 1 // 第一张设为封面
 			}
-			r.logger.Info("插入预览图", "index", i, "url", url, "isCover", isCover)
-			_, err := tx.ExecContext(ctx, imgQuery, resource.ID, url, i, isCover, time.Now())
-			if err != nil {
-				r.logger.Error("插入预览图失败", "index", i, "url", url, "error", err.Error())
-			} else {
-				r.logger.Info("预览图插入成功", "index", i)
-			}
+			imgValues = append(imgValues, "(?, ?, ?, ?, ?)")
+			imgArgs = append(imgArgs, resource.ID, url, i, isCover, now)
 		}
-	} else {
-		r.logger.Warn("没有预览图需要插入")
+
+		imgQuery += strings.Join(imgValues, ", ")
+		_, err := tx.ExecContext(ctx, imgQuery, imgArgs...)
+		if err != nil {
+			r.logger.Error("批量插入预览图失败", "error", err.Error())
+			return utils.ErrDatabaseInsert
+		}
+		r.logger.Info("预览图批量插入成功", "count", len(imageURLs))
 	}
 
-	// 插入标签
+	// 批量插入标签（性能优化）
 	if len(tags) > 0 {
-		tagQuery := `INSERT INTO resource_tags (resource_id, tag_name, created_at) VALUES (?, ?, ?)`
+		// 过滤空标签
+		validTags := make([]string, 0, len(tags))
 		for _, tag := range tags {
 			if tag != "" {
-				_, _ = tx.ExecContext(ctx, tagQuery, resource.ID, tag, time.Now())
+				validTags = append(validTags, tag)
+			}
+		}
+
+		if len(validTags) > 0 {
+			tagQuery := `INSERT INTO resource_tags (resource_id, tag_name, created_at) VALUES `
+			tagValues := make([]string, 0, len(validTags))
+			tagArgs := make([]interface{}, 0, len(validTags)*3)
+			now := time.Now()
+
+			for _, tag := range validTags {
+				tagValues = append(tagValues, "(?, ?, ?)")
+				tagArgs = append(tagArgs, resource.ID, tag, now)
+			}
+
+			tagQuery += strings.Join(tagValues, ", ")
+			_, err := tx.ExecContext(ctx, tagQuery, tagArgs...)
+			if err != nil {
+				r.logger.Warn("批量插入标签失败", "error", err.Error())
+			} else {
+				r.logger.Info("标签批量插入成功", "count", len(validTags))
 			}
 		}
 	}
@@ -232,15 +261,7 @@ func (r *ResourceRepository) ListResources(ctx context.Context, query models.Res
 		orderBy = "ORDER BY r.download_count DESC"
 	}
 
-	// 查询总数
-	countQuery := "SELECT COUNT(*) FROM resources r " + whereClause
-	var total int
-	err := r.db.DB.QueryRowContext(ctx, countQuery, args...).Scan(&total)
-	if err != nil {
-		return nil, utils.ErrDatabaseQuery
-	}
-
-	// 分页
+	// 分页参数
 	if query.Page < 1 {
 		query.Page = 1
 	}
@@ -249,7 +270,8 @@ func (r *ResourceRepository) ListResources(ctx context.Context, query models.Res
 	}
 	offset := (query.Page - 1) * query.PageSize
 
-	// 使用JOIN优化查询，避免N+1问题
+	// 并行执行COUNT和列表查询（优化性能）
+	countQuery := "SELECT COUNT(*) FROM resources r " + whereClause
 	listQueryOptimized := `SELECT r.id, r.user_id, r.title, r.description, r.category_id, r.file_name,
 	              r.file_size, r.file_extension, r.download_count, r.view_count, r.like_count, r.created_at,
 	              ua.username, COALESCE(up.nickname, ua.username) as nickname, COALESCE(up.avatar_url, '') as avatar,
@@ -261,12 +283,55 @@ func (r *ResourceRepository) ListResources(ctx context.Context, query models.Res
 	              LEFT JOIN resource_images ri ON r.id = ri.resource_id AND ri.is_cover = 1
 	              LEFT JOIN resource_categories rc ON r.category_id = rc.id
 	              ` + whereClause + ` ` + orderBy + ` LIMIT ? OFFSET ?`
-	args = append(args, query.PageSize, offset)
 
-	rows, err := r.db.DB.QueryContext(ctx, listQueryOptimized, args...)
-	if err != nil {
+	// 准备参数
+	countArgs := make([]interface{}, len(args))
+	copy(countArgs, args)
+	listArgs := append(args, query.PageSize, offset)
+
+	// 并行查询
+	type countResult struct {
+		total int
+		err   error
+	}
+	type listResult struct {
+		rows *sql.Rows
+		err  error
+	}
+
+	countChan := make(chan countResult, 1)
+	listChan := make(chan listResult, 1)
+
+	// 并行执行COUNT
+	go func() {
+		var total int
+		err := r.db.DB.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total)
+		countChan <- countResult{total: total, err: err}
+	}()
+
+	// 并行执行列表查询
+	go func() {
+		rows, err := r.db.DB.QueryContext(ctx, listQueryOptimized, listArgs...)
+		listChan <- listResult{rows: rows, err: err}
+	}()
+
+	// 收集结果
+	countRes := <-countChan
+	listRes := <-listChan
+
+	if countRes.err != nil {
+		if listRes.rows != nil {
+			listRes.rows.Close()
+		}
 		return nil, utils.ErrDatabaseQuery
 	}
+
+	if listRes.err != nil {
+		return nil, utils.ErrDatabaseQuery
+	}
+
+	total := countRes.total
+	rows := listRes.rows
 	defer rows.Close()
 
 	// 初始化为空数组，避免返回null

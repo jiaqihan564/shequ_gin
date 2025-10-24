@@ -136,8 +136,15 @@ func (h *ResourceHandler) GetResourceDetail(c *gin.Context) {
 		return
 	}
 
-	// 异步增加浏览次数
-	go h.resourceRepo.IncrementViewCount(ctx, uint(resourceID))
+	// 使用Worker Pool异步增加浏览次数（避免goroutine泄漏）
+	taskID := fmt.Sprintf("incr_resource_view_%d", resourceID)
+	err = utils.SubmitTask(taskID, func(taskCtx context.Context) error {
+		return h.resourceRepo.IncrementViewCount(taskCtx, uint(resourceID))
+	}, 3*time.Second)
+
+	if err != nil {
+		h.logger.Debug("提交浏览次数更新任务失败", "resourceID", resourceID, "error", err.Error())
+	}
 
 	h.logger.Info("获取资源详情成功", "resourceID", resourceID)
 	utils.SuccessResponse(c, 200, "获取成功", resource)

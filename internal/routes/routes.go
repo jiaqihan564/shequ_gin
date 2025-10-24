@@ -15,17 +15,20 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 	// 设置Gin模式
 	gin.SetMode(cfg.Server.Mode)
 
-	r := gin.Default()
+	r := gin.New() // 使用 gin.New() 而不是 gin.Default()，手动控制中间件
 
-	// 添加中间件
-	r.Use(middleware.RequestIDMiddleware())                                   // 请求ID中间件
-	r.Use(middleware.CORSMiddleware(cfg))                                     // CORS跨域
-	r.Use(middleware.FastCompressionMiddleware())                             // 响应压缩（速度优先）
-	r.Use(middleware.LoggerMiddleware())                                      // 详细日志（包含请求/响应体）
-	r.Use(middleware.PerformanceMiddleware(ctn.DB))                           // 性能追踪（内存、CPU、数据库连接池）
-	r.Use(middleware.MetricsMiddleware())                                     // 性能监控中间件
-	r.Use(middleware.RateLimitMiddleware())                                   // 添加全局限流
-	r.Use(middleware.StatisticsMiddleware(ctn.StatsRepo, ctn.CumulativeRepo)) // 统计中间件（自动收集数据）
+	// 添加中间件（顺序很重要）
+	r.Use(middleware.PanicRecoveryMiddleware())                               // 1. Panic恢复（最先执行）
+	r.Use(middleware.RequestIDMiddleware())                                   // 2. 请求ID中间件
+	r.Use(middleware.SecurityHeadersMiddleware())                             // 3. 安全响应头
+	r.Use(middleware.CORSMiddleware(cfg))                                     // 4. CORS跨域
+	r.Use(middleware.RequestSizeLimitMiddleware(10 * 1024 * 1024))            // 5. 请求体大小限制（10MB）
+	r.Use(middleware.FastCompressionMiddleware())                             // 6. 响应压缩（速度优先）
+	r.Use(middleware.LoggerMiddleware())                                      // 7. 详细日志（包含请求/响应体）
+	r.Use(middleware.PerformanceMiddleware(ctn.DB))                           // 8. 性能追踪（内存、CPU、数据库连接池）
+	r.Use(middleware.MetricsMiddleware())                                     // 9. 性能监控中间件
+	r.Use(middleware.RateLimitMiddleware())                                   // 10. 添加全局限流
+	r.Use(middleware.StatisticsMiddleware(ctn.StatsRepo, ctn.CumulativeRepo)) // 11. 统计中间件（自动收集数据）
 
 	// 初始化处理器
 	uploadMaxBytes := int64(cfg.Assets.MaxAvatarSizeMB) * 1024 * 1024
@@ -247,17 +250,25 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 		"mode", cfg.Server.Mode,
 		"port", cfg.Server.Port,
 		"middlewares", []string{
-			"RequestID",
-			"CORS",
-			"Logger (detailed)",
-			"Performance (memory/CPU/DB)",
-			"Metrics",
-			"RateLimit",
+			"1.PanicRecovery",
+			"2.RequestID",
+			"3.SecurityHeaders",
+			"4.CORS",
+			"5.RequestSizeLimit",
+			"6.Compression",
+			"7.Logger",
+			"8.Performance",
+			"9.Metrics",
+			"10.RateLimit",
+			"11.Statistics",
 		})
 	logger.Debug("中间件详情",
-		"loggerMiddleware", "捕获请求/响应体，记录详细头部信息",
-		"performanceMiddleware", "追踪内存使用、Goroutine数量、数据库连接池状态",
-		"metricsMiddleware", "性能指标统计",
-		"rateLimitMiddleware", "全局和特定路由限流")
+		"panicRecovery", "全局panic恢复，防止服务崩溃",
+		"securityHeaders", "添加安全响应头（XSS、点击劫持等防护）",
+		"requestSizeLimit", "限制请求体大小，防止大文件攻击",
+		"logger", "捕获请求/响应体，记录详细头部信息",
+		"performance", "追踪内存使用、Goroutine数量、数据库连接池状态",
+		"metrics", "性能指标统计",
+		"rateLimit", "全局和特定路由限流（LRU优化）")
 	return r
 }

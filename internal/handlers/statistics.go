@@ -37,9 +37,10 @@ func (h *StatisticsHandler) GetOverview(c *gin.Context) {
 
 // GetUserStatistics 获取用户统计
 func (h *StatisticsHandler) GetUserStatistics(c *gin.Context) {
-	// 获取日期范围参数，默认最近7天
-	endDate := c.DefaultQuery("end", time.Now().Format("2006-01-02"))
-	startDate := c.DefaultQuery("start", time.Now().AddDate(0, 0, -7).Format("2006-01-02"))
+	// 获取日期范围参数，默认最近7天（优化：缓存time.Now()调用）
+	now := time.Now()
+	endDate := c.DefaultQuery("end", now.Format("2006-01-02"))
+	startDate := c.DefaultQuery("start", now.AddDate(0, 0, -7).Format("2006-01-02"))
 
 	stats, err := h.statsRepo.GetUserStatistics(startDate, endDate)
 	if err != nil {
@@ -70,9 +71,10 @@ func (h *StatisticsHandler) GetUserStatistics(c *gin.Context) {
 
 // GetApiStatistics 获取API统计
 func (h *StatisticsHandler) GetApiStatistics(c *gin.Context) {
-	// 获取日期范围参数，默认最近7天
-	endDate := c.DefaultQuery("end", time.Now().Format("2006-01-02"))
-	startDate := c.DefaultQuery("start", time.Now().AddDate(0, 0, -7).Format("2006-01-02"))
+	// 获取日期范围参数，默认最近7天（优化：缓存time.Now()调用）
+	now := time.Now()
+	endDate := c.DefaultQuery("end", now.Format("2006-01-02"))
+	startDate := c.DefaultQuery("start", now.AddDate(0, 0, -7).Format("2006-01-02"))
 
 	stats, err := h.statsRepo.GetApiStatistics(startDate, endDate)
 	if err != nil {

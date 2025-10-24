@@ -106,13 +106,15 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 		if err != nil {
 			h.logger.Warn("更新数据库头像URL失败", "userID", userID, "error", err.Error())
 		} else {
-			// 异步记录头像修改历史
+			// 使用Worker Pool记录头像修改历史（避免goroutine泄漏）
 			if h.historyRepo != nil {
-				go func() {
+				taskID := fmt.Sprintf("avatar_history_%d_%d", userID, time.Now().Unix())
+				_ = utils.SubmitTask(taskID, func(taskCtx context.Context) error {
 					h.historyRepo.RecordProfileChange(userID, "avatar", oldAvatarURL, url, reqCtx.ClientIP)
 					h.historyRepo.RecordOperationHistory(userID, username, "修改头像",
 						fmt.Sprintf("上传新头像: %s", fileHeader.Filename), reqCtx.ClientIP)
-				}()
+					return nil
+				}, 5*time.Second)
 			}
 		}
 	}
@@ -135,8 +137,12 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 		"size":   fileHeader.Size,
 	})
 
-	// 异步清理历史头像
-	go h.cleanupAvatarHistory(username)
+	// 使用Worker Pool异步清理历史头像（避免goroutine泄漏）
+	taskID := fmt.Sprintf("cleanup_avatar_%s_%d", username, time.Now().Unix())
+	_ = utils.SubmitTask(taskID, func(ctx context.Context) error {
+		h.cleanupAvatarHistory(username)
+		return nil
+	}, 30*time.Second)
 }
 
 // getUserInfo 获取用户身份信息

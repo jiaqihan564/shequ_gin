@@ -25,8 +25,8 @@ func (r *BatchRepository) BatchGetUsers(ctx context.Context, userIDs []uint) (ma
 		return make(map[uint]*models.User), nil
 	}
 
-	// 去重
-	uniqueIDs := make(map[uint]bool)
+	// 去重（预分配容量）
+	uniqueIDs := make(map[uint]bool, len(userIDs))
 	for _, id := range userIDs {
 		uniqueIDs[id] = true
 	}
@@ -83,8 +83,8 @@ func (r *BatchRepository) BatchGetArticles(ctx context.Context, articleIDs []uin
 		return make(map[uint]*models.Article), nil
 	}
 
-	// 去重
-	uniqueIDs := make(map[uint]bool)
+	// 去重（预分配容量）
+	uniqueIDs := make(map[uint]bool, len(articleIDs))
 	for _, id := range articleIDs {
 		uniqueIDs[id] = true
 	}
@@ -146,8 +146,8 @@ func (r *BatchRepository) BatchGetUserProfiles(ctx context.Context, userIDs []ui
 		return make(map[uint]*BatchUserProfile), nil
 	}
 
-	// 去重
-	uniqueIDs := make(map[uint]bool)
+	// 去重（预分配容量）
+	uniqueIDs := make(map[uint]bool, len(userIDs))
 	for _, id := range userIDs {
 		uniqueIDs[id] = true
 	}
@@ -240,8 +240,8 @@ func (r *BatchRepository) BatchCheckArticleLikes(ctx context.Context, articleIDs
 		return make(map[uint]bool), nil
 	}
 
-	// 去重
-	uniqueIDs := make(map[uint]bool)
+	// 去重（预分配容量）
+	uniqueIDs := make(map[uint]bool, len(articleIDs))
 	for _, id := range articleIDs {
 		uniqueIDs[id] = true
 	}
@@ -297,8 +297,8 @@ func (r *BatchRepository) BatchGetCommentCounts(ctx context.Context, articleIDs 
 		return make(map[uint]int), nil
 	}
 
-	// 去重
-	uniqueIDs := make(map[uint]bool)
+	// 去重（预分配容量）
+	uniqueIDs := make(map[uint]bool, len(articleIDs))
 	for _, id := range articleIDs {
 		uniqueIDs[id] = true
 	}

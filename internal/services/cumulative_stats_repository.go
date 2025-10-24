@@ -66,11 +66,12 @@ func (r *CumulativeStatsRepository) GetAllCumulativeStats() (*models.CumulativeS
 	}
 	defer rows.Close()
 
+	// 预分配slice容量（性能优化）
 	response := &models.CumulativeStatsResponse{
-		User:     []models.CumulativeStatistics{},
-		API:      []models.CumulativeStatistics{},
-		Security: []models.CumulativeStatistics{},
-		Content:  []models.CumulativeStatistics{},
+		User:     make([]models.CumulativeStatistics, 0, 10),
+		API:      make([]models.CumulativeStatistics, 0, 10),
+		Security: make([]models.CumulativeStatistics, 0, 10),
+		Content:  make([]models.CumulativeStatistics, 0, 10),
 	}
 
 	for rows.Next() {
@@ -87,8 +88,8 @@ func (r *CumulativeStatsRepository) GetAllCumulativeStats() (*models.CumulativeS
 			continue
 		}
 
-		// 按分类分组
-		switch stat.Category {
+		// 按分类分组（使用tagged switch）
+		switch category := stat.Category; category {
 		case "user":
 			response.User = append(response.User, stat)
 		case "api":
@@ -97,6 +98,8 @@ func (r *CumulativeStatsRepository) GetAllCumulativeStats() (*models.CumulativeS
 			response.Security = append(response.Security, stat)
 		case "content":
 			response.Content = append(response.Content, stat)
+		default:
+			r.logger.Warn("未知的统计分类", "category", category)
 		}
 	}
 
@@ -152,8 +155,8 @@ func (r *CumulativeStatsRepository) GetDailyMetrics(startDate, endDate string) (
 	}
 	defer rows.Close()
 
-	// 初始化为空数组，避免返回null
-	metrics := make([]models.DailyMetrics, 0)
+	// 预分配slice容量（性能优化，一般查询30-90天数据）
+	metrics := make([]models.DailyMetrics, 0, 90)
 	for rows.Next() {
 		var m models.DailyMetrics
 		err := rows.Scan(

@@ -4,15 +4,27 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
-// genRequestID 生成请求ID
+// 随机字节池（性能优化）
+var randomBytesPool = sync.Pool{
+	New: func() interface{} {
+		return make([]byte, 8)
+	},
+}
+
+// genRequestID 生成请求ID（优化：使用对象池）
 func genRequestID() string {
 	timestamp := time.Now().UnixNano()
-	randomBytes := make([]byte, 8)
+
+	// 从池中获取字节切片
+	randomBytes := randomBytesPool.Get().([]byte)
+	defer randomBytesPool.Put(randomBytes)
+
 	_, _ = rand.Read(randomBytes)
 	randomStr := hex.EncodeToString(randomBytes)
 	return fmt.Sprintf("%d-%s", timestamp, randomStr)

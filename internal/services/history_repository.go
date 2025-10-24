@@ -105,8 +105,8 @@ func (r *HistoryRepository) GetLoginHistory(userID uint, limit int) ([]models.Us
 	}
 	defer rows.Close()
 
-	// 初始化为空数组，避免返回null
-	history := make([]models.UserLoginHistory, 0)
+	// 预分配slice容量（性能优化）
+	history := make([]models.UserLoginHistory, 0, limit)
 	for rows.Next() {
 		var h models.UserLoginHistory
 		var province, city sql.NullString
@@ -158,8 +158,8 @@ func (r *HistoryRepository) GetOperationHistory(userID uint, limit int) ([]model
 	}
 	defer rows.Close()
 
-	// 初始化为空数组，避免返回null
-	history := make([]models.UserOperationHistory, 0)
+	// 预分配slice容量（性能优化）
+	history := make([]models.UserOperationHistory, 0, limit)
 	for rows.Next() {
 		var h models.UserOperationHistory
 		err := rows.Scan(
@@ -202,8 +202,8 @@ func (r *HistoryRepository) GetProfileChangeHistory(userID uint, limit int) ([]m
 	}
 	defer rows.Close()
 
-	// 初始化为空数组，避免返回null
-	history := make([]models.ProfileChangeHistory, 0)
+	// 预分配slice容量（性能优化）
+	history := make([]models.ProfileChangeHistory, 0, limit)
 	for rows.Next() {
 		var h models.ProfileChangeHistory
 		err := rows.Scan(
