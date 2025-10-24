@@ -195,7 +195,8 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 			auth.GET("/resources/:id", resourceHandler.GetResourceDetail)                       // 获取资源详情
 			auth.DELETE("/resources/:id", resourceHandler.DeleteResource)                       // 删除资源
 			auth.POST("/resources/:id/like", resourceHandler.ToggleResourceLike)                // 点赞资源
-			auth.GET("/resources/:id/download", resourceHandler.DownloadResource)               // 下载资源
+			auth.GET("/resources/:id/download", resourceHandler.DownloadResource)               // 下载资源（返回直接链接）
+			auth.GET("/resources/:id/proxy-download", resourceHandler.ProxyDownloadResource)    // 代理下载资源（支持Range和大文件）
 			auth.GET("/resource-categories", resourceHandler.GetCategories)                     // 获取资源分类
 			auth.POST("/resources/:id/comments", resourceHandler.CreateResourceComment)         // 发表资源评论
 			auth.GET("/resources/:id/comments", resourceHandler.GetResourceComments)            // 获取资源评论

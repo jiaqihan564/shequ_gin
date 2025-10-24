@@ -181,6 +181,39 @@ func (s *StorageService) ListObjects(ctx context.Context, prefix string) ([]Obje
 	return list, nil
 }
 
+// GetObject 获取对象（支持Range请求）
+func (s *StorageService) GetObject(ctx context.Context, objectPath string, opts interface{}) (io.ReadCloser, error) {
+	if s.client == nil {
+		return nil, fmt.Errorf("MinIO 客户端未初始化")
+	}
+	// 类型断言获取minio选项
+	var getOpts minio.GetObjectOptions
+	if opts != nil {
+		if minioOpts, ok := opts.(minio.GetObjectOptions); ok {
+			getOpts = minioOpts
+		}
+	}
+	obj, err := s.client.GetObject(ctx, s.cfg.MinIO.Bucket, objectPath, getOpts)
+	if err != nil {
+		s.logger.Error("获取对象失败", "object", objectPath, "error", err.Error())
+		return nil, err
+	}
+	return obj, nil
+}
+
+// StatObject 获取对象信息
+func (s *StorageService) StatObject(ctx context.Context, objectPath string) (minio.ObjectInfo, error) {
+	if s.client == nil {
+		return minio.ObjectInfo{}, fmt.Errorf("MinIO 客户端未初始化")
+	}
+	info, err := s.client.StatObject(ctx, s.cfg.MinIO.Bucket, objectPath, minio.StatObjectOptions{})
+	if err != nil {
+		s.logger.Error("获取对象信息失败", "object", objectPath, "error", err.Error())
+		return minio.ObjectInfo{}, err
+	}
+	return info, nil
+}
+
 // GetPublicBaseURL 返回公共访问基地址
 func (s *StorageService) GetPublicBaseURL() string {
 	return s.cfg.Assets.PublicBaseURL

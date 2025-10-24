@@ -193,6 +193,94 @@ func (s *ResourceStorageService) uploadFile(ctx context.Context, reader io.Reade
 	return publicURL, nil
 }
 
+// GetObject 获取对象（支持Range请求）
+// 返回io.ReadCloser以支持流式读取
+func (s *ResourceStorageService) GetObject(ctx context.Context, objectPath string, opts minio.GetObjectOptions) (io.ReadCloser, error) {
+	if s.client == nil {
+		return nil, fmt.Errorf("资源存储客户端未初始化")
+	}
+	bucket := s.cfg.ResourcesStorage.Bucket
+	obj, err := s.client.GetObject(ctx, bucket, objectPath, opts)
+	if err != nil {
+		s.logger.Error("获取资源对象失败", "bucket", bucket, "object", objectPath, "error", err.Error())
+		return nil, err
+	}
+	return obj, nil
+}
+
+// StatObject 获取对象信息
+func (s *ResourceStorageService) StatObject(ctx context.Context, objectPath string) (minio.ObjectInfo, error) {
+	if s.client == nil {
+		return minio.ObjectInfo{}, fmt.Errorf("资源存储客户端未初始化")
+	}
+	bucket := s.cfg.ResourcesStorage.Bucket
+	info, err := s.client.StatObject(ctx, bucket, objectPath, minio.StatObjectOptions{})
+	if err != nil {
+		s.logger.Error("获取资源对象信息失败", "bucket", bucket, "object", objectPath, "error", err.Error())
+		return minio.ObjectInfo{}, err
+	}
+	return info, nil
+}
+
+// StatObjectFromBucket 从指定桶获取对象信息
+// 性能优化：使用空的StatObjectOptions避免每次分配
+func (s *ResourceStorageService) StatObjectFromBucket(ctx context.Context, bucketName string, objectPath string) (minio.ObjectInfo, error) {
+	if s.client == nil {
+		return minio.ObjectInfo{}, fmt.Errorf("资源存储客户端未初始化")
+	}
+	info, err := s.client.StatObject(ctx, bucketName, objectPath, minio.StatObjectOptions{})
+	if err != nil {
+		// 性能优化：仅记录错误，避免记录对象路径（可能很长）
+		s.logger.Debug("获取对象信息失败", "bucket", bucketName, "error", err.Error())
+		return minio.ObjectInfo{}, err
+	}
+	return info, nil
+}
+
+// GetObjectFromBucket 从指定桶获取对象
+// 性能优化：直接返回对象，避免不必要的日志记录
+func (s *ResourceStorageService) GetObjectFromBucket(ctx context.Context, bucketName string, objectPath string, opts minio.GetObjectOptions) (io.ReadCloser, error) {
+	if s.client == nil {
+		return nil, fmt.Errorf("资源存储客户端未初始化")
+	}
+	// 直接返回，错误由调用方处理（避免双重日志）
+	return s.client.GetObject(ctx, bucketName, objectPath, opts)
+}
+
+// ListObjectsRecursive 递归列举指定前缀下的所有对象
+func (s *ResourceStorageService) ListObjectsRecursive(ctx context.Context, prefix string) ([]string, error) {
+	if s.client == nil {
+		return nil, fmt.Errorf("资源存储客户端未初始化")
+	}
+	bucket := s.cfg.ResourcesStorage.Bucket
+	opts := minio.ListObjectsOptions{Prefix: prefix, Recursive: true}
+	ch := s.client.ListObjects(ctx, bucket, opts)
+
+	var objects []string
+	for obj := range ch {
+		if obj.Err != nil {
+			s.logger.Error("列举对象失败", "bucket", bucket, "prefix", prefix, "error", obj.Err.Error())
+			return nil, obj.Err
+		}
+		objects = append(objects, obj.Key)
+	}
+	return objects, nil
+}
+
+// RemoveObject 删除对象
+func (s *ResourceStorageService) RemoveObject(ctx context.Context, objectPath string) error {
+	if s.client == nil {
+		return fmt.Errorf("资源存储客户端未初始化")
+	}
+	bucket := s.cfg.ResourcesStorage.Bucket
+	err := s.client.RemoveObject(ctx, bucket, objectPath, minio.RemoveObjectOptions{})
+	if err != nil {
+		s.logger.Error("删除资源对象失败", "bucket", bucket, "object", objectPath, "error", err.Error())
+		return err
+	}
+	return nil
+}
+
 // GetPublicBaseURL 返回资源桶的公共访问基地址
 func (s *ResourceStorageService) GetPublicBaseURL() string {
 	return s.cfg.ResourcesStorage.PublicBaseURL

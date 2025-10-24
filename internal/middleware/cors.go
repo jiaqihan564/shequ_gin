@@ -44,8 +44,8 @@ func CORSMiddleware(cfg *config.Config) gin.HandlerFunc {
 		// 设置预检请求的缓存时间
 		c.Header("Access-Control-Max-Age", "86400") // 24小时
 
-		// 设置暴露的头部
-		c.Header("Access-Control-Expose-Headers", "Content-Length, Access-Control-Allow-Origin, Access-Control-Allow-Headers, Content-Type")
+		// 设置暴露的头部（性能优化：预定义常量）
+		c.Header("Access-Control-Expose-Headers", "Content-Length, Content-Type, Content-Disposition, Content-Range, Accept-Ranges")
 
 		// 处理预检请求
 		if c.Request.Method == "OPTIONS" {

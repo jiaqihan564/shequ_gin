@@ -5,7 +5,9 @@ import (
 	"errors"
 	"io"
 	"mime/multipart"
+	"strings"
 	"sync"
+	"unicode"
 )
 
 // 魔数验证buffer池（性能优化）
@@ -93,3 +95,68 @@ func (fv *FileValidator) validateMagicNumber(fileHeader *multipart.FileHeader) e
 
 	return errors.New("不支持的文件类型")
 }
+
+// EncodeFileName 编码文件名以符合RFC 5987规范
+// 用于Content-Disposition响应头，支持中文和特殊字符
+// 性能优化：使用strings.Builder减少内存分配
+func EncodeFileName(filename string) string {
+	// 快速检查是否只包含ASCII字符（性能优化：早期退出）
+	hasNonASCII := false
+	for i := 0; i < len(filename); i++ {
+		if filename[i] > unicode.MaxASCII {
+			hasNonASCII = true
+			break
+		}
+	}
+
+	var sb strings.Builder
+	sb.WriteString("attachment; filename=\"")
+
+	// 如果是纯ASCII，使用简单的格式
+	if !hasNonASCII {
+		// 转义引号和反斜杠（性能优化：逐字符处理，避免多次ReplaceAll）
+		for i := 0; i < len(filename); i++ {
+			c := filename[i]
+			if c == '\\' || c == '"' {
+				sb.WriteByte('\\')
+			}
+			sb.WriteByte(c)
+		}
+		sb.WriteByte('"')
+		return sb.String()
+	}
+
+	// 包含非ASCII字符，使用RFC 5987格式
+	// 生成fallback文件名（提取扩展名）
+	if idx := strings.LastIndex(filename, "."); idx != -1 {
+		sb.WriteString("download")
+		sb.WriteString(filename[idx:])
+	} else {
+		sb.WriteString("download")
+	}
+	sb.WriteString("\"; filename*=UTF-8''")
+
+	// URL编码文件名（性能优化：直接写入builder）
+	for _, r := range filename {
+		if r <= unicode.MaxASCII && isUnreserved(byte(r)) {
+			sb.WriteRune(r)
+		} else {
+			// 对非ASCII字符进行URL编码
+			for _, b := range []byte(string(r)) {
+				sb.WriteByte('%')
+				sb.WriteByte(upperhex[b>>4])
+				sb.WriteByte(upperhex[b&15])
+			}
+		}
+	}
+
+	return sb.String()
+}
+
+// isUnreserved 检查字符是否是URL unreserved字符（性能优化：避免使用url.QueryEscape）
+func isUnreserved(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+		c == '-' || c == '_' || c == '.' || c == '~'
+}
+
+const upperhex = "0123456789ABCDEF"

@@ -15,23 +15,23 @@ import (
 // AuthMiddleware JWT认证中间件
 func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// 尝试从Authorization头获取token
 		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			utils.GetLogger().Warn("认证失败：缺少Authorization头", "ip", c.ClientIP(), "path", c.Request.URL.Path)
-			utils.UnauthorizedResponse(c, "缺少Authorization头")
+		var tokenString string
+
+		if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
+			tokenString = authHeader[7:]
+		} else {
+			// 如果没有Authorization头，尝试从URL参数获取token（用于下载等场景）
+			tokenString = c.Query("token")
+		}
+
+		if tokenString == "" {
+			utils.GetLogger().Warn("认证失败：缺少token", "ip", c.ClientIP(), "path", c.Request.URL.Path)
+			utils.UnauthorizedResponse(c, "缺少Authorization头或token参数")
 			c.Abort()
 			return
 		}
-
-		// 检查Bearer前缀
-		if !strings.HasPrefix(authHeader, "Bearer ") {
-			utils.GetLogger().Warn("认证失败：Authorization格式错误", "ip", c.ClientIP(), "path", c.Request.URL.Path)
-			utils.UnauthorizedResponse(c, "Authorization格式错误")
-			c.Abort()
-			return
-		}
-
-		tokenString := authHeader[7:]
 		claims := &models.Claims{}
 
 		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {

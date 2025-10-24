@@ -5,10 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"time"
 
 	"gin/internal/models"
 	"gin/internal/utils"
+
+	"github.com/minio/minio-go/v7"
 )
 
 // UploadManager 上传管理器（处理断点续传）
@@ -132,7 +135,7 @@ func (m *UploadManager) UploadChunk(ctx context.Context, uploadID string, chunkI
 	return err
 }
 
-// MergeChunks 合并分片
+// MergeChunks 合并分片（真正实现文件合并）
 func (m *UploadManager) MergeChunks(ctx context.Context, uploadID string) (*models.MergeChunksResponse, error) {
 	// 获取上传记录
 	var chunk models.UploadChunk
@@ -159,7 +162,14 @@ func (m *UploadManager) MergeChunks(ctx context.Context, uploadID string) (*mode
 	now := time.Now()
 	storagePath := fmt.Sprintf("resources/%d/%02d/%s_%s", now.Year(), now.Month(), uploadID[:8], chunk.FileName)
 
-	// 注：当前仅标记完成，未来版本将实现实际的分片合并
+	m.logger.Info("开始合并分片", "uploadID", uploadID, "totalChunks", chunk.TotalChunks, "storagePath", storagePath)
+
+	// 实际合并分片文件
+	err = m.mergeChunksToStorage(ctx, uploadID, chunk.TotalChunks, storagePath, chunk.FileSize)
+	if err != nil {
+		m.logger.Error("合并分片失败", "uploadID", uploadID, "error", err.Error())
+		return nil, fmt.Errorf("合并分片失败: %v", err)
+	}
 
 	// 更新状态为已完成
 	updateQuery := `UPDATE upload_chunks SET status = 1, storage_path = ?, updated_at = ? WHERE upload_id = ?`
@@ -168,14 +178,80 @@ func (m *UploadManager) MergeChunks(ctx context.Context, uploadID string) (*mode
 		return nil, fmt.Errorf("更新上传状态失败")
 	}
 
-	// 构建文件URL
-	fileURL := fmt.Sprintf("/resources/download/%s", uploadID)
+	// 异步清理临时分片文件
+	go m.cleanupChunks(context.Background(), uploadID, chunk.TotalChunks)
 
-	m.logger.Info("合并分片成功", "uploadID", uploadID, "storagePath", storagePath)
+	// 构建文件URL（使用公共访问URL）
+	fileURL := fmt.Sprintf("%s/%s", m.storage.GetPublicBaseURL(), storagePath)
+
+	m.logger.Info("合并分片成功", "uploadID", uploadID, "storagePath", storagePath, "fileURL", fileURL)
 	return &models.MergeChunksResponse{
-		StoragePath: storagePath,
+		StoragePath: fileURL, // 返回完整的公共URL
 		FileURL:     fileURL,
 	}, nil
+}
+
+// mergeChunksToStorage 将所有分片合并为一个完整文件并上传到MinIO
+func (m *UploadManager) mergeChunksToStorage(ctx context.Context, uploadID string, totalChunks int, destPath string, fileSize int64) error {
+	// 使用管道实现流式合并，避免大文件占用内存
+	pr, pw := io.Pipe()
+
+	// 在goroutine中写入所有分片数据到管道
+	go func() {
+		defer pw.Close()
+
+		for i := 0; i < totalChunks; i++ {
+			chunkPath := fmt.Sprintf("chunks/%s/chunk_%d", uploadID, i)
+
+			// 获取分片对象
+			object, err := m.storage.GetObject(ctx, chunkPath, minio.GetObjectOptions{})
+			if err != nil {
+				m.logger.Error("获取分片失败", "uploadID", uploadID, "chunkIndex", i, "error", err.Error())
+				pw.CloseWithError(fmt.Errorf("获取分片%d失败: %w", i, err))
+				return
+			}
+
+			// 流式复制分片数据到管道
+			_, err = io.Copy(pw, object)
+			object.Close()
+
+			if err != nil {
+				m.logger.Error("复制分片数据失败", "uploadID", uploadID, "chunkIndex", i, "error", err.Error())
+				pw.CloseWithError(fmt.Errorf("复制分片%d数据失败: %w", i, err))
+				return
+			}
+
+			m.logger.Debug("分片已合并", "uploadID", uploadID, "chunkIndex", i, "progress", fmt.Sprintf("%d/%d", i+1, totalChunks))
+		}
+	}()
+
+	// 上传合并后的完整文件到MinIO
+	_, err := m.storage.PutObject(ctx, destPath, "application/octet-stream", pr, fileSize)
+	if err != nil {
+		m.logger.Error("上传合并文件失败", "uploadID", uploadID, "destPath", destPath, "error", err.Error())
+		return fmt.Errorf("上传合并文件失败: %w", err)
+	}
+
+	m.logger.Info("文件合并并上传成功", "uploadID", uploadID, "destPath", destPath, "size", fileSize)
+	return nil
+}
+
+// cleanupChunks 清理临时分片文件
+func (m *UploadManager) cleanupChunks(ctx context.Context, uploadID string, totalChunks int) {
+	m.logger.Info("开始清理临时分片", "uploadID", uploadID, "totalChunks", totalChunks)
+
+	deletedCount := 0
+	for i := 0; i < totalChunks; i++ {
+		chunkPath := fmt.Sprintf("chunks/%s/chunk_%d", uploadID, i)
+		err := m.storage.RemoveObject(ctx, chunkPath)
+		if err != nil {
+			m.logger.Warn("删除临时分片失败", "uploadID", uploadID, "chunkIndex", i, "error", err.Error())
+		} else {
+			deletedCount++
+		}
+	}
+
+	m.logger.Info("临时分片清理完成", "uploadID", uploadID, "deleted", deletedCount, "total", totalChunks)
 }
 
 // GetUploadStatus 查询上传进度

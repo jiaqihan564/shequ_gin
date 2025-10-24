@@ -3,7 +3,10 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"gin/internal/models"
@@ -11,6 +14,7 @@ import (
 	"gin/internal/utils"
 
 	"github.com/gin-gonic/gin"
+	"github.com/minio/minio-go/v7"
 )
 
 // ResourceHandler 资源处理器
@@ -224,7 +228,7 @@ func (h *ResourceHandler) DeleteResource(c *gin.Context) {
 	utils.SuccessResponse(c, 200, "删除成功", nil)
 }
 
-// DownloadResource 下载资源
+// DownloadResource 下载资源（返回直接下载链接）
 func (h *ResourceHandler) DownloadResource(c *gin.Context) {
 	resourceIDStr := c.Param("id")
 	resourceID, err := strconv.ParseUint(resourceIDStr, 10, 32)
@@ -253,6 +257,144 @@ func (h *ResourceHandler) DownloadResource(c *gin.Context) {
 		"file_name":    resource.FileName,
 		"file_size":    resource.FileSize,
 	})
+}
+
+// ProxyDownloadResource 代理下载资源（支持Range请求和大文件流式传输）
+func (h *ResourceHandler) ProxyDownloadResource(c *gin.Context) {
+	resourceIDStr := c.Param("id")
+	resourceID, err := strconv.ParseUint(resourceIDStr, 10, 32)
+	if err != nil {
+		utils.BadRequestResponse(c, "无效的资源ID")
+		return
+	}
+
+	ctx := c.Request.Context()
+	resource, err := h.resourceRepo.GetResourceByID(ctx, uint(resourceID), 0)
+	if err != nil {
+		utils.ErrorResponse(c, 404, "资源不存在")
+		return
+	}
+
+	if h.resourceStorage == nil {
+		utils.ErrorResponse(c, 500, "资源存储服务未配置")
+		return
+	}
+
+	// 性能优化：使用net/url解析URL，避免多次字符串操作
+	objectPath := resource.StoragePath
+	bucketName := ""
+
+	// 尝试解析URL提取bucket和object（仅当路径是完整URL时）
+	if strings.HasPrefix(objectPath, "http://") || strings.HasPrefix(objectPath, "https://") {
+		if parsedURL, err := url.Parse(objectPath); err == nil && parsedURL.Path != "" {
+			// 提取路径部分: /bucket-name/object/path
+			pathParts := strings.SplitN(strings.TrimPrefix(parsedURL.Path, "/"), "/", 2)
+			if len(pathParts) >= 2 {
+				bucketName = pathParts[0]
+				objectPath = pathParts[1]
+			}
+		}
+	}
+
+	// 仅在DEBUG模式记录详细日志
+	if h.logger != nil {
+		h.logger.Debug("解析存储路径", "桶", bucketName, "对象路径", objectPath)
+	}
+
+	// 获取对象信息（如果解析出了bucket，从指定bucket读取；否则使用默认bucket）
+	var objInfo minio.ObjectInfo
+	if bucketName != "" {
+		objInfo, err = h.resourceStorage.StatObjectFromBucket(ctx, bucketName, objectPath)
+	} else {
+		objInfo, err = h.resourceStorage.StatObject(ctx, objectPath)
+	}
+	if err != nil {
+		h.logger.Error("获取资源对象信息失败", "resourceID", resourceID, "bucket", bucketName, "path", objectPath, "error", err.Error())
+		utils.ErrorResponse(c, 404, "资源文件不存在")
+		return
+	}
+
+	// 解析Range请求头
+	rangeHeader := c.GetHeader("Range")
+	var start, end int64
+	var isRangeRequest bool
+
+	if rangeHeader != "" {
+		// 解析 "bytes=start-end" 或 "bytes=start-"
+		var rangeStart, rangeEnd int64 = 0, objInfo.Size - 1
+		if _, err := fmt.Sscanf(rangeHeader, "bytes=%d-%d", &rangeStart, &rangeEnd); err != nil {
+			// 尝试解析 "bytes=start-" 格式
+			if _, err := fmt.Sscanf(rangeHeader, "bytes=%d-", &rangeStart); err == nil {
+				rangeEnd = objInfo.Size - 1
+			}
+		}
+		start, end = rangeStart, rangeEnd
+		isRangeRequest = true
+		h.logger.Debug("Range请求", "range", rangeHeader, "start", start, "end", end)
+	} else {
+		start, end = 0, objInfo.Size-1
+	}
+
+	// 验证范围
+	if start < 0 || end >= objInfo.Size || start > end {
+		c.Header("Content-Range", fmt.Sprintf("bytes */%d", objInfo.Size))
+		c.Status(416) // Range Not Satisfiable
+		return
+	}
+
+	// 设置GetObject选项（支持Range）
+	opts := minio.GetObjectOptions{}
+	if isRangeRequest {
+		opts.SetRange(start, end)
+	}
+
+	// 从MinIO获取对象（使用解析出的bucket）
+	var object io.ReadCloser
+	if bucketName != "" {
+		object, err = h.resourceStorage.GetObjectFromBucket(ctx, bucketName, objectPath, opts)
+	} else {
+		object, err = h.resourceStorage.GetObject(ctx, objectPath, opts)
+	}
+	if err != nil {
+		h.logger.Error("获取资源对象失败", "resourceID", resourceID, "bucket", bucketName, "error", err.Error())
+		utils.ErrorResponse(c, 500, "读取文件失败")
+		return
+	}
+	defer object.Close()
+
+	// 设置响应头
+	contentLength := end - start + 1
+	c.Header("Content-Type", resource.FileType)
+	c.Header("Content-Disposition", utils.EncodeFileName(resource.FileName))
+	c.Header("Accept-Ranges", "bytes")
+	c.Header("Content-Length", fmt.Sprintf("%d", contentLength))
+	c.Header("Content-Encoding", "identity") // 避免压缩中间件干扰
+	c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+	c.Header("Pragma", "no-cache")
+	c.Header("Expires", "0")
+
+	if isRangeRequest {
+		c.Header("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, objInfo.Size))
+		c.Status(206) // Partial Content
+	} else {
+		c.Status(200)
+	}
+
+	// 流式传输文件内容（避免大文件占用内存）
+	written, err := io.Copy(c.Writer, object)
+	if err != nil {
+		h.logger.Error("传输文件失败", "resourceID", resourceID, "written", written, "error", err.Error())
+		return
+	}
+
+	// 异步增加下载次数
+	taskID := fmt.Sprintf("incr_download_%d", resourceID)
+	_ = utils.SubmitTask(taskID, func(taskCtx context.Context) error {
+		return h.resourceRepo.IncrementDownloadCount(taskCtx, uint(resourceID))
+	}, 3*time.Second)
+
+	// 性能优化：仅在DEBUG模式记录详细信息
+	h.logger.Debug("代理下载成功", "resourceID", resourceID, "fileName", resource.FileName, "size", written, "range", isRangeRequest)
 }
 
 // GetCategories 获取所有分类
