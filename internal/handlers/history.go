@@ -25,9 +25,8 @@ func NewHistoryHandler(historyRepo *services.HistoryRepository) *HistoryHandler 
 
 // GetLoginHistory 获取登录历史
 func (h *HistoryHandler) GetLoginHistory(c *gin.Context) {
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, err.Error())
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 
@@ -52,9 +51,8 @@ func (h *HistoryHandler) GetLoginHistory(c *gin.Context) {
 
 // GetOperationHistory 获取操作历史
 func (h *HistoryHandler) GetOperationHistory(c *gin.Context) {
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, err.Error())
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 
@@ -79,9 +77,8 @@ func (h *HistoryHandler) GetOperationHistory(c *gin.Context) {
 
 // GetProfileChangeHistory 获取资料修改历史
 func (h *HistoryHandler) GetProfileChangeHistory(c *gin.Context) {
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, err.Error())
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 

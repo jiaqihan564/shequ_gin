@@ -31,16 +31,13 @@ func NewArticleHandler(articleRepo *services.ArticleRepository, cacheSvc *servic
 
 // CreateArticle 创建文章
 func (h *ArticleHandler) CreateArticle(c *gin.Context) {
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, err.Error())
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 
 	var req models.CreateArticleRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		h.logger.Warn("创建文章请求参数错误", "userID", userID, "error", err.Error())
-		utils.ValidationErrorResponse(c, "请求参数错误: "+err.Error())
+	if !bindJSONOrFail(c, &req, h.logger, "CreateArticle") {
 		return
 	}
 
@@ -69,7 +66,7 @@ func (h *ArticleHandler) CreateArticle(c *gin.Context) {
 		UpdatedAt:   time.Now(),
 	}
 
-	err = h.articleRepo.CreateArticle(ctx, article, req.CodeBlocks, req.CategoryIDs, tagIDs)
+	err := h.articleRepo.CreateArticle(ctx, article, req.CodeBlocks, req.CategoryIDs, tagIDs)
 	if err != nil {
 		h.logger.Error("创建文章失败", "userID", userID, "error", err.Error())
 		statusCode := utils.GetHTTPStatusCode(err)
@@ -142,9 +139,8 @@ func (h *ArticleHandler) GetArticleList(c *gin.Context) {
 
 // UpdateArticle 更新文章
 func (h *ArticleHandler) UpdateArticle(c *gin.Context) {
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, err.Error())
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 
@@ -190,9 +186,8 @@ func (h *ArticleHandler) UpdateArticle(c *gin.Context) {
 
 // DeleteArticle 删除文章
 func (h *ArticleHandler) DeleteArticle(c *gin.Context) {
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, err.Error())
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 
@@ -218,9 +213,8 @@ func (h *ArticleHandler) DeleteArticle(c *gin.Context) {
 
 // ToggleArticleLike 切换文章点赞
 func (h *ArticleHandler) ToggleArticleLike(c *gin.Context) {
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, err.Error())
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 
@@ -248,9 +242,8 @@ func (h *ArticleHandler) ToggleArticleLike(c *gin.Context) {
 
 // CreateComment 创建评论
 func (h *ArticleHandler) CreateComment(c *gin.Context) {
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, err.Error())
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 
@@ -262,9 +255,7 @@ func (h *ArticleHandler) CreateComment(c *gin.Context) {
 	}
 
 	var req models.CreateCommentRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		h.logger.Warn("创建评论请求参数错误", "userID", userID, "error", err.Error())
-		utils.ValidationErrorResponse(c, "请求参数错误: "+err.Error())
+	if !bindJSONOrFail(c, &req, h.logger, "CreateComment") {
 		return
 	}
 
@@ -325,9 +316,8 @@ func (h *ArticleHandler) GetComments(c *gin.Context) {
 
 // ToggleCommentLike 切换评论点赞
 func (h *ArticleHandler) ToggleCommentLike(c *gin.Context) {
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, err.Error())
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 
@@ -355,9 +345,8 @@ func (h *ArticleHandler) ToggleCommentLike(c *gin.Context) {
 
 // DeleteComment 删除评论
 func (h *ArticleHandler) DeleteComment(c *gin.Context) {
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, err.Error())
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 
@@ -383,16 +372,13 @@ func (h *ArticleHandler) DeleteComment(c *gin.Context) {
 
 // CreateReport 创建举报
 func (h *ArticleHandler) CreateReport(c *gin.Context) {
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, err.Error())
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 
 	var req models.CreateReportRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		h.logger.Warn("创建举报请求参数错误", "userID", userID, "error", err.Error())
-		utils.ValidationErrorResponse(c, "请求参数错误: "+err.Error())
+	if !bindJSONOrFail(c, &req, h.logger, "CreateReport") {
 		return
 	}
 
@@ -412,7 +398,7 @@ func (h *ArticleHandler) CreateReport(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	err = h.articleRepo.CreateReport(ctx, report)
+	err := h.articleRepo.CreateReport(ctx, report)
 	if err != nil {
 		h.logger.Error("创建举报失败", "userID", userID, "error", err.Error())
 		statusCode := utils.GetHTTPStatusCode(err)

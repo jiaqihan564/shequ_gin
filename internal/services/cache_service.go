@@ -86,13 +86,11 @@ func (s *CacheService) GetArticleCategories(ctx context.Context) ([]models.Artic
 	// 尝试从缓存获取
 	if cached, ok := s.cache.Get(cacheKeyArticleCategories); ok {
 		if categories, ok := cached.([]models.ArticleCategory); ok {
-			s.logger.Debug("命中分类缓存", "count", len(categories))
 			return categories, nil
 		}
 	}
 
 	// 缓存未命中，从数据库获取
-	s.logger.Debug("分类缓存未命中，从数据库加载")
 	categories, err := s.articleRepo.GetAllCategories(ctx)
 	if err != nil {
 		return nil, err
@@ -120,13 +118,11 @@ func (s *CacheService) GetArticleTags(ctx context.Context) ([]models.ArticleTag,
 	// 尝试从缓存获取
 	if cached, ok := s.cache.Get(cacheKeyArticleTags); ok {
 		if tags, ok := cached.([]models.ArticleTag); ok {
-			s.logger.Debug("命中标签缓存", "count", len(tags))
 			return tags, nil
 		}
 	}
 
 	// 缓存未命中，从数据库获取
-	s.logger.Debug("标签缓存未命中，从数据库加载")
 	tags, err := s.articleRepo.GetAllTags(ctx)
 	if err != nil {
 		return nil, err
@@ -157,22 +153,19 @@ func (s *CacheService) GetArticleDetail(ctx context.Context, articleID uint, use
 	if cached, ok := s.cache.Get(cacheKey); ok {
 		// 尝试类型断言
 		if article, ok := cached.(*models.ArticleDetailResponse); ok {
-			s.logger.Debug("命中文章详情缓存", "articleID", articleID)
 			return article, nil
 		}
 
-		// 如果类型断言失败，尝试JSON反序列化（防止缓存结构变化）
+		// 如果类型断言失败，尝试JSON反序列化
 		if jsonData, ok := cached.(string); ok {
 			var article models.ArticleDetailResponse
 			if err := json.Unmarshal([]byte(jsonData), &article); err == nil {
-				s.logger.Debug("命中文章详情缓存（JSON）", "articleID", articleID)
 				return &article, nil
 			}
 		}
 	}
 
 	// 缓存未命中，从数据库获取
-	s.logger.Debug("文章详情缓存未命中，从数据库加载", "articleID", articleID)
 
 	// 使用优化版本的查询（JOIN减少查询次数）
 	article, err := s.articleRepo.GetArticleByID(ctx, articleID, userID)
@@ -182,8 +175,6 @@ func (s *CacheService) GetArticleDetail(ctx context.Context, articleID uint, use
 
 	// 写入缓存（使用较短的TTL）
 	s.cache.SetWithTTL(cacheKey, article, cacheTTLArticle)
-	s.logger.Debug("文章详情已缓存", "articleID", articleID, "ttl", cacheTTLArticle)
-
 	return article, nil
 }
 
@@ -205,14 +196,12 @@ func (s *CacheService) InvalidateArticleDetail(articleID uint) {
 // SetOnlineCount 设置在线用户数缓存
 func (s *CacheService) SetOnlineCount(count int) {
 	s.cache.SetWithTTL(cacheKeyOnlineCount, count, cacheTTLOnlineCount)
-	s.logger.Debug("在线用户数已缓存", "count", count, "ttl", cacheTTLOnlineCount)
 }
 
 // GetOnlineCount 获取在线用户数（从缓存）
 func (s *CacheService) GetOnlineCount() (int, bool) {
 	if cached, ok := s.cache.Get(cacheKeyOnlineCount); ok {
 		if count, ok := cached.(int); ok {
-			s.logger.Debug("命中在线用户数缓存", "count", count)
 			return count, true
 		}
 	}

@@ -262,7 +262,6 @@ func (e *PistonCodeExecutor) Execute(ctx context.Context, language, code, stdin 
 	// 对于JVM语言，如果代码包含中文，尝试在代码层面处理编码
 	if language == "java" && containsChinese(code) {
 		code = wrapJavaCodeWithUTF8(code)
-		logger.Debug("为 Java 代码添加 UTF-8 编码设置")
 	}
 
 	// 构建 Piston API 请求
@@ -284,38 +283,20 @@ func (e *PistonCodeExecutor) Execute(ctx context.Context, language, code, stdin 
 		// Java 需要编译和运行时都指定UTF-8
 		pistonReq.CompileArgs = []string{"-encoding", "UTF-8", "-J-Dfile.encoding=UTF-8"}
 		pistonReq.RunArgs = []string{"-Dfile.encoding=UTF-8", "-Duser.language=zh", "-Duser.country=CN"}
-		logger.Debug("为 Java 添加 UTF-8 编码参数",
-			"compile_args", pistonReq.CompileArgs,
-			"run_args", pistonReq.RunArgs)
 	case "scala":
 		// Scala 使用 scalac 编译器参数
 		pistonReq.CompileArgs = []string{"-encoding", "UTF-8"}
 		pistonReq.RunArgs = []string{"-Dfile.encoding=UTF-8", "-Duser.language=zh", "-Duser.country=CN"}
-		logger.Debug("为 Scala 添加 UTF-8 编码参数",
-			"compile_args", pistonReq.CompileArgs,
-			"run_args", pistonReq.RunArgs)
 	case "kotlin":
 		// Kotlin 编译器参数
 		pistonReq.CompileArgs = []string{"-Dfile.encoding=UTF-8"}
 		pistonReq.RunArgs = []string{"-Dfile.encoding=UTF-8", "-Duser.language=zh", "-Duser.country=CN"}
-		logger.Debug("为 Kotlin 添加 UTF-8 编码参数",
-			"compile_args", pistonReq.CompileArgs,
-			"run_args", pistonReq.RunArgs)
 	}
 
 	reqBody, err := json.Marshal(pistonReq)
 	if err != nil {
 		return nil, fmt.Errorf("序列化请求失败: %w", err)
 	}
-
-	// 记录完整的请求体（用于调试JVM编码问题）
-	logger.Debug("Piston API 请求详情",
-		"language", language,
-		"piston_name", langInfo.PistonName,
-		"version", langInfo.Version,
-		"compile_args", pistonReq.CompileArgs,
-		"run_args", pistonReq.RunArgs,
-		"request_body", string(reqBody))
 
 	// 记录开始时间
 	startTime := time.Now()
@@ -348,15 +329,6 @@ func (e *PistonCodeExecutor) Execute(ctx context.Context, language, code, stdin 
 	if err := json.NewDecoder(resp.Body).Decode(&pistonResp); err != nil {
 		return nil, fmt.Errorf("解析响应失败: %w", err)
 	}
-
-	// 记录响应详情（用于调试编码问题）
-	logger.Debug("Piston API 响应详情",
-		"language", language,
-		"stdout_length", len(pistonResp.Run.Stdout),
-		"stderr_length", len(pistonResp.Run.Stderr),
-		"exit_code", pistonResp.Run.Code,
-		"stdout_preview", truncateString(pistonResp.Run.Stdout, 200),
-		"stderr_preview", truncateString(pistonResp.Run.Stderr, 200))
 
 	// 构建返回结果（不包含内存数据，因为公共 Piston API 不提供真实内存信息）
 	result := &models.ExecuteCodeResponse{

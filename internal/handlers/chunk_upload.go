@@ -27,15 +27,13 @@ func NewChunkUploadHandler(uploadMgr *services.UploadManager) *ChunkUploadHandle
 
 // InitUpload 初始化上传
 func (h *ChunkUploadHandler) InitUpload(c *gin.Context) {
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, err.Error())
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 
 	var req models.InitUploadRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.ValidationErrorResponse(c, "请求参数错误")
+	if !bindJSONOrFail(c, &req, nil, "") {
 		return
 	}
 
@@ -52,9 +50,8 @@ func (h *ChunkUploadHandler) InitUpload(c *gin.Context) {
 
 // UploadChunk 上传分片
 func (h *ChunkUploadHandler) UploadChunk(c *gin.Context) {
-	_, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, err.Error())
+	_, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 
@@ -106,15 +103,13 @@ func (h *ChunkUploadHandler) UploadChunk(c *gin.Context) {
 
 // MergeChunks 合并分片
 func (h *ChunkUploadHandler) MergeChunks(c *gin.Context) {
-	_, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, err.Error())
+	_, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 
 	var req models.MergeChunksRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.ValidationErrorResponse(c, "请求参数错误")
+	if !bindJSONOrFail(c, &req, nil, "") {
 		return
 	}
 
@@ -145,16 +140,15 @@ func (h *ChunkUploadHandler) GetUploadStatus(c *gin.Context) {
 
 // CancelUpload 取消上传
 func (h *ChunkUploadHandler) CancelUpload(c *gin.Context) {
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, err.Error())
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 
 	uploadID := c.Param("upload_id")
 
 	ctx := c.Request.Context()
-	err = h.uploadMgr.CancelUpload(ctx, uploadID, userID)
+	err := h.uploadMgr.CancelUpload(ctx, uploadID, userID)
 	if err != nil {
 		utils.ErrorResponse(c, 500, err.Error())
 		return

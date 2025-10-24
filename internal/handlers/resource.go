@@ -33,16 +33,13 @@ func NewResourceHandler(resourceRepo *services.ResourceRepository, resourceComme
 
 // CreateResource 创建资源
 func (h *ResourceHandler) CreateResource(c *gin.Context) {
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, err.Error())
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 
 	var req models.CreateResourceRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		h.logger.Warn("创建资源参数错误", "userID", userID, "error", err.Error())
-		utils.ValidationErrorResponse(c, "请求参数错误")
+	if !bindJSONOrFail(c, &req, h.logger, "CreateResource") {
 		return
 	}
 
@@ -86,7 +83,7 @@ func (h *ResourceHandler) CreateResource(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	// 先创建资源记录以获取resourceID
-	err = h.resourceRepo.CreateResource(ctx, resource, []string{}, req.Tags)
+	err := h.resourceRepo.CreateResource(ctx, resource, []string{}, req.Tags)
 	if err != nil {
 		h.logger.Error("创建资源失败", "userID", userID, "error", err.Error())
 		utils.ErrorResponse(c, 500, "创建资源失败")
@@ -169,9 +166,8 @@ func (h *ResourceHandler) GetResourceList(c *gin.Context) {
 
 // ToggleResourceLike 切换资源点赞
 func (h *ResourceHandler) ToggleResourceLike(c *gin.Context) {
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, err.Error())
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 
@@ -197,9 +193,8 @@ func (h *ResourceHandler) ToggleResourceLike(c *gin.Context) {
 
 // DeleteResource 删除资源
 func (h *ResourceHandler) DeleteResource(c *gin.Context) {
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, err.Error())
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 
@@ -271,9 +266,8 @@ func (h *ResourceHandler) GetCategories(c *gin.Context) {
 
 // CreateResourceComment 创建资源评论
 func (h *ResourceHandler) CreateResourceComment(c *gin.Context) {
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, err.Error())
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 
@@ -355,9 +349,8 @@ func (h *ResourceHandler) GetResourceComments(c *gin.Context) {
 
 // ToggleResourceCommentLike 切换资源评论点赞
 func (h *ResourceHandler) ToggleResourceCommentLike(c *gin.Context) {
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, err.Error())
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 

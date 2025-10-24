@@ -30,15 +30,13 @@ func NewChatHandler(chatRepo *services.ChatRepository, userRepo *services.UserRe
 
 // SendMessage 发送消息
 func (h *ChatHandler) SendMessage(c *gin.Context) {
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, err.Error())
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 
 	var req models.SendMessageRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.ErrorResponse(c, 400, "消息内容格式错误")
+	if !bindJSONOrFail(c, &req, nil, "") {
 		return
 	}
 
@@ -144,20 +142,17 @@ func (h *ChatHandler) GetNewMessages(c *gin.Context) {
 
 // DeleteMessage 删除消息
 func (h *ChatHandler) DeleteMessage(c *gin.Context) {
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, err.Error())
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 
-	messageIDStr := c.Param("id")
-	messageID, err := strconv.ParseUint(messageIDStr, 10, 32)
-	if err != nil {
-		utils.ErrorResponse(c, 400, "消息ID格式错误")
+	messageID, isOK := parseUintParam(c, "id", "消息ID格式错误")
+	if !isOK {
 		return
 	}
 
-	err = h.chatRepo.DeleteMessage(uint(messageID), userID)
+	err := h.chatRepo.DeleteMessage(messageID, userID)
 	if err != nil {
 		h.logger.Error("删除消息失败",
 			"messageID", messageID,

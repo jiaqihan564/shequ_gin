@@ -57,9 +57,8 @@ func (h *PrivateMessageHandler) getUserInfo(ctx context.Context, userID uint) (m
 
 // GetConversations 获取会话列表
 func (h *PrivateMessageHandler) GetConversations(c *gin.Context) {
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, err.Error())
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 
@@ -112,9 +111,8 @@ func (h *PrivateMessageHandler) GetConversations(c *gin.Context) {
 
 // GetMessages 获取会话消息
 func (h *PrivateMessageHandler) GetMessages(c *gin.Context) {
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, err.Error())
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 
@@ -185,15 +183,13 @@ func (h *PrivateMessageHandler) GetMessages(c *gin.Context) {
 
 // SendMessage 发送消息
 func (h *PrivateMessageHandler) SendMessage(c *gin.Context) {
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, err.Error())
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 
 	var req models.SendPrivateMessageRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.ValidationErrorResponse(c, "请求参数错误")
+	if !bindJSONOrFail(c, &req, nil, "") {
 		return
 	}
 
@@ -229,9 +225,8 @@ func (h *PrivateMessageHandler) SendMessage(c *gin.Context) {
 
 // GetUnreadCount 获取未读消息数
 func (h *PrivateMessageHandler) GetUnreadCount(c *gin.Context) {
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, err.Error())
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 
@@ -250,9 +245,8 @@ func (h *PrivateMessageHandler) GetUnreadCount(c *gin.Context) {
 
 // StartConversation 开始与指定用户的会话
 func (h *PrivateMessageHandler) StartConversation(c *gin.Context) {
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, err.Error())
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 

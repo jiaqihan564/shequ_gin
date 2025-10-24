@@ -169,61 +169,6 @@ func SanitizeFilename(filename string) string {
 	return result
 }
 
-// MaskEmail 邮箱脱敏
-func MaskEmail(email string) string {
-	parts := strings.Split(email, "@")
-	if len(parts) != 2 {
-		return email
-	}
-
-	username := parts[0]
-	domain := parts[1]
-
-	if len(username) <= 2 {
-		return email
-	}
-
-	// 保留前1位和后1位，中间用 * 代替
-	masked := string(username[0]) + strings.Repeat("*", len(username)-2) + string(username[len(username)-1])
-	return masked + "@" + domain
-}
-
-// MaskPhone 手机号脱敏
-func MaskPhone(phone string) string {
-	if len(phone) != 11 {
-		return phone
-	}
-
-	// 保留前3位和后4位，中间用 **** 代替
-	return phone[:3] + "****" + phone[7:]
-}
-
-// MaskIDCard 身份证号脱敏
-func MaskIDCard(idCard string) string {
-	if len(idCard) != 18 {
-		return idCard
-	}
-
-	// 保留前6位和后4位，中间用 * 代替
-	return idCard[:6] + "********" + idCard[14:]
-}
-
-// SanitizeLogData 日志数据脱敏
-func SanitizeLogData(data string) string {
-	result := data
-
-	// 脱敏邮箱
-	result = emailMaskRegex.ReplaceAllStringFunc(result, MaskEmail)
-
-	// 脱敏手机号
-	result = phoneRegex.ReplaceAllStringFunc(result, MaskPhone)
-
-	// 脱敏身份证号
-	result = idCardRegex.ReplaceAllStringFunc(result, MaskIDCard)
-
-	return result
-}
-
 // ValidateContentLength 已移至 helpers.go
 var (
 	ErrContentTooShort = NewAppError(ErrInvalidParameter, "内容太短", 400)

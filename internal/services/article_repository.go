@@ -28,7 +28,7 @@ func NewArticleRepository(db *Database) *ArticleRepository {
 // CreateArticle 创建文章
 func (r *ArticleRepository) CreateArticle(ctx context.Context, article *models.Article, codeBlocks []models.CreateArticleCodeBlock, categoryIDs, tagIDs []uint) error {
 	start := time.Now()
-	r.logger.Debug("开始创建文章",
+	r.logger.Info("开始创建文章",
 		"userID", article.UserID,
 		"title", article.Title,
 		"codeBlockCount", len(codeBlocks),
@@ -156,7 +156,6 @@ func (r *ArticleRepository) CreateArticle(ctx context.Context, article *models.A
 // 原版本需要6次查询，优化后只需要2-3次查询
 func (r *ArticleRepository) GetArticleByID(ctx context.Context, articleID uint, userID uint) (*models.ArticleDetailResponse, error) {
 	start := time.Now()
-	r.logger.Debug("开始获取文章详情（优化版）", "articleID", articleID, "userID", userID)
 
 	// 第一步：使用JOIN一次性获取文章基本信息、作者信息
 	// 合并原来的2次查询为1次
@@ -186,7 +185,6 @@ func (r *ArticleRepository) GetArticleByID(ctx context.Context, articleID uint, 
 
 	if err != nil {
 		if err == sql.ErrNoRows {
-			r.logger.Debug("文章不存在", "articleID", articleID)
 			return nil, utils.ErrUserNotFound
 		}
 		r.logger.Error("查询文章失败", "error", err.Error())
@@ -484,7 +482,6 @@ func (r *ArticleRepository) ListArticles(ctx context.Context, query models.Artic
 // UpdateArticle 更新文章
 func (r *ArticleRepository) UpdateArticle(ctx context.Context, articleID, userID uint, req models.UpdateArticleRequest) error {
 	start := time.Now()
-	r.logger.Debug("开始更新文章", "articleID", articleID, "userID", userID)
 
 	// 检查文章是否存在且属于当前用户
 	checkQuery := `SELECT user_id FROM articles WHERE id = ? AND status != 2`
@@ -700,7 +697,6 @@ func (r *ArticleRepository) IncrementViewCount(ctx context.Context, articleID ui
 // CreateComment 创建评论
 func (r *ArticleRepository) CreateComment(ctx context.Context, comment *models.ArticleComment) error {
 	start := time.Now()
-	r.logger.Debug("开始创建评论", "articleID", comment.ArticleID, "userID", comment.UserID, "parentID", comment.ParentID)
 
 	// 如果是回复评论，需要确定 root_id
 	rootID := comment.RootID
@@ -1139,7 +1135,6 @@ func (r *ArticleRepository) DeleteComment(ctx context.Context, commentID, userID
 // CreateReport 创建举报
 func (r *ArticleRepository) CreateReport(ctx context.Context, report *models.ArticleReport) error {
 	start := time.Now()
-	r.logger.Debug("开始创建举报", "userID", report.UserID, "articleID", report.ArticleID, "commentID", report.CommentID)
 
 	query := `INSERT INTO article_reports (article_id, comment_id, user_id, reason, status, created_at)
 			  VALUES (?, ?, ?, ?, 0, ?)`

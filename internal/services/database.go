@@ -179,10 +179,6 @@ func (d *Database) PrepareStmt(ctx context.Context, query string) (*sql.Stmt, er
 // ExecWithCache 使用缓存的prepared statement执行查询
 func (d *Database) ExecWithCache(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
 	start := time.Now()
-	d.logger.Debug("SQL执行开始[ExecWithCache]",
-		"query", utils.TruncateString(query, 200),
-		"params", utils.FormatSQLParams(args),
-		"paramCount", len(args))
 
 	stmt, err := d.PrepareStmt(ctx, query)
 	if err != nil {
@@ -231,10 +227,6 @@ func (d *Database) ExecWithCache(ctx context.Context, query string, args ...inte
 // QueryRowWithCache 使用缓存的prepared statement执行单行查询
 func (d *Database) QueryRowWithCache(ctx context.Context, query string, args ...interface{}) *sql.Row {
 	start := time.Now()
-	d.logger.Debug("SQL查询开始[QueryRowWithCache]",
-		"query", utils.TruncateString(query, 200),
-		"params", utils.FormatSQLParams(args),
-		"paramCount", len(args))
 
 	stmt, err := d.PrepareStmt(ctx, query)
 	if err != nil {
@@ -247,11 +239,6 @@ func (d *Database) QueryRowWithCache(ctx context.Context, query string, args ...
 
 	row := stmt.QueryRowContext(ctx, args...)
 	duration := time.Since(start)
-
-	d.logger.Debug("SQL查询完成[QueryRowWithCache]",
-		"query", utils.TruncateString(query, 200),
-		"duration", duration,
-		"durationMs", duration.Milliseconds())
 
 	// 慢查询警告（优化：降低阈值到50ms）
 	slowQueryThreshold := 50 * time.Millisecond
@@ -270,10 +257,6 @@ func (d *Database) QueryRowWithCache(ctx context.Context, query string, args ...
 // QueryWithCache 使用缓存的prepared statement执行多行查询
 func (d *Database) QueryWithCache(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
 	start := time.Now()
-	d.logger.Debug("SQL查询开始[QueryWithCache]",
-		"query", utils.TruncateString(query, 200),
-		"params", utils.FormatSQLParams(args),
-		"paramCount", len(args))
 
 	stmt, err := d.PrepareStmt(ctx, query)
 	if err != nil {

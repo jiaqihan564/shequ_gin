@@ -28,15 +28,12 @@ func NewCodeHandler(repo services.CodeRepository, executor services.CodeExecutor
 // ExecuteCode 执行代码
 func (h *CodeHandler) ExecuteCode(c *gin.Context) {
 	var req models.ExecuteCodeRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.BadRequestResponse(c, "请求参数无效: "+err.Error())
+	if !bindJSONOrFail(c, &req, nil, "") {
 		return
 	}
 
-	// 获取用户ID
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, "未授权")
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 
@@ -103,14 +100,12 @@ func (h *CodeHandler) ExecuteCode(c *gin.Context) {
 // CreateSnippet 创建代码片段
 func (h *CodeHandler) CreateSnippet(c *gin.Context) {
 	var req models.SaveSnippetRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.BadRequestResponse(c, "请求参数无效: "+err.Error())
+	if !bindJSONOrFail(c, &req, nil, "") {
 		return
 	}
 
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, "未授权")
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 
@@ -134,9 +129,8 @@ func (h *CodeHandler) CreateSnippet(c *gin.Context) {
 
 // GetSnippets 获取代码片段列表
 func (h *CodeHandler) GetSnippets(c *gin.Context) {
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, "未授权")
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 
@@ -170,20 +164,17 @@ func (h *CodeHandler) GetSnippets(c *gin.Context) {
 
 // GetSnippetByID 获取代码片段详情
 func (h *CodeHandler) GetSnippetByID(c *gin.Context) {
-	idStr := c.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 32)
-	if err != nil {
-		utils.BadRequestResponse(c, "无效的ID")
+	id, isOK := parseUintParam(c, "id", "无效的ID")
+	if !isOK {
 		return
 	}
 
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, "未授权")
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 
-	snippet, err := h.repo.GetSnippetByID(uint(id))
+	snippet, err := h.repo.GetSnippetByID(id)
 	if err != nil {
 		utils.NotFoundResponse(c, "代码片段不存在")
 		return
@@ -200,27 +191,23 @@ func (h *CodeHandler) GetSnippetByID(c *gin.Context) {
 
 // UpdateSnippet 更新代码片段
 func (h *CodeHandler) UpdateSnippet(c *gin.Context) {
-	idStr := c.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 32)
-	if err != nil {
-		utils.BadRequestResponse(c, "无效的ID")
+	id, isOK := parseUintParam(c, "id", "无效的ID")
+	if !isOK {
 		return
 	}
 
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, "未授权")
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 
 	var req models.UpdateSnippetRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.BadRequestResponse(c, "请求参数无效: "+err.Error())
+	if !bindJSONOrFail(c, &req, nil, "") {
 		return
 	}
 
 	// 获取原有的代码片段
-	snippet, err := h.repo.GetSnippetByID(uint(id))
+	snippet, err := h.repo.GetSnippetByID(id)
 	if err != nil {
 		utils.NotFoundResponse(c, "代码片段不存在")
 		return
@@ -257,20 +244,17 @@ func (h *CodeHandler) UpdateSnippet(c *gin.Context) {
 
 // DeleteSnippet 删除代码片段
 func (h *CodeHandler) DeleteSnippet(c *gin.Context) {
-	idStr := c.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 32)
-	if err != nil {
-		utils.BadRequestResponse(c, "无效的ID")
+	id, isOK := parseUintParam(c, "id", "无效的ID")
+	if !isOK {
 		return
 	}
 
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, "未授权")
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 
-	if err := h.repo.DeleteSnippet(uint(id), userID); err != nil {
+	if err := h.repo.DeleteSnippet(id, userID); err != nil {
 		utils.GetLogger().Error("删除代码片段失败", "error", err, "snippet_id", id)
 		utils.InternalServerErrorResponse(c, "删除代码片段失败: "+err.Error())
 		return
@@ -281,9 +265,8 @@ func (h *CodeHandler) DeleteSnippet(c *gin.Context) {
 
 // GetExecutions 获取执行记录列表
 func (h *CodeHandler) GetExecutions(c *gin.Context) {
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, "未授权")
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 
@@ -334,20 +317,17 @@ func (h *CodeHandler) GetSharedSnippet(c *gin.Context) {
 
 // GenerateShareLink 生成分享链接
 func (h *CodeHandler) GenerateShareLink(c *gin.Context) {
-	idStr := c.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 32)
-	if err != nil {
-		utils.BadRequestResponse(c, "无效的ID")
+	id, isOK := parseUintParam(c, "id", "无效的ID")
+	if !isOK {
 		return
 	}
 
-	userID, err := utils.GetUserIDFromContext(c)
-	if err != nil {
-		utils.UnauthorizedResponse(c, "未授权")
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
 		return
 	}
 
-	token, err := h.repo.GenerateShareToken(uint(id), userID)
+	token, err := h.repo.GenerateShareToken(id, userID)
 	if err != nil {
 		utils.GetLogger().Error("生成分享令牌失败", "error", err, "snippet_id", id)
 		utils.InternalServerErrorResponse(c, "生成分享链接失败: "+err.Error())
