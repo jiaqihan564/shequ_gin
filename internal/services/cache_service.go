@@ -149,7 +149,7 @@ func (s *CacheService) InvalidateArticleTags() {
 // 文章详情缓存
 // =============================================================================
 
-// GetArticleDetail 获取文章详情（带缓存，使用优化查询）
+// GetArticleDetail 获取文章详情（带缓存）
 func (s *CacheService) GetArticleDetail(ctx context.Context, articleID uint, userID uint) (*models.ArticleDetailResponse, error) {
 	cacheKey := fmt.Sprintf("%s%d:user%d", cacheKeyArticlePrefix, articleID, userID)
 
@@ -171,18 +171,13 @@ func (s *CacheService) GetArticleDetail(ctx context.Context, articleID uint, use
 		}
 	}
 
-	// 缓存未命中，从数据库获取（使用优化版本）
-	s.logger.Debug("文章详情缓存未命中，从数据库加载（优化查询）", "articleID", articleID)
+	// 缓存未命中，从数据库获取
+	s.logger.Debug("文章详情缓存未命中，从数据库加载", "articleID", articleID)
 
-	// 优先使用优化版本的查询（如果存在）
-	article, err := s.articleRepo.GetArticleByIDOptimized(ctx, articleID, userID)
+	// 使用优化版本的查询（JOIN减少查询次数）
+	article, err := s.articleRepo.GetArticleByID(ctx, articleID, userID)
 	if err != nil {
-		// 如果优化版本失败，回退到原版本
-		s.logger.Warn("优化查询失败，回退到原版本", "articleID", articleID, "error", err.Error())
-		article, err = s.articleRepo.GetArticleByID(ctx, articleID, userID)
-		if err != nil {
-			return nil, err
-		}
+		return nil, err
 	}
 
 	// 写入缓存（使用较短的TTL）
