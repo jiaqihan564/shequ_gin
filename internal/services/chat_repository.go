@@ -181,17 +181,17 @@ func (r *ChatRepository) UpdateOnlineUser(userID uint, username string) error {
 	return nil
 }
 
-// GetOnlineCount 获取在线用户数（最近5分钟有心跳的）
+// GetOnlineCount 获取在线用户数（最近10秒有心跳的）
 func (r *ChatRepository) GetOnlineCount() (int, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// 5分钟内有心跳的用户视为在线
-	fiveMinutesAgo := time.Now().Add(-5 * time.Minute)
+	// 10秒内有心跳的用户视为在线
+	tenSecondsAgo := time.Now().Add(-10 * time.Second)
 	query := `SELECT COUNT(*) FROM online_users WHERE last_heartbeat >= ?`
 
 	var count int
-	err := r.db.DB.QueryRowContext(ctx, query, fiveMinutesAgo).Scan(&count)
+	err := r.db.DB.QueryRowContext(ctx, query, tenSecondsAgo).Scan(&count)
 	if err != nil {
 		r.logger.Error("获取在线用户数失败", "error", err.Error())
 		return 0, utils.ErrDatabaseQuery
@@ -200,17 +200,38 @@ func (r *ChatRepository) GetOnlineCount() (int, error) {
 	return count, nil
 }
 
-// CleanOldOnlineUsers 清理过期的在线用户记录（超过1小时）
+// CleanOldOnlineUsers 清理过期的在线用户记录（超过10秒无心跳）
 func (r *ChatRepository) CleanOldOnlineUsers() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	oneHourAgo := time.Now().Add(-1 * time.Hour)
+	tenSecondsAgo := time.Now().Add(-10 * time.Second)
 	query := `DELETE FROM online_users WHERE last_heartbeat < ?`
 
-	_, err := r.db.DB.ExecContext(ctx, query, oneHourAgo)
+	result, err := r.db.DB.ExecContext(ctx, query, tenSecondsAgo)
 	if err != nil {
 		r.logger.Error("清理过期在线用户失败", "error", err.Error())
+		return utils.ErrDatabaseQuery
+	}
+
+	// 记录清理的数量
+	affected, _ := result.RowsAffected()
+	if affected > 0 {
+		r.logger.Info("清理过期在线用户", "count", affected)
+	}
+
+	return nil
+}
+
+// RemoveOnlineUser 移除在线用户
+func (r *ChatRepository) RemoveOnlineUser(userID uint) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `DELETE FROM online_users WHERE user_id = ?`
+	_, err := r.db.DB.ExecContext(ctx, query, userID)
+	if err != nil {
+		r.logger.Error("移除在线用户失败", "error", err.Error())
 		return utils.ErrDatabaseQuery
 	}
 

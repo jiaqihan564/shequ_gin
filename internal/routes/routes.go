@@ -166,6 +166,7 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 			auth.GET("/chat/messages/new", chatHandler.GetNewMessages)   // 获取新消息（轮询）
 			auth.DELETE("/chat/messages/:id", chatHandler.DeleteMessage) // 删除消息
 			auth.GET("/chat/online-count", chatHandler.GetOnlineCount)   // 获取在线用户数
+			auth.POST("/chat/offline", chatHandler.UserOffline)          // 用户下线
 
 			// 文章相关接口
 			auth.POST("/articles", articleHandler.CreateArticle)              // 创建文章

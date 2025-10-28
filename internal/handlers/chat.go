@@ -184,3 +184,18 @@ func (h *ChatHandler) GetOnlineCount(c *gin.Context) {
 		Count: count,
 	})
 }
+
+// UserOffline 用户手动下线
+func (h *ChatHandler) UserOffline(c *gin.Context) {
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
+		return
+	}
+
+	if err := h.chatRepo.RemoveOnlineUser(userID); err != nil {
+		h.logger.Error("用户下线失败", "userID", userID, "error", err.Error())
+		// 不返回错误，因为这不是关键操作
+	}
+
+	utils.SuccessResponse(c, 200, "下线成功", nil)
+}
