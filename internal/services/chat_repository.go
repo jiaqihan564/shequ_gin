@@ -162,78 +162,9 @@ func (r *ChatRepository) DeleteMessage(messageID, userID uint) error {
 	return nil
 }
 
-// UpdateOnlineUser 更新在线用户心跳
-func (r *ChatRepository) UpdateOnlineUser(userID uint, username string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	now := time.Now()
-	query := `INSERT INTO online_users (user_id, username, last_heartbeat, created_at)
-			  VALUES (?, ?, ?, ?)
-			  ON DUPLICATE KEY UPDATE last_heartbeat = ?, username = ?`
-
-	_, err := r.db.DB.ExecContext(ctx, query, userID, username, now, now, now, username)
-	if err != nil {
-		r.logger.Error("更新在线用户失败", "error", err.Error())
-		return utils.ErrDatabaseQuery
-	}
-
-	return nil
-}
-
-// GetOnlineCount 获取在线用户数（最近10秒有心跳的）
-func (r *ChatRepository) GetOnlineCount() (int, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	// 10秒内有心跳的用户视为在线
-	tenSecondsAgo := time.Now().Add(-10 * time.Second)
-	query := `SELECT COUNT(*) FROM online_users WHERE last_heartbeat >= ?`
-
-	var count int
-	err := r.db.DB.QueryRowContext(ctx, query, tenSecondsAgo).Scan(&count)
-	if err != nil {
-		r.logger.Error("获取在线用户数失败", "error", err.Error())
-		return 0, utils.ErrDatabaseQuery
-	}
-
-	return count, nil
-}
-
-// CleanOldOnlineUsers 清理过期的在线用户记录（超过10秒无心跳）
-func (r *ChatRepository) CleanOldOnlineUsers() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	tenSecondsAgo := time.Now().Add(-10 * time.Second)
-	query := `DELETE FROM online_users WHERE last_heartbeat < ?`
-
-	result, err := r.db.DB.ExecContext(ctx, query, tenSecondsAgo)
-	if err != nil {
-		r.logger.Error("清理过期在线用户失败", "error", err.Error())
-		return utils.ErrDatabaseQuery
-	}
-
-	// 记录清理的数量
-	affected, _ := result.RowsAffected()
-	if affected > 0 {
-		r.logger.Info("清理过期在线用户", "count", affected)
-	}
-
-	return nil
-}
-
-// RemoveOnlineUser 移除在线用户
-func (r *ChatRepository) RemoveOnlineUser(userID uint) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	query := `DELETE FROM online_users WHERE user_id = ?`
-	_, err := r.db.DB.ExecContext(ctx, query, userID)
-	if err != nil {
-		r.logger.Error("移除在线用户失败", "error", err.Error())
-		return utils.ErrDatabaseQuery
-	}
-
-	return nil
-}
+// Legacy online user management methods removed - now handled by WebSocket ConnectionHub
+// The following methods are no longer needed:
+// - UpdateOnlineUser: Online status managed in memory by WebSocket
+// - GetOnlineCount: Replaced by ConnectionHub.GetOnlineCount()
+// - CleanOldOnlineUsers: WebSocket automatically handles disconnections
+// - RemoveOnlineUser: WebSocket handles connection cleanup

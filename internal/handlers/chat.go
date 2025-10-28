@@ -1,10 +1,7 @@
 package handlers
 
 import (
-	"context"
-	"fmt"
 	"strconv"
-	"time"
 
 	"gin/internal/models"
 	"gin/internal/services"
@@ -76,8 +73,7 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 		return
 	}
 
-	// 更新在线用户心跳
-	_ = h.chatRepo.UpdateOnlineUser(userID, user.Username)
+	// Online user heartbeat now handled by WebSocket connection
 
 	utils.SuccessResponse(c, 200, "发送成功", models.SendMessageResponse{
 		MessageID: message.ID,
@@ -127,18 +123,7 @@ func (h *ChatHandler) GetNewMessages(c *gin.Context) {
 		return
 	}
 
-	// 使用Worker Pool异步更新在线用户心跳（避免阻塞响应）
-	userID, err := utils.GetUserIDFromContext(c)
-	if err == nil {
-		taskID := fmt.Sprintf("heartbeat_%d_%d", userID, time.Now().Unix())
-		_ = utils.SubmitTask(taskID, func(taskCtx context.Context) error {
-			user, err := h.userRepo.GetUserByID(taskCtx, userID)
-			if err != nil {
-				return err
-			}
-			return h.chatRepo.UpdateOnlineUser(userID, user.Username)
-		}, 3*time.Second)
-	}
+	// Online user heartbeat now handled by WebSocket connection
 
 	utils.SuccessResponse(c, 200, "获取成功", models.GetMessagesResponse{
 		Messages: messages,
@@ -171,31 +156,19 @@ func (h *ChatHandler) DeleteMessage(c *gin.Context) {
 	utils.SuccessResponse(c, 200, "删除成功", nil)
 }
 
-// GetOnlineCount 获取在线用户数
+// GetOnlineCount - DEPRECATED: Use WebSocket ConnectionHub instead
+// Kept for backward compatibility with old clients
 func (h *ChatHandler) GetOnlineCount(c *gin.Context) {
-	count, err := h.chatRepo.GetOnlineCount()
-	if err != nil {
-		h.logger.Error("获取在线用户数失败", "error", err.Error())
-		utils.ErrorResponse(c, 500, "获取在线用户数失败")
-		return
-	}
-
-	utils.SuccessResponse(c, 200, "获取成功", models.OnlineCountResponse{
-		Count: count,
+	h.logger.Warn("DEPRECATED: GetOnlineCount called, use WebSocket instead")
+	// Return 0 as this is deprecated
+	utils.SuccessResponse(c, 200, "Use WebSocket for real-time online count", models.OnlineCountResponse{
+		Count: 0,
 	})
 }
 
-// UserOffline 用户手动下线
+// UserOffline - DEPRECATED: WebSocket automatically handles disconnections
+// Kept for backward compatibility with old clients
 func (h *ChatHandler) UserOffline(c *gin.Context) {
-	userID, isOK := getUserIDOrFail(c)
-	if !isOK {
-		return
-	}
-
-	if err := h.chatRepo.RemoveOnlineUser(userID); err != nil {
-		h.logger.Error("用户下线失败", "userID", userID, "error", err.Error())
-		// 不返回错误，因为这不是关键操作
-	}
-
-	utils.SuccessResponse(c, 200, "下线成功", nil)
+	h.logger.Warn("DEPRECATED: UserOffline called, WebSocket handles disconnections automatically")
+	utils.SuccessResponse(c, 200, "WebSocket handles disconnections automatically", nil)
 }

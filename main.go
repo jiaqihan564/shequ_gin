@@ -121,19 +121,8 @@ func main() {
 		logger.Info("服务器健康检查通过", "url", fmt.Sprintf("http://%s:%s/health", cfg.Server.Host, cfg.Server.Port))
 	}
 
-	// 启动在线用户清理任务（每15秒清理一次超过10秒无心跳的用户）
-	go func() {
-		ticker := time.NewTicker(15 * time.Second)
-		defer ticker.Stop()
-
-		logger.Info("在线用户清理任务已启动")
-
-		for range ticker.C {
-			if err := container.ChatRepo.CleanOldOnlineUsers(); err != nil {
-				logger.Error("清理在线用户失败", "error", err.Error())
-			}
-		}
-	}()
+	// 在线用户管理已迁移到 WebSocket ConnectionHub（内存管理）
+	// 不再需要定时清理数据库中的在线用户记录
 
 	logger.Info("✅ 应用启动完成，等待请求...")
 

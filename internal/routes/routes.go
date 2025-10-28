@@ -46,6 +46,9 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 	chunkUploadHandler := handlers.NewChunkUploadHandler(ctn.UploadMgr)
 	codeHandler := handlers.NewCodeHandler(ctn.CodeRepo, ctn.CodeExecutor)
 
+	// Initialize WebSocket connection hub
+	handlers.InitConnectionHub(ctn.ChatRepo, ctn.UserRepo)
+
 	// 健康检查路由
 	r.GET("/health", healthHandler.Check)
 	r.GET("/ready", healthHandler.Ready)
@@ -161,12 +164,14 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 			auth.GET("/history/profile-changes", historyHandler.GetProfileChangeHistory)
 
 			// 聊天室接口（所有登录用户可访问）
-			auth.POST("/chat/send", chatHandler.SendMessage)             // 发送消息
-			auth.GET("/chat/messages", chatHandler.GetMessages)          // 获取消息列表
-			auth.GET("/chat/messages/new", chatHandler.GetNewMessages)   // 获取新消息（轮询）
+			auth.GET("/chat/ws", chatHandler.HandleWebSocket)            // WebSocket 连接（主要通信方式）
+			auth.POST("/chat/send", chatHandler.SendMessage)             // 发送消息（HTTP 降级支持）
+			auth.GET("/chat/messages", chatHandler.GetMessages)          // 获取历史消息
+			auth.GET("/chat/messages/new", chatHandler.GetNewMessages)   // 获取新消息（轮询，降级支持）
 			auth.DELETE("/chat/messages/:id", chatHandler.DeleteMessage) // 删除消息
-			auth.GET("/chat/online-count", chatHandler.GetOnlineCount)   // 获取在线用户数
-			auth.POST("/chat/offline", chatHandler.UserOffline)          // 用户下线
+			auth.GET("/chat/online-count", chatHandler.GetOnlineCountWS) // 获取在线用户数（优先使用 WebSocket）
+			auth.GET("/chat/online-users", chatHandler.GetOnlineUsersWS) // 获取在线用户列表
+			// Deprecated: auth.POST("/chat/offline") - WebSocket handles disconnections automatically
 
 			// 文章相关接口
 			auth.POST("/articles", articleHandler.CreateArticle)              // 创建文章
