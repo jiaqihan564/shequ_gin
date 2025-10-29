@@ -11,9 +11,11 @@ import (
 )
 
 // 魔数验证buffer池（性能优化）
+// 注意：存储 *[]byte 而非 []byte，避免 interface{} 装箱时的堆分配
 var magicNumberBufferPool = sync.Pool{
 	New: func() interface{} {
-		return make([]byte, 16)
+		buf := make([]byte, 16)
+		return &buf // 返回指针，避免 Put 时的内存分配
 	},
 }
 
@@ -64,8 +66,10 @@ func (fv *FileValidator) validateMagicNumber(fileHeader *multipart.FileHeader) e
 	defer file.Close()
 
 	// 从对象池获取buffer（性能优化）
-	buf := magicNumberBufferPool.Get().([]byte)
-	defer magicNumberBufferPool.Put(buf)
+	// 获取指针类型，避免 interface{} 转换时的堆分配
+	bufPtr := magicNumberBufferPool.Get().(*[]byte)
+	defer magicNumberBufferPool.Put(bufPtr) // 直接传递指针，避免 SA6002 警告
+	buf := *bufPtr                          // 解引用获取实际的 []byte
 
 	n, err := io.ReadFull(file, buf)
 	if err != nil && err != io.ErrUnexpectedEOF {

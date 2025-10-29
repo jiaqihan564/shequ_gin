@@ -71,24 +71,26 @@ func NewSlicePool(initialCap int) *SlicePool {
 	return &SlicePool{
 		pool: sync.Pool{
 			New: func() interface{} {
-				return make([]interface{}, 0, initialCap)
+				s := make([]interface{}, 0, initialCap)
+				return &s // 返回切片指针以避免装箱开销
 			},
 		},
 	}
 }
 
-// Get 获取切片
-func (p *SlicePool) Get() []interface{} {
-	return p.pool.Get().([]interface{})
+// Get 获取切片指针
+// 返回指针可以避免 interface{} 装箱导致的内存分配
+func (p *SlicePool) Get() *[]interface{} {
+	return p.pool.Get().(*[]interface{})
 }
 
 // Put 归还切片（会先清空）
-// Note: 切片是引用类型，不需要使用指针参数
-//
-//nolint:gocritic
-func (p *SlicePool) Put(s []interface{}) {
-	// 清空切片
-	s = s[:0]
+// 使用指针参数可以：
+// 1. 避免 slice 装箱为 interface{} 时的内存分配（修复 SA6002 警告）
+// 2. 真正清空原始切片（而非局部副本）
+func (p *SlicePool) Put(s *[]interface{}) {
+	// 清空切片：使用指针可以真正修改原始切片
+	*s = (*s)[:0]
 	p.pool.Put(s)
 }
 
