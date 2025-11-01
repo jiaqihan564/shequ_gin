@@ -11,49 +11,53 @@ import (
 
 // Config 应用配置结构体
 type Config struct {
-	App                   AppConfig                   `yaml:"app" json:"app"`
-	Server                ServerConfig                `yaml:"server" json:"server"`
-	JWT                   JWTConfig                   `yaml:"jwt" json:"jwt"`
-	Database              DatabaseConfig              `yaml:"database" json:"database"`
-	Log                   LogConfig                   `yaml:"log" json:"log"`
-	Security              SecurityConfig              `yaml:"security" json:"security"`
-	Admin                 AdminConfig                 `yaml:"admin" json:"admin"`
-	CORS                  CORSConfig                  `yaml:"cors" json:"cors"`
-	Assets                AssetsConfig                `yaml:"assets" json:"assets"`
-	MinIO                 MinIOConfig                 `yaml:"minio" json:"minio"`
-	ResourcesStorage      ResourcesStorageConfig      `yaml:"resources_storage" json:"resources_storage"`
-	CodeExecutor          CodeExecutorConfig          `yaml:"code_executor" json:"code_executor"`
-	WebSocket             WebSocketConfig             `yaml:"websocket" json:"websocket"`
-	RateLimiter           RateLimiterConfig           `yaml:"rate_limiter" json:"rate_limiter"`
-	Cache                 CacheConfig                 `yaml:"cache" json:"cache"`
-	Validation            ValidationConfig            `yaml:"validation" json:"validation"`
-	DatabaseTimeouts      DatabaseTimeoutsConfig      `yaml:"database_timeouts" json:"database_timeouts"`
-	HTTPClient            HTTPClientConfig            `yaml:"http_client" json:"http_client"`
-	AuthPolicy            AuthPolicyConfig            `yaml:"auth_policy" json:"auth_policy"`
-	Metrics               MetricsConfig               `yaml:"metrics" json:"metrics"`
-	AsyncTasks            AsyncTasksConfig            `yaml:"async_tasks" json:"async_tasks"`
-	WorkerPool            WorkerPoolConfig            `yaml:"worker_pool" json:"worker_pool"`
-	LRUCacheDefaults      LRUCacheDefaultsConfig      `yaml:"lru_cache_defaults" json:"lru_cache_defaults"`
-	BatchOperations       BatchOperationsConfig       `yaml:"batch_operations" json:"batch_operations"`
-	ObjectPool            ObjectPoolConfig            `yaml:"object_pool" json:"object_pool"`
-	PerformanceMonitoring PerformanceMonitoringConfig `yaml:"performance_monitoring" json:"performance_monitoring"`
-	RepositoryTimeouts    RepositoryTimeoutsConfig    `yaml:"repository_timeouts" json:"repository_timeouts"`
-	FileUpload            FileUploadConfig            `yaml:"file_upload" json:"file_upload"`
-	Compression           CompressionConfig           `yaml:"compression" json:"compression"`
-	Pagination            PaginationConfig            `yaml:"pagination" json:"pagination"`
-	ImageUpload           ImageUploadConfig           `yaml:"image_upload" json:"image_upload"`
-	DatabaseQuery         DatabaseQueryConfig         `yaml:"database_query" json:"database_query"`
-	RepositoryDefaults    RepositoryDefaultsConfig    `yaml:"repository_defaults" json:"repository_defaults"`
-	StatisticsQuery       StatisticsQueryConfig       `yaml:"statistics_query" json:"statistics_query"`
-	LogAdvanced           LogAdvancedConfig           `yaml:"log_advanced" json:"log_advanced"`
-	MetricsCapacity       MetricsCapacityConfig       `yaml:"metrics_capacity" json:"metrics_capacity"`
-	Profiler              ProfilerConfig              `yaml:"profiler" json:"profiler"`
-	LogExtended           LogExtendedConfig           `yaml:"log_extended" json:"log_extended"`
-	SecurityHeaders       SecurityHeadersConfig       `yaml:"security_headers" json:"security_headers"`
-	SecurityPassword      SecurityPasswordConfig      `yaml:"security_password" json:"security_password"`
-	SecuritySQL           SecuritySQLConfig           `yaml:"security_sql" json:"security_sql"`
-	ValidationExtended    ValidationExtendedConfig    `yaml:"validation_extended" json:"validation_extended"`
-	JWTExtended           JWTExtendedConfig           `yaml:"jwt_extended" json:"jwt_extended"`
+	App                     AppConfig                     `yaml:"app" json:"app"`
+	Server                  ServerConfig                  `yaml:"server" json:"server"`
+	JWT                     JWTConfig                     `yaml:"jwt" json:"jwt"`
+	Database                DatabaseConfig                `yaml:"database" json:"database"`
+	Log                     LogConfig                     `yaml:"log" json:"log"`
+	Security                SecurityConfig                `yaml:"security" json:"security"`
+	Admin                   AdminConfig                   `yaml:"admin" json:"admin"`
+	CORS                    CORSConfig                    `yaml:"cors" json:"cors"`
+	Assets                  AssetsConfig                  `yaml:"assets" json:"assets"`
+	MinIO                   MinIOConfig                   `yaml:"minio" json:"minio"`
+	ResourcesStorage        ResourcesStorageConfig        `yaml:"resources_storage" json:"resources_storage"`
+	CodeExecutor            CodeExecutorConfig            `yaml:"code_executor" json:"code_executor"`
+	WebSocket               WebSocketConfig               `yaml:"websocket" json:"websocket"`
+	RateLimiter             RateLimiterConfig             `yaml:"rate_limiter" json:"rate_limiter"`
+	Cache                   CacheConfig                   `yaml:"cache" json:"cache"`
+	Validation              ValidationConfig              `yaml:"validation" json:"validation"`
+	DatabaseTimeouts        DatabaseTimeoutsConfig        `yaml:"database_timeouts" json:"database_timeouts"`
+	HTTPClient              HTTPClientConfig              `yaml:"http_client" json:"http_client"`
+	AuthPolicy              AuthPolicyConfig              `yaml:"auth_policy" json:"auth_policy"`
+	Metrics                 MetricsConfig                 `yaml:"metrics" json:"metrics"`
+	AsyncTasks              AsyncTasksConfig              `yaml:"async_tasks" json:"async_tasks"`
+	WorkerPool              WorkerPoolConfig              `yaml:"worker_pool" json:"worker_pool"`
+	LRUCacheDefaults        LRUCacheDefaultsConfig        `yaml:"lru_cache_defaults" json:"lru_cache_defaults"`
+	BatchOperations         BatchOperationsConfig         `yaml:"batch_operations" json:"batch_operations"`
+	ObjectPool              ObjectPoolConfig              `yaml:"object_pool" json:"object_pool"`
+	PerformanceMonitoring   PerformanceMonitoringConfig   `yaml:"performance_monitoring" json:"performance_monitoring"`
+	RepositoryTimeouts      RepositoryTimeoutsConfig      `yaml:"repository_timeouts" json:"repository_timeouts"`
+	FileUpload              FileUploadConfig              `yaml:"file_upload" json:"file_upload"`
+	Compression             CompressionConfig             `yaml:"compression" json:"compression"`
+	Pagination              PaginationConfig              `yaml:"pagination" json:"pagination"`
+	ImageUpload             ImageUploadConfig             `yaml:"image_upload" json:"image_upload"`
+	DatabaseQuery           DatabaseQueryConfig           `yaml:"database_query" json:"database_query"`
+	RepositoryDefaults      RepositoryDefaultsConfig      `yaml:"repository_defaults" json:"repository_defaults"`
+	StatisticsQuery         StatisticsQueryConfig         `yaml:"statistics_query" json:"statistics_query"`
+	LogAdvanced             LogAdvancedConfig             `yaml:"log_advanced" json:"log_advanced"`
+	MetricsCapacity         MetricsCapacityConfig         `yaml:"metrics_capacity" json:"metrics_capacity"`
+	Profiler                ProfilerConfig                `yaml:"profiler" json:"profiler"`
+	LogExtended             LogExtendedConfig             `yaml:"log_extended" json:"log_extended"`
+	SecurityHeaders         SecurityHeadersConfig         `yaml:"security_headers" json:"security_headers"`
+	SecurityPassword        SecurityPasswordConfig        `yaml:"security_password" json:"security_password"`
+	SecuritySQL             SecuritySQLConfig             `yaml:"security_sql" json:"security_sql"`
+	ValidationExtended      ValidationExtendedConfig      `yaml:"validation_extended" json:"validation_extended"`
+	JWTExtended             JWTExtendedConfig             `yaml:"jwt_extended" json:"jwt_extended"`
+	DateTimeFormats         DateTimeFormatsConfig         `yaml:"date_time_formats" json:"date_time_formats"`
+	MinioAdvanced           MinioAdvancedConfig           `yaml:"minio_advanced" json:"minio_advanced"`
+	DatabaseQueryAdvanced   DatabaseQueryAdvancedConfig   `yaml:"database_query_advanced" json:"database_query_advanced"`
+	StatisticsQueryExtended StatisticsQueryExtendedConfig `yaml:"statistics_query_extended" json:"statistics_query_extended"`
 }
 
 // AppConfig 应用信息配置
@@ -465,6 +469,30 @@ type JWTExtendedConfig struct {
 	TokenPrefix string `yaml:"token_prefix" json:"token_prefix"` // Token前缀（例如 "Bearer "）
 }
 
+// DateTimeFormatsConfig 日期时间格式配置
+type DateTimeFormatsConfig struct {
+	DateOnly     string `yaml:"date_only" json:"date_only"`         // 仅日期格式
+	DatetimeFull string `yaml:"datetime_full" json:"datetime_full"` // 完整日期时间格式
+	RFC3339      string `yaml:"rfc3339" json:"rfc3339"`             // RFC3339格式
+}
+
+// MinioAdvancedConfig MinIO高级配置
+type MinioAdvancedConfig struct {
+	PolicyVersion string `yaml:"policy_version" json:"policy_version"` // S3策略版本号
+	PolicyEffect  string `yaml:"policy_effect" json:"policy_effect"`   // 策略效果
+	PolicyAction  string `yaml:"policy_action" json:"policy_action"`   // 策略允许的操作
+}
+
+// DatabaseQueryAdvancedConfig 数据库查询高级配置
+type DatabaseQueryAdvancedConfig struct {
+	QueryLogTruncateLength int `yaml:"query_log_truncate_length" json:"query_log_truncate_length"` // 查询日志截断长度
+}
+
+// StatisticsQueryExtendedConfig 统计查询扩展配置
+type StatisticsQueryExtendedConfig struct {
+	DefaultDateRangeDays int `yaml:"default_date_range_days" json:"default_date_range_days"` // 默认查询日期范围（天数）
+}
+
 // Load 加载配置（优先级：环境变量 > 配置文件 > 默认值）
 func Load() *Config {
 	// 获取环境变量
@@ -868,6 +896,22 @@ func getDefaultConfig() *Config {
 		},
 		JWTExtended: JWTExtendedConfig{
 			TokenPrefix: "Bearer ",
+		},
+		DateTimeFormats: DateTimeFormatsConfig{
+			DateOnly:     "2006-01-02",
+			DatetimeFull: "2006-01-02 15:04:05",
+			RFC3339:      "RFC3339",
+		},
+		MinioAdvanced: MinioAdvancedConfig{
+			PolicyVersion: "2012-10-17",
+			PolicyEffect:  "Allow",
+			PolicyAction:  "s3:GetObject",
+		},
+		DatabaseQueryAdvanced: DatabaseQueryAdvancedConfig{
+			QueryLogTruncateLength: 200,
+		},
+		StatisticsQueryExtended: StatisticsQueryExtendedConfig{
+			DefaultDateRangeDays: 7,
 		},
 	}
 }

@@ -52,19 +52,19 @@ func NewStorageService(cfg *config.Config) (*StorageService, error) {
 		logger.Info("已创建桶", "bucket", cfg.MinIO.Bucket)
 	}
 
-	// 设置桶策略为公开只读（允许匿名访问）
+	// 设置桶策略为公开只读（允许匿名访问，从配置读取策略参数）
 	policy := fmt.Sprintf(`{
-		"Version": "2012-10-17",
+		"Version": "%s",
 		"Statement": [
 			{
 				"Sid": "PublicReadGetObject",
-				"Effect": "Allow",
+				"Effect": "%s",
 				"Principal": "*",
-				"Action": "s3:GetObject",
+				"Action": "%s",
 				"Resource": "arn:aws:s3:::%s/*"
 			}
 		]
-	}`, cfg.MinIO.Bucket)
+	}`, cfg.MinioAdvanced.PolicyVersion, cfg.MinioAdvanced.PolicyEffect, cfg.MinioAdvanced.PolicyAction, cfg.MinIO.Bucket)
 
 	if err := cli.SetBucketPolicy(ctx, cfg.MinIO.Bucket, policy); err != nil {
 		// 设置策略失败不阻塞服务启动，但要记录警告

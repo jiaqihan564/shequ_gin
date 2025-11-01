@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"gin/internal/config"
 	"gin/internal/models"
 	"gin/internal/utils"
 )
@@ -12,13 +13,15 @@ import (
 type StatisticsRepository struct {
 	db     *Database
 	logger utils.Logger
+	config *config.Config
 }
 
 // NewStatisticsRepository 创建统计数据访问层
-func NewStatisticsRepository(db *Database) *StatisticsRepository {
+func NewStatisticsRepository(db *Database, cfg *config.Config) *StatisticsRepository {
 	return &StatisticsRepository{
 		db:     db,
 		logger: utils.GetLogger(),
+		config: cfg,
 	}
 }
 
@@ -237,7 +240,11 @@ func (r *StatisticsRepository) GetEndpointRanking(startDate, endDate string, lim
 
 // GetTodayOverview 获取今日总览
 func (r *StatisticsRepository) GetTodayOverview() (*models.StatisticsOverview, error) {
-	today := time.Now().Format("2006-01-02")
+	dateFormat := "2006-01-02"
+	if r.config != nil {
+		dateFormat = r.config.DateTimeFormats.DateOnly
+	}
+	today := time.Now().Format(dateFormat)
 
 	overview := &models.StatisticsOverview{}
 

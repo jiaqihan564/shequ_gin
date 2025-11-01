@@ -12,6 +12,7 @@ import (
 
 	"gin/internal/bootstrap"
 	"gin/internal/config"
+	"gin/internal/middleware"
 	"gin/internal/routes"
 	"gin/internal/services"
 	"gin/internal/utils"
@@ -88,6 +89,10 @@ func main() {
 	} else {
 		logger.Info("管理员账号检查完成")
 	}
+
+	// 初始化限流器（必须在设置路由之前）
+	middleware.InitRateLimiter(cfg)
+	logger.Info("限流器初始化完成")
 
 	// 设置路由
 	r := routes.SetupRoutes(cfg, container)

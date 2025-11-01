@@ -52,7 +52,7 @@ func GetRealtimeMetricsManagerWithConfig(cfg *config.MetricsConfig) *RealtimeMet
 			OnlineUserExpireTime:       5,
 			CPUGoroutineBaseline:       200,
 		}
-		
+
 		// 如果提供了配置，使用提供的配置
 		if cfg != nil {
 			defaultCfg = cfg
@@ -102,6 +102,7 @@ func (m *RealtimeMetricsManager) RecordError() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	// 使用标准的日期时间格式（与config.yaml中的datetime_full格式一致）
 	m.lastErrorTime = time.Now().Format("2006-01-02 15:04:05")
 }
 

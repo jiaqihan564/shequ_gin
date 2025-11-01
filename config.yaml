@@ -71,9 +71,9 @@ admin:
 
 # CORS配置
 cors:
-  allow_origins: ["*"]
+  allow_origins: ["http://localhost:3000"]
   allow_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-  allow_headers: ["Origin", "Content-Type", "Content-Length", "Accept-Encoding", "X-CSRF-Token", "Authorization"]
+  allow_headers: ["Origin", "Content-Type", "Content-Length", "Accept-Encoding", "X-CSRF-Token", "Authorization", "X-Request-ID"]
   allow_credentials: true
 
 # 静态资源/对象存储配置（用于头像等）
@@ -382,3 +382,23 @@ validation_extended:
 # JWT扩展配置
 jwt_extended:
   token_prefix: "Bearer "
+
+# 日期时间格式配置
+date_time_formats:
+  date_only: "2006-01-02"                # 仅日期格式
+  datetime_full: "2006-01-02 15:04:05"   # 完整日期时间格式
+  rfc3339: "RFC3339"                     # RFC3339格式（用于API响应）
+
+# MinIO 高级配置
+minio_advanced:
+  policy_version: "2012-10-17"  # S3策略版本号
+  policy_effect: "Allow"         # 策略效果
+  policy_action: "s3:GetObject"  # 策略允许的操作
+
+# 数据库查询扩展配置
+database_query_advanced:
+  query_log_truncate_length: 200  # 查询日志截断长度（字符数）
+
+# 统计查询扩展配置
+statistics_query_extended:
+  default_date_range_days: 7  # 默认查询日期范围（天数）

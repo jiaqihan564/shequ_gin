@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"gin/internal/config"
 	"gin/internal/models"
 	"gin/internal/utils"
 )
@@ -14,13 +15,15 @@ import (
 type ResourceRepository struct {
 	db     *Database
 	logger utils.Logger
+	config *config.Config
 }
 
 // NewResourceRepository 创建资源仓库
-func NewResourceRepository(db *Database) *ResourceRepository {
+func NewResourceRepository(db *Database, cfg *config.Config) *ResourceRepository {
 	return &ResourceRepository{
 		db:     db,
 		logger: utils.GetLogger(),
+		config: cfg,
 	}
 }
 
@@ -265,8 +268,8 @@ func (r *ResourceRepository) ListResources(ctx context.Context, query models.Res
 	if query.Page < 1 {
 		query.Page = 1
 	}
-	if query.PageSize < 1 || query.PageSize > 100 {
-		query.PageSize = 20
+	if query.PageSize < 1 || query.PageSize > r.config.Pagination.MaxPageSize {
+		query.PageSize = r.config.Pagination.DefaultPageSize
 	}
 	offset := (query.Page - 1) * query.PageSize
 

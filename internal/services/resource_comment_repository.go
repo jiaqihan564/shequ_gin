@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"gin/internal/config"
 	"gin/internal/models"
 	"gin/internal/utils"
 )
@@ -14,13 +15,15 @@ import (
 type ResourceCommentRepository struct {
 	db     *Database
 	logger utils.Logger
+	config *config.Config
 }
 
 // NewResourceCommentRepository 创建资源评论仓库
-func NewResourceCommentRepository(db *Database) *ResourceCommentRepository {
+func NewResourceCommentRepository(db *Database, cfg *config.Config) *ResourceCommentRepository {
 	return &ResourceCommentRepository{
 		db:     db,
 		logger: utils.GetLogger(),
+		config: cfg,
 	}
 }
 
@@ -71,8 +74,8 @@ func (r *ResourceCommentRepository) GetCommentsByResourceID(ctx context.Context,
 	if page < 1 {
 		page = 1
 	}
-	if pageSize < 1 || pageSize > 100 {
-		pageSize = 20
+	if pageSize < 1 || pageSize > r.config.Pagination.MaxPageSize {
+		pageSize = r.config.Pagination.DefaultPageSize
 	}
 
 	// 查询总数

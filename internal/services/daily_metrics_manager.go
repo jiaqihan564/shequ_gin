@@ -28,10 +28,13 @@ type DailyMetricsManager struct {
 
 	// 接口调用计数（需要锁保护）
 	endpointCallCount map[string]int64
-	
+
 	// 配置的初始容量（用于重置时）
 	activeUsersCapacity   int
 	endpointCallsCapacity int
+
+	// 配置
+	config *config.Config
 }
 
 // NewDailyMetricsManager 创建每日指标管理器
@@ -42,13 +45,20 @@ func NewDailyMetricsManager(cfg *config.Config) *DailyMetricsManager {
 		activeUsersInitial = cfg.MetricsCapacity.ActiveUsersInitial
 		endpointCallsInitial = cfg.MetricsCapacity.EndpointCallsInitial
 	}
-	
+
+	// 获取日期格式
+	dateFormat := "2006-01-02" // 默认格式
+	if cfg != nil {
+		dateFormat = cfg.DateTimeFormats.DateOnly
+	}
+
 	return &DailyMetricsManager{
-		currentDate:           time.Now().Format("2006-01-02"),
-		activeUserIDs:         make(map[uint]bool, activeUsersInitial),   // 从配置读取容量
+		currentDate:           time.Now().Format(dateFormat),
+		activeUserIDs:         make(map[uint]bool, activeUsersInitial),      // 从配置读取容量
 		endpointCallCount:     make(map[string]int64, endpointCallsInitial), // 从配置读取容量
-		activeUsersCapacity:   activeUsersInitial,   // 保存容量用于重置
-		endpointCallsCapacity: endpointCallsInitial, // 保存容量用于重置
+		activeUsersCapacity:   activeUsersInitial,                           // 保存容量用于重置
+		endpointCallsCapacity: endpointCallsInitial,                         // 保存容量用于重置
+		config:                cfg,
 	}
 }
 
@@ -158,7 +168,11 @@ func (m *DailyMetricsManager) GetTodayMetrics() (activeUsers, newUsers, totalReq
 
 // checkDateAndReset 轻量级检查日期（优化：使用读锁先检查，避免频繁加写锁）
 func (m *DailyMetricsManager) checkDateAndReset() {
-	today := time.Now().Format("2006-01-02")
+	dateFormat := "2006-01-02"
+	if m.config != nil {
+		dateFormat = m.config.DateTimeFormats.DateOnly
+	}
+	today := time.Now().Format(dateFormat)
 
 	// 先用读锁检查
 	m.mu.RLock()

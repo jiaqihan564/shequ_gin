@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"gin/internal/config"
 	"gin/internal/models"
 	"gin/internal/utils"
 )
@@ -14,13 +15,15 @@ import (
 type CumulativeStatsRepository struct {
 	db     *Database
 	logger utils.Logger
+	config *config.Config
 }
 
 // NewCumulativeStatsRepository 创建累计统计数据访问层
-func NewCumulativeStatsRepository(db *Database) *CumulativeStatsRepository {
+func NewCumulativeStatsRepository(db *Database, cfg *config.Config) *CumulativeStatsRepository {
 	return &CumulativeStatsRepository{
 		db:     db,
 		logger: utils.GetLogger(),
+		config: cfg,
 	}
 }
 
@@ -253,7 +256,11 @@ func (r *CumulativeStatsRepository) GetAllRealtimeMetrics() (*models.RealtimeMet
 
 // GetTodayDailyMetric 获取今日每日指标
 func (r *CumulativeStatsRepository) GetTodayDailyMetric() (*models.DailyMetrics, error) {
-	today := time.Now().Format("2006-01-02")
+	dateFormat := "2006-01-02"
+	if r.config != nil {
+		dateFormat = r.config.DateTimeFormats.DateOnly
+	}
+	today := time.Now().Format(dateFormat)
 
 	query := `SELECT id, date, active_users, avg_response_time, success_rate, peak_concurrent, 
 				most_popular_endpoint, new_users, total_requests, created_at, updated_at

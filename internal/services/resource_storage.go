@@ -57,19 +57,19 @@ func NewResourceStorageService(cfg *config.Config) (*ResourceStorageService, err
 		logger.Info("已创建资源桶", "bucket", bucketName)
 	}
 
-	// 设置桶策略为公开只读
+	// 设置桶策略为公开只读（从配置读取策略参数）
 	policy := fmt.Sprintf(`{
-		"Version": "2012-10-17",
+		"Version": "%s",
 		"Statement": [
 			{
 				"Sid": "PublicReadGetObject",
-				"Effect": "Allow",
+				"Effect": "%s",
 				"Principal": "*",
-				"Action": "s3:GetObject",
+				"Action": "%s",
 				"Resource": "arn:aws:s3:::%s/*"
 			}
 		]
-	}`, bucketName)
+	}`, cfg.MinioAdvanced.PolicyVersion, cfg.MinioAdvanced.PolicyEffect, cfg.MinioAdvanced.PolicyAction, bucketName)
 
 	if err := cli.SetBucketPolicy(ctx, bucketName, policy); err != nil {
 		logger.Warn("设置资源桶公开访问策略失败",

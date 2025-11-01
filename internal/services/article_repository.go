@@ -312,12 +312,12 @@ func (r *ArticleRepository) GetArticleByID(ctx context.Context, articleID uint, 
 func (r *ArticleRepository) ListArticles(ctx context.Context, query models.ArticleListQuery) (*models.ArticleListResponse, error) {
 	start := time.Now()
 
-	// 设置默认值
+	// 设置默认值（从配置读取）
 	if query.Page <= 0 {
 		query.Page = 1
 	}
-	if query.PageSize <= 0 || query.PageSize > 100 {
-		query.PageSize = 20
+	if query.PageSize <= 0 || query.PageSize > r.config.Pagination.MaxPageSize {
+		query.PageSize = r.config.Pagination.DefaultPageSize
 	}
 	offset := (query.Page - 1) * query.PageSize
 
@@ -787,8 +787,8 @@ func (r *ArticleRepository) GetComments(ctx context.Context, articleID uint, pag
 	if page <= 0 {
 		page = 1
 	}
-	if pageSize <= 0 || pageSize > 100 {
-		pageSize = 20
+	if pageSize <= 0 || pageSize > r.config.Pagination.MaxPageSize {
+		pageSize = r.config.Pagination.DefaultPageSize
 	}
 	offset := (page - 1) * pageSize
 

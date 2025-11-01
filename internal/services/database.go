@@ -15,18 +15,19 @@ import (
 
 // Database 数据库服务
 type Database struct {
-	DB                *sql.DB
-	config            *config.DatabaseConfig
-	timeouts          *config.DatabaseTimeoutsConfig
-	queryConfig       *config.DatabaseQueryConfig
+	DB                 *sql.DB
+	config             *config.DatabaseConfig
+	timeouts           *config.DatabaseTimeoutsConfig
+	queryConfig        *config.DatabaseQueryConfig
+	queryAdvanced      *config.DatabaseQueryAdvancedConfig
 	repositoryTimeouts *config.RepositoryTimeoutsConfig
 	asyncTasksTimeouts *config.AsyncTasksConfig
-	logger            utils.Logger
-	stopMonitor       chan struct{} // 用于停止监控goroutine
-	stmtCache         map[string]*sql.Stmt
-	stmtMutex         sync.RWMutex
-	ctx               context.Context
-	cancel            context.CancelFunc
+	logger             utils.Logger
+	stopMonitor        chan struct{} // 用于停止监控goroutine
+	stmtCache          map[string]*sql.Stmt
+	stmtMutex          sync.RWMutex
+	ctx                context.Context
+	cancel             context.CancelFunc
 }
 
 // NewDatabase 创建数据库连接
@@ -74,6 +75,7 @@ func NewDatabase(cfg *config.Config) (*Database, error) {
 		config:             &cfg.Database,
 		timeouts:           &cfg.DatabaseTimeouts,
 		queryConfig:        &cfg.DatabaseQuery,
+		queryAdvanced:      &cfg.DatabaseQueryAdvanced,
 		repositoryTimeouts: &cfg.RepositoryTimeouts,
 		asyncTasksTimeouts: &cfg.AsyncTasks,
 		logger:             logger,
@@ -361,7 +363,7 @@ func (d *Database) ExecWithCache(ctx context.Context, query string, args ...inte
 	stmt, err := d.PrepareStmt(ctx, query)
 	if err != nil {
 		d.logger.Error("SQL执行失败: prepare失败",
-			"query", utils.TruncateString(query, 200),
+			"query", utils.TruncateString(query, d.queryAdvanced.QueryLogTruncateLength),
 			"error", err.Error(),
 			"duration", time.Since(start))
 		return nil, err
@@ -372,7 +374,7 @@ func (d *Database) ExecWithCache(ctx context.Context, query string, args ...inte
 
 	if err != nil {
 		d.logger.Error("SQL执行失败",
-			"query", utils.TruncateString(query, 200),
+			"query", utils.TruncateString(query, d.queryAdvanced.QueryLogTruncateLength),
 			"error", err.Error(),
 			"duration", duration)
 		return nil, err
@@ -382,7 +384,7 @@ func (d *Database) ExecWithCache(ctx context.Context, query string, args ...inte
 	lastInsertID, _ := result.LastInsertId()
 
 	d.logger.Info("SQL执行成功[ExecWithCache]",
-		"query", utils.TruncateString(query, 200),
+		"query", utils.TruncateString(query, d.queryAdvanced.QueryLogTruncateLength),
 		"rowsAffected", rowsAffected,
 		"lastInsertID", lastInsertID,
 		"duration", duration,
@@ -392,7 +394,7 @@ func (d *Database) ExecWithCache(ctx context.Context, query string, args ...inte
 	slowQueryThreshold := time.Duration(d.queryConfig.SlowQueryThresholdMS) * time.Millisecond
 	if duration > slowQueryThreshold {
 		d.logger.Warn("检测到慢查询[ExecWithCache]",
-			"query", utils.TruncateString(query, 200),
+			"query", utils.TruncateString(query, d.queryAdvanced.QueryLogTruncateLength),
 			"duration", duration,
 			"durationMs", duration.Milliseconds(),
 			"threshold", slowQueryThreshold.String(),
@@ -409,7 +411,7 @@ func (d *Database) QueryRowWithCache(ctx context.Context, query string, args ...
 	stmt, err := d.PrepareStmt(ctx, query)
 	if err != nil {
 		d.logger.Warn("SQL查询: prepare失败，回退到普通查询",
-			"query", utils.TruncateString(query, 200),
+			"query", utils.TruncateString(query, d.queryAdvanced.QueryLogTruncateLength),
 			"error", err.Error())
 		// 如果prepare失败，回退到普通查询
 		return d.DB.QueryRowContext(ctx, query, args...)
@@ -422,7 +424,7 @@ func (d *Database) QueryRowWithCache(ctx context.Context, query string, args ...
 	slowQueryThreshold := time.Duration(d.queryConfig.SlowQueryThresholdMS) * time.Millisecond
 	if duration > slowQueryThreshold {
 		d.logger.Warn("检测到慢查询[QueryRowWithCache]",
-			"query", utils.TruncateString(query, 200),
+			"query", utils.TruncateString(query, d.queryAdvanced.QueryLogTruncateLength),
 			"duration", duration,
 			"durationMs", duration.Milliseconds(),
 			"threshold", slowQueryThreshold.String(),
@@ -439,7 +441,7 @@ func (d *Database) QueryWithCache(ctx context.Context, query string, args ...int
 	stmt, err := d.PrepareStmt(ctx, query)
 	if err != nil {
 		d.logger.Error("SQL查询失败: prepare失败",
-			"query", utils.TruncateString(query, 200),
+			"query", utils.TruncateString(query, d.queryAdvanced.QueryLogTruncateLength),
 			"error", err.Error(),
 			"duration", time.Since(start))
 		return nil, err
@@ -450,14 +452,14 @@ func (d *Database) QueryWithCache(ctx context.Context, query string, args ...int
 
 	if err != nil {
 		d.logger.Error("SQL查询失败",
-			"query", utils.TruncateString(query, 200),
+			"query", utils.TruncateString(query, d.queryAdvanced.QueryLogTruncateLength),
 			"error", err.Error(),
 			"duration", duration)
 		return nil, err
 	}
 
 	d.logger.Info("SQL查询成功[QueryWithCache]",
-		"query", utils.TruncateString(query, 200),
+		"query", utils.TruncateString(query, d.queryAdvanced.QueryLogTruncateLength),
 		"duration", duration,
 		"durationMs", duration.Milliseconds())
 
@@ -465,7 +467,7 @@ func (d *Database) QueryWithCache(ctx context.Context, query string, args ...int
 	slowQueryThreshold := time.Duration(d.queryConfig.SlowQueryThresholdMS) * time.Millisecond
 	if duration > slowQueryThreshold {
 		d.logger.Warn("检测到慢查询[QueryWithCache]",
-			"query", utils.TruncateString(query, 200),
+			"query", utils.TruncateString(query, d.queryAdvanced.QueryLogTruncateLength),
 			"duration", duration,
 			"durationMs", duration.Milliseconds(),
 			"threshold", slowQueryThreshold.String(),
