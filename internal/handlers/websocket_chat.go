@@ -119,15 +119,24 @@ func (h *ConnectionHub) run() {
 		select {
 	case client := <-h.register:
 		h.mu.Lock()
-		// If user already has a connection, close the old one
-		if oldClient, exists := h.clients[client.userID]; exists {
-			close(oldClient.send)  // Close send channel first
-			oldClient.close()      // Then close WebSocket connection
+		var oldClient *Client
+		// Check if user already has a connection
+		if existing, exists := h.clients[client.userID]; exists {
+			oldClient = existing
+			// Remove from map immediately to prevent broadcast attempting to send
 			delete(h.clients, client.userID)
-			h.logger.Info("Replaced old connection", "userID", client.userID)
+			h.logger.Info("Replacing old connection", "userID", client.userID)
 		}
+		// Add new client to map
 		h.clients[client.userID] = client
 		h.mu.Unlock()
+
+		// Close old connection outside the lock (if exists)
+		if oldClient != nil {
+			close(oldClient.send)
+			oldClient.close()
+			h.logger.Info("Old connection closed", "userID", client.userID)
+		}
 
 		h.logger.Info("Client connected", "userID", client.userID, "username", client.username)
 		h.broadcastOnlineCount()
