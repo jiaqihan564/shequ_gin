@@ -209,6 +209,8 @@ func (s *AuthService) Register(ctx context.Context, username, password, email, c
 		Email:         email,
 		AuthStatus:    1,
 		AccountStatus: 1,
+		LastLoginTime: &now,
+		LastLoginIP:   &clientIP,
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}

@@ -29,8 +29,8 @@ func NewUserRepository(db *Database) *UserRepository {
 func (r *UserRepository) CreateUser(ctx context.Context, user *models.User) error {
 	start := time.Now()
 
-	query := `INSERT INTO user_auth (username, password_hash, email, auth_status, account_status, created_at, updated_at) 
-			  VALUES (?, ?, ?, ?, ?, ?, ?)`
+	query := `INSERT INTO user_auth (username, password_hash, email, auth_status, account_status, last_login_time, last_login_ip, created_at, updated_at) 
+			  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	ctx, cancel := context.WithTimeout(ctx, r.db.GetUpdateTimeout())
 	defer cancel()
@@ -41,6 +41,8 @@ func (r *UserRepository) CreateUser(ctx context.Context, user *models.User) erro
 		user.Email,
 		user.AuthStatus,
 		user.AccountStatus,
+		user.LastLoginTime,
+		user.LastLoginIP,
 		user.CreatedAt,
 		user.UpdatedAt,
 	)
