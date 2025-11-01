@@ -1,6 +1,11 @@
 # 社区后端配置文件
 # 配置文件优先级：环境变量 > 配置文件 > 默认值
 
+# 应用信息配置
+app:
+  name: "Community API"
+  version: "1.0.0"
+
 # 服务器配置
 server:
   host: "localhost"
@@ -10,7 +15,10 @@ server:
   read_timeout: 30  # 读取超时（秒）
   write_timeout: 30  # 写入超时（秒）
   idle_timeout: 120  # 空闲超时（秒）
+  read_header_timeout: 10  # 读取请求头超时（秒，防止慢速攻击）
   shutdown_timeout: 30  # 优雅关闭超时（秒）
+  startup_health_check_delay: 500  # 启动后健康检查延迟（毫秒）
+  health_check_client_timeout: 3  # 健康检查HTTP客户端超时（秒）
 
 # 数据库配置
 database:
@@ -59,6 +67,7 @@ admin:
   usernames:
     - "admin"
   default_password: "admin123"
+  email_suffix: "@admin.local"  # 管理员邮箱后缀
 
 # CORS配置
 cors:
@@ -307,3 +316,69 @@ log_advanced:
 metrics_capacity:
   active_users_initial: 500  # 活跃用户map初始容量
   endpoint_calls_initial: 50  # 端点调用计数map初始容量
+
+# 性能分析器配置
+profiler:
+  latency_max_records: 1000  # 延迟记录最大数量
+  latency_cleanup_ratio: 10  # 延迟记录清理百分比（保留最近的90%）
+  goroutine_leak_threshold: 100  # Goroutine泄露检测阈值
+  slow_query_max_records: 100  # 慢查询最大记录数
+  slow_query_cleanup_ratio: 20  # 慢查询记录清理百分比（移除最旧的20%）
+  slow_query_threshold_ms: 50  # 慢查询阈值（毫秒）
+
+# 日志扩展配置
+log_extended:
+  skip_paths:
+    - "/health"
+    - "/ready"
+    - "/live"
+    - "/metrics"
+  request_body_truncate_size: 512  # 请求体截断大小（字节）
+  sample_rate_production: 10   # 生产环境采样率(%)
+  sample_rate_development: 100 # 开发环境采样率(%)
+
+# 安全响应头配置
+security_headers:
+  x_frame_options: "DENY"
+  x_content_type_options: "nosniff"
+  x_xss_protection: "1; mode=block"
+  content_security_policy: "default-src 'self'"
+  referrer_policy: "strict-origin-when-cross-origin"
+  permissions_policy: "geolocation=(), microphone=(), camera=()"
+  enable_hsts: false  # 生产环境建议开启
+  hsts_max_age: 31536000  # HSTS有效期（秒，1年）
+
+# 密码加密配置
+security_password:
+  bcrypt_cost_min: 10
+  bcrypt_cost_max: 14
+  password_max_bytes: 72  # bcrypt限制
+
+# SQL注入防护配置
+security_sql:
+  keywords_blacklist:
+    - "select"
+    - "insert"
+    - "update"
+    - "delete"
+    - "drop"
+    - "union"
+    - "exec"
+    - "script"
+    - "javascript"
+
+# 验证规则扩展配置
+validation_extended:
+  url_min_length: 7
+  phone_first_digit: "1"
+  phone_second_digit_min: "3"
+  phone_second_digit_max: "9"
+  resource_title_max: 200
+  resource_description_max: 1000
+  article_title_max: 200
+  article_description_max: 500
+  comment_content_max: 1000
+
+# JWT扩展配置
+jwt_extended:
+  token_prefix: "Bearer "

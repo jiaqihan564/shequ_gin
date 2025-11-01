@@ -20,11 +20,11 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 	// 添加中间件（顺序很重要）
 	r.Use(middleware.PanicRecoveryMiddleware())                                                           // 1. Panic恢复（最先执行）
 	r.Use(middleware.RequestIDMiddleware())                                                               // 2. 请求ID中间件
-	r.Use(middleware.SecurityHeadersMiddleware())                                                         // 3. 安全响应头
+	r.Use(middleware.SecurityHeadersMiddleware(cfg))                                                      // 3. 安全响应头（从配置读取）
 	r.Use(middleware.CORSMiddleware(cfg))                                                                 // 4. CORS跨域
 	r.Use(middleware.RequestSizeLimitMiddleware(int64(cfg.Security.MaxRequestSizeMB) * 1024 * 1024))     // 5. 请求体大小限制（从配置读取）
 	r.Use(middleware.FastCompressionMiddleware())                             // 6. 响应压缩（速度优先）
-	r.Use(middleware.LoggerMiddleware())                                      // 7. 详细日志（包含请求/响应体）
+	r.Use(middleware.LoggerMiddleware(cfg))                                   // 7. 详细日志（包含请求/响应体，从配置读取）
 	r.Use(middleware.PerformanceMiddleware(ctn.DB))                           // 8. 性能追踪（内存、CPU、数据库连接池）
 	r.Use(middleware.MetricsMiddleware())                                     // 9. 性能监控中间件
 	r.Use(middleware.RateLimitMiddleware())                                   // 10. 添加全局限流

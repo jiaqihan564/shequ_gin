@@ -1,30 +1,34 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 
+	"gin/internal/config"
 	"gin/internal/utils"
 
 	"github.com/gin-gonic/gin"
 )
 
-// SecurityHeadersMiddleware 添加安全响应头
-func SecurityHeadersMiddleware() gin.HandlerFunc {
+// SecurityHeadersMiddleware 添加安全响应头（从配置读取）
+func SecurityHeadersMiddleware(cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 防止点击劫持
-		c.Header("X-Frame-Options", "DENY")
+		c.Header("X-Frame-Options", cfg.SecurityHeaders.XFrameOptions)
 		// 防止MIME类型嗅探
-		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("X-Content-Type-Options", cfg.SecurityHeaders.XContentTypeOptions)
 		// XSS保护
-		c.Header("X-XSS-Protection", "1; mode=block")
-		// 强制HTTPS（生产环境推荐）
-		// c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		c.Header("X-XSS-Protection", cfg.SecurityHeaders.XXSSProtection)
 		// 内容安全策略（可根据需要配置）
-		c.Header("Content-Security-Policy", "default-src 'self'")
+		c.Header("Content-Security-Policy", cfg.SecurityHeaders.ContentSecurityPolicy)
 		// 引用策略
-		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
+		c.Header("Referrer-Policy", cfg.SecurityHeaders.ReferrerPolicy)
 		// 权限策略
-		c.Header("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+		c.Header("Permissions-Policy", cfg.SecurityHeaders.PermissionsPolicy)
+		// 强制HTTPS（根据配置决定是否启用）
+		if cfg.SecurityHeaders.EnableHSTS {
+			c.Header("Strict-Transport-Security", fmt.Sprintf("max-age=%d; includeSubDomains", cfg.SecurityHeaders.HSTSMaxAge))
+		}
 
 		c.Next()
 	}

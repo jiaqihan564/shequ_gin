@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"gin/internal/config"
 	"gin/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -32,14 +33,13 @@ func (w *responseWriter) WriteString(s string) (int, error) {
 var (
 	// 日志采样计数器
 	logSampleCounter uint64
-	// 采样率配置（生产环境建议设置为10，即10%采样率）
-	logSampleRate = getLogSampleRate()
 	// 是否是生产环境
 	isProduction = gin.Mode() == gin.ReleaseMode
 )
 
-// getLogSampleRate 从环境变量获取采样率
-func getLogSampleRate() int {
+// getLogSampleRate 从配置或环境变量获取采样率
+func getLogSampleRate(cfg *config.Config) int {
+	// 优先使用环境变量
 	if rate := os.Getenv("LOG_SAMPLE_RATE"); rate != "" {
 		// 简单解析，实际生产环境应使用 strconv.Atoi
 		if rate == "100" {
@@ -52,15 +52,15 @@ func getLogSampleRate() int {
 			return 1 // 1%记录
 		}
 	}
-	// 默认：开发模式100%，生产模式10%
-	if gin.Mode() == gin.ReleaseMode {
-		return 10
+	// 从配置文件读取
+	if isProduction {
+		return cfg.LogExtended.SampleRateProduction
 	}
-	return 100
+	return cfg.LogExtended.SampleRateDevelopment
 }
 
 // shouldSample 判断是否应该记录详细日志
-func shouldSample() bool {
+func shouldSample(logSampleRate int) bool {
 	// 开发模式下总是记录
 	if !isProduction {
 		return true
@@ -71,16 +71,9 @@ func shouldSample() bool {
 	return (counter % uint64(100/logSampleRate)) == 0
 }
 
-// shouldLogPath 判断路径是否需要详细日志
-func shouldLogPath(path string) bool {
-	// 健康检查端点不记录详细日志
-	skipPaths := []string{
-		"/health",
-		"/ready",
-		"/live",
-		"/metrics",
-	}
-
+// shouldLogPath 判断路径是否需要详细日志（从配置读取）
+func shouldLogPath(path string, skipPaths []string) bool {
+	// 检查路径是否在跳过列表中
 	for _, skip := range skipPaths {
 		if strings.HasPrefix(path, skip) {
 			return false
@@ -89,8 +82,13 @@ func shouldLogPath(path string) bool {
 	return true
 }
 
-// LoggerMiddleware 自定义日志中间件（带采样）
-func LoggerMiddleware() gin.HandlerFunc {
+// LoggerMiddleware 自定义日志中间件（带采样，从配置读取）
+func LoggerMiddleware(cfg *config.Config) gin.HandlerFunc {
+	// 获取配置
+	logSampleRate := getLogSampleRate(cfg)
+	skipPaths := cfg.LogExtended.SkipPaths
+	truncateSize := cfg.LogExtended.RequestBodyTruncateSize
+
 	return func(c *gin.Context) {
 		// 开始时间
 		start := time.Now()
@@ -100,7 +98,7 @@ func LoggerMiddleware() gin.HandlerFunc {
 		logger := utils.GetLogger()
 
 		// 判断是否需要详细日志
-		needDetailLog := shouldLogPath(path) && shouldSample()
+		needDetailLog := shouldLogPath(path, skipPaths) && shouldSample(logSampleRate)
 
 		// 只在采样时记录请求详情
 		var requestBody string
@@ -125,9 +123,9 @@ func LoggerMiddleware() gin.HandlerFunc {
 						c.Request.Body = io.NopCloser(buf)
 						// 注意：这里不能PutBuffer，因为body还要被后续使用
 
-						// 截断大请求体，只记录前512字节（减少内存占用）
-						if len(bodyBytes) > 512 {
-							requestBody = utils.TruncateString(string(bodyBytes), 512)
+						// 截断大请求体，使用配置的截断大小（减少内存占用）
+						if len(bodyBytes) > truncateSize {
+							requestBody = utils.TruncateString(string(bodyBytes), truncateSize)
 						} else {
 							requestBody = string(bodyBytes)
 						}

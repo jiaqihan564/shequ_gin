@@ -15,16 +15,18 @@ import (
 
 // Database 数据库服务
 type Database struct {
-	DB          *sql.DB
-	config      *config.DatabaseConfig
-	timeouts    *config.DatabaseTimeoutsConfig
-	queryConfig *config.DatabaseQueryConfig
-	logger      utils.Logger
-	stopMonitor chan struct{} // 用于停止监控goroutine
-	stmtCache   map[string]*sql.Stmt
-	stmtMutex   sync.RWMutex
-	ctx         context.Context
-	cancel      context.CancelFunc
+	DB                *sql.DB
+	config            *config.DatabaseConfig
+	timeouts          *config.DatabaseTimeoutsConfig
+	queryConfig       *config.DatabaseQueryConfig
+	repositoryTimeouts *config.RepositoryTimeoutsConfig
+	asyncTasksTimeouts *config.AsyncTasksConfig
+	logger            utils.Logger
+	stopMonitor       chan struct{} // 用于停止监控goroutine
+	stmtCache         map[string]*sql.Stmt
+	stmtMutex         sync.RWMutex
+	ctx               context.Context
+	cancel            context.CancelFunc
 }
 
 // NewDatabase 创建数据库连接
@@ -68,15 +70,17 @@ func NewDatabase(cfg *config.Config) (*Database, error) {
 
 	// 创建数据库实例
 	dbInstance := &Database{
-		DB:          db,
-		config:      &cfg.Database,
-		timeouts:    &cfg.DatabaseTimeouts,
-		queryConfig: &cfg.DatabaseQuery,
-		logger:      logger,
-		stopMonitor: make(chan struct{}),
-		stmtCache:   make(map[string]*sql.Stmt),
-		ctx:         ctx,
-		cancel:      cancel,
+		DB:                 db,
+		config:             &cfg.Database,
+		timeouts:           &cfg.DatabaseTimeouts,
+		queryConfig:        &cfg.DatabaseQuery,
+		repositoryTimeouts: &cfg.RepositoryTimeouts,
+		asyncTasksTimeouts: &cfg.AsyncTasks,
+		logger:             logger,
+		stopMonitor:        make(chan struct{}),
+		stmtCache:          make(map[string]*sql.Stmt),
+		ctx:                ctx,
+		cancel:             cancel,
 	}
 
 	// 启动连接池监控（使用配置的监控间隔）
@@ -469,4 +473,29 @@ func (d *Database) QueryWithCache(ctx context.Context, query string, args ...int
 	}
 
 	return rows, nil
+}
+
+// GetQueryTimeout 获取查询操作超时时长（用于SELECT等读操作）
+func (d *Database) GetQueryTimeout() time.Duration {
+	if d.repositoryTimeouts != nil && d.repositoryTimeouts.DefaultQueryTimeout > 0 {
+		return time.Duration(d.repositoryTimeouts.DefaultQueryTimeout) * time.Second
+	}
+	return 5 * time.Second // 默认5秒
+}
+
+// GetUpdateTimeout 获取更新操作超时时长（用于INSERT/UPDATE/DELETE等写操作）
+func (d *Database) GetUpdateTimeout() time.Duration {
+	if d.repositoryTimeouts != nil && d.repositoryTimeouts.DefaultUpdateTimeout > 0 {
+		return time.Duration(d.repositoryTimeouts.DefaultUpdateTimeout) * time.Second
+	}
+	return 10 * time.Second // 默认10秒
+}
+
+// GetAsyncTaskTimeout 获取异步任务超时时长（用于快速异步操作）
+func (d *Database) GetAsyncTaskTimeout() time.Duration {
+	if d.asyncTasksTimeouts != nil && d.asyncTasksTimeouts.ArticleViewCountTimeout > 0 {
+		// 使用ArticleViewCountTimeout作为通用异步任务超时（3秒）
+		return time.Duration(d.asyncTasksTimeouts.ArticleViewCountTimeout) * time.Second
+	}
+	return 3 * time.Second // 默认3秒
 }

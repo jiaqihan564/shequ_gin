@@ -8,6 +8,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"gin/internal/config"
 )
 
 // Profiler 性能分析工具
@@ -18,21 +20,41 @@ type Profiler struct {
 	latencies    []time.Duration
 	latencyMutex sync.Mutex
 	maxLatencies int // 保留最近N个延迟记录
+	cleanupRatio int // 清理百分比
 
 	// Goroutine泄漏检测
-	initialGoroutines int
+	initialGoroutines   int
+	goroutineLeakThreshold int
 
 	// 内存统计
 	memStats runtime.MemStats
 }
 
 // NewProfiler 创建性能分析器
-func NewProfiler() *Profiler {
+func NewProfiler(cfg *config.ProfilerConfig) *Profiler {
+	maxLatencies := 1000
+	cleanupRatio := 10
+	goroutineLeakThreshold := 100
+
+	if cfg != nil {
+		if cfg.LatencyMaxRecords > 0 {
+			maxLatencies = cfg.LatencyMaxRecords
+		}
+		if cfg.LatencyCleanupRatio > 0 {
+			cleanupRatio = cfg.LatencyCleanupRatio
+		}
+		if cfg.GoroutineLeakThreshold > 0 {
+			goroutineLeakThreshold = cfg.GoroutineLeakThreshold
+		}
+	}
+
 	return &Profiler{
-		startTime:         time.Now(),
-		latencies:         make([]time.Duration, 0, 1000),
-		maxLatencies:      1000,
-		initialGoroutines: runtime.NumGoroutine(),
+		startTime:              time.Now(),
+		latencies:              make([]time.Duration, 0, maxLatencies),
+		maxLatencies:           maxLatencies,
+		cleanupRatio:           cleanupRatio,
+		initialGoroutines:      runtime.NumGoroutine(),
+		goroutineLeakThreshold: goroutineLeakThreshold,
 	}
 }
 
@@ -43,8 +65,11 @@ func (p *Profiler) RecordLatency(latency time.Duration) {
 
 	// 保持固定大小的滑动窗口
 	if len(p.latencies) >= p.maxLatencies {
-		// 移除最旧的10%
-		removeCount := p.maxLatencies / 10
+		// 移除最旧的N%（使用配置的清理比例）
+		removeCount := p.maxLatencies * p.cleanupRatio / 100
+		if removeCount < 1 {
+			removeCount = 1
+		}
 		p.latencies = p.latencies[removeCount:]
 	}
 
@@ -110,7 +135,7 @@ func (p *Profiler) CheckGoroutineLeak() GoroutineInfo {
 		Initial: p.initialGoroutines,
 		Current: current,
 		Leaked:  leaked,
-		IsLeak:  leaked > 100, // 超过100个认为可能泄漏
+		IsLeak:  leaked > p.goroutineLeakThreshold, // 使用配置的泄露阈值
 	}
 }
 
@@ -177,23 +202,34 @@ type ProfileReport struct {
 // 全局profiler
 var globalProfiler *Profiler
 var profilerOnce sync.Once
+var profilerConfig *config.ProfilerConfig
+
+// InitGlobalProfiler 初始化全局profiler（在应用启动时调用）
+func InitGlobalProfiler(cfg *config.ProfilerConfig) {
+	profilerConfig = cfg
+	profilerOnce.Do(func() {
+		globalProfiler = NewProfiler(cfg)
+	})
+}
 
 // GetGlobalProfiler 获取全局profiler
 func GetGlobalProfiler() *Profiler {
 	profilerOnce.Do(func() {
-		globalProfiler = NewProfiler()
+		// 如果没有初始化，使用默认配置
+		globalProfiler = NewProfiler(profilerConfig)
 	})
 	return globalProfiler
 }
 
 // SlowQueryDetector 慢查询检测器
 type SlowQueryDetector struct {
-	threshold    time.Duration
-	queries      []SlowQueryRecord
-	mutex        sync.Mutex
-	maxQueries   int
-	totalQueries uint64
-	slowQueries  uint64
+	threshold      time.Duration
+	queries        []SlowQueryRecord
+	mutex          sync.Mutex
+	maxQueries     int
+	cleanupRatio   int // 清理百分比
+	totalQueries   uint64
+	slowQueries    uint64
 }
 
 // SlowQueryRecord 慢查询记录
@@ -205,14 +241,18 @@ type SlowQueryRecord struct {
 }
 
 // NewSlowQueryDetector 创建慢查询检测器
-func NewSlowQueryDetector(threshold time.Duration, maxRecords int) *SlowQueryDetector {
+func NewSlowQueryDetector(threshold time.Duration, maxRecords int, cleanupRatio int) *SlowQueryDetector {
 	if maxRecords <= 0 {
 		maxRecords = 100
 	}
+	if cleanupRatio <= 0 {
+		cleanupRatio = 20 // 默认清理20%
+	}
 	return &SlowQueryDetector{
-		threshold:  threshold,
-		queries:    make([]SlowQueryRecord, 0, maxRecords),
-		maxQueries: maxRecords,
+		threshold:    threshold,
+		queries:      make([]SlowQueryRecord, 0, maxRecords),
+		maxQueries:   maxRecords,
+		cleanupRatio: cleanupRatio,
 	}
 }
 
@@ -231,8 +271,11 @@ func (d *SlowQueryDetector) Record(query string, duration time.Duration, params 
 
 	// 保持固定大小
 	if len(d.queries) >= d.maxQueries {
-		// 移除最旧的20%
-		removeCount := d.maxQueries / 5
+		// 移除最旧的N%（使用配置的清理比例）
+		removeCount := d.maxQueries * d.cleanupRatio / 100
+		if removeCount < 1 {
+			removeCount = 1
+		}
 		d.queries = d.queries[removeCount:]
 	}
 
@@ -291,11 +334,34 @@ type SlowQueryStats struct {
 var globalSlowQueryDetector *SlowQueryDetector
 var slowQueryOnce sync.Once
 
+// InitGlobalSlowQueryDetector 初始化全局慢查询检测器（在应用启动时调用）
+func InitGlobalSlowQueryDetector(cfg *config.ProfilerConfig) {
+	slowQueryOnce.Do(func() {
+		threshold := 50 * time.Millisecond
+		maxRecords := 100
+		cleanupRatio := 20
+
+		if cfg != nil {
+			if cfg.SlowQueryThresholdMS > 0 {
+				threshold = time.Duration(cfg.SlowQueryThresholdMS) * time.Millisecond
+			}
+			if cfg.SlowQueryMaxRecords > 0 {
+				maxRecords = cfg.SlowQueryMaxRecords
+			}
+			if cfg.SlowQueryCleanupRatio > 0 {
+				cleanupRatio = cfg.SlowQueryCleanupRatio
+			}
+		}
+
+		globalSlowQueryDetector = NewSlowQueryDetector(threshold, maxRecords, cleanupRatio)
+	})
+}
+
 // GetGlobalSlowQueryDetector 获取全局慢查询检测器
 func GetGlobalSlowQueryDetector() *SlowQueryDetector {
 	slowQueryOnce.Do(func() {
-		// 默认阈值50ms，保留最近100条
-		globalSlowQueryDetector = NewSlowQueryDetector(50*time.Millisecond, 100)
+		// 如果没有初始化，使用默认配置
+		globalSlowQueryDetector = NewSlowQueryDetector(50*time.Millisecond, 100, 20)
 	})
 	return globalSlowQueryDetector
 }

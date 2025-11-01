@@ -231,13 +231,19 @@ func ValidateRange(n, min, max int) bool {
 	return n >= min && n <= max
 }
 
-// ContainsSQLKeywords 检查是否包含SQL关键字（简单防护）
+// ContainsSQLKeywords 检查是否包含SQL关键字（简单防护，使用默认关键词）
 func ContainsSQLKeywords(input string) bool {
-	lowerInput := strings.ToLower(input)
+	// 使用默认关键词列表
 	keywords := []string{
 		"select", "insert", "update", "delete", "drop",
 		"union", "exec", "script", "javascript",
 	}
+	return ContainsSQLKeywordsWithConfig(input, keywords)
+}
+
+// ContainsSQLKeywordsWithConfig 检查是否包含SQL关键字（使用配置的关键词列表）
+func ContainsSQLKeywordsWithConfig(input string, keywords []string) bool {
+	lowerInput := strings.ToLower(input)
 	for _, keyword := range keywords {
 		if strings.Contains(lowerInput, keyword) {
 			return true

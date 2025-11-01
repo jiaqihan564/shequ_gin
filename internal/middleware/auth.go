@@ -12,15 +12,19 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 )
 
-// AuthMiddleware JWT认证中间件
+// AuthMiddleware JWT认证中间件（从配置读取token前缀）
 func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
+	// 从配置读取token前缀
+	tokenPrefix := cfg.JWTExtended.TokenPrefix
+	prefixLen := len(tokenPrefix)
+
 	return func(c *gin.Context) {
 		// 尝试从Authorization头获取token
 		authHeader := c.GetHeader("Authorization")
 		var tokenString string
 
-		if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
-			tokenString = authHeader[7:]
+		if authHeader != "" && strings.HasPrefix(authHeader, tokenPrefix) {
+			tokenString = authHeader[prefixLen:]
 		} else {
 			// 如果没有Authorization头，尝试从URL参数获取token（用于下载等场景）
 			tokenString = c.Query("token")

@@ -32,7 +32,7 @@ func (r *UserRepository) CreateUser(ctx context.Context, user *models.User) erro
 	query := `INSERT INTO user_auth (username, password_hash, email, auth_status, account_status, created_at, updated_at) 
 			  VALUES (?, ?, ?, ?, ?, ?, ?)`
 
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, r.db.GetUpdateTimeout())
 	defer cancel()
 
 	result, err := r.db.ExecWithCache(ctx, query,
@@ -72,7 +72,7 @@ func (r *UserRepository) GetUserByUsername(ctx context.Context, username string)
 			  last_login_time, last_login_ip, failed_login_count, created_at, updated_at 
 			  FROM user_auth WHERE username = ?`
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, r.db.GetQueryTimeout())
 	defer cancel()
 
 	user := &models.User{}
@@ -107,7 +107,7 @@ func (r *UserRepository) GetUserByEmail(ctx context.Context, email string) (*mod
 			  last_login_time, last_login_ip, failed_login_count, created_at, updated_at 
 			  FROM user_auth WHERE email = ?`
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, r.db.GetQueryTimeout())
 	defer cancel()
 
 	user := &models.User{}
@@ -142,7 +142,7 @@ func (r *UserRepository) GetUserByID(ctx context.Context, id uint) (*models.User
 			  last_login_time, last_login_ip, failed_login_count, created_at, updated_at 
 			  FROM user_auth WHERE id = ?`
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, r.db.GetQueryTimeout())
 	defer cancel()
 
 	user := &models.User{}

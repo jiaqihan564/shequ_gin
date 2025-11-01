@@ -17,11 +17,6 @@ import (
 	"gin/internal/utils"
 )
 
-const (
-	AppVersion = "1.0.0"
-	AppName    = "Community API"
-)
-
 func main() {
 	// 全局 panic 恢复
 	defer func() {
@@ -43,10 +38,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	// 初始化性能分析器
+	utils.InitGlobalProfiler(&cfg.Profiler)
+	utils.InitGlobalSlowQueryDetector(&cfg.Profiler)
+
 	logger := utils.GetLogger()
 	logger.Info("应用启动",
-		"app", AppName,
-		"version", AppVersion,
+		"app", cfg.App.Name,
+		"version", cfg.App.Version,
 		"mode", cfg.Server.Mode,
 		"host", cfg.Server.Host,
 		"port", cfg.Server.Port,
@@ -93,15 +92,15 @@ func main() {
 	// 设置路由
 	r := routes.SetupRoutes(cfg, container)
 
-	// 创建HTTP服务器（优化超时配置）
+	// 创建HTTP服务器（使用配置的超时设置）
 	server := &http.Server{
 		Addr:              cfg.Server.Host + ":" + cfg.Server.Port,
 		Handler:           r,
-		ReadTimeout:       30 * time.Second,
-		ReadHeaderTimeout: 10 * time.Second, // 防止慢速攻击
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       120 * time.Second,
-		MaxHeaderBytes:    1 << 20, // 1MB
+		ReadTimeout:       time.Duration(cfg.Server.ReadTimeout) * time.Second,
+		ReadHeaderTimeout: time.Duration(cfg.Server.ReadHeaderTimeout) * time.Second,
+		WriteTimeout:      time.Duration(cfg.Server.WriteTimeout) * time.Second,
+		IdleTimeout:       time.Duration(cfg.Server.IdleTimeout) * time.Second,
+		MaxHeaderBytes:    cfg.Server.MaxHeaderBytes,
 	}
 
 	// 启动服务器
@@ -116,9 +115,9 @@ func main() {
 		}
 	}()
 
-	// 启动后延迟健康检查
-	time.Sleep(500 * time.Millisecond)
-	if err := checkServerHealth(cfg.Server.Host, cfg.Server.Port); err != nil {
+	// 启动后延迟健康检查（使用配置的延迟时间）
+	time.Sleep(time.Duration(cfg.Server.StartupHealthCheckDelay) * time.Millisecond)
+	if err := checkServerHealth(cfg); err != nil {
 		logger.Warn("服务器健康检查警告", "error", err.Error())
 	} else {
 		logger.Info("服务器健康检查通过", "url", fmt.Sprintf("http://%s:%s/health", cfg.Server.Host, cfg.Server.Port))
@@ -137,8 +136,8 @@ func main() {
 	logger.Info("收到关闭信号，正在优雅关闭服务器...",
 		"signal", sig.String())
 
-	// 优雅关闭服务器（增加超时时间）
-	shutdownTimeout := 30 * time.Second
+	// 优雅关闭服务器（使用配置的超时时间）
+	shutdownTimeout := time.Duration(cfg.Server.ShutdownTimeout) * time.Second
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 
@@ -163,10 +162,10 @@ func main() {
 }
 
 // checkServerHealth 检查服务器健康状态
-func checkServerHealth(host, port string) error {
-	url := fmt.Sprintf("http://%s:%s/health", host, port)
+func checkServerHealth(cfg *config.Config) error {
+	url := fmt.Sprintf("http://%s:%s/health", cfg.Server.Host, cfg.Server.Port)
 	client := &http.Client{
-		Timeout: 3 * time.Second,
+		Timeout: time.Duration(cfg.Server.HealthCheckClientTimeout) * time.Second,
 	}
 
 	resp, err := client.Get(url)

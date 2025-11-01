@@ -11,6 +11,7 @@ import (
 
 // Config 应用配置结构体
 type Config struct {
+	App                   AppConfig                   `yaml:"app" json:"app"`
 	Server                ServerConfig                `yaml:"server" json:"server"`
 	JWT                   JWTConfig                   `yaml:"jwt" json:"jwt"`
 	Database              DatabaseConfig              `yaml:"database" json:"database"`
@@ -46,13 +47,34 @@ type Config struct {
 	StatisticsQuery       StatisticsQueryConfig       `yaml:"statistics_query" json:"statistics_query"`
 	LogAdvanced           LogAdvancedConfig           `yaml:"log_advanced" json:"log_advanced"`
 	MetricsCapacity       MetricsCapacityConfig       `yaml:"metrics_capacity" json:"metrics_capacity"`
+	Profiler              ProfilerConfig              `yaml:"profiler" json:"profiler"`
+	LogExtended           LogExtendedConfig           `yaml:"log_extended" json:"log_extended"`
+	SecurityHeaders       SecurityHeadersConfig       `yaml:"security_headers" json:"security_headers"`
+	SecurityPassword      SecurityPasswordConfig      `yaml:"security_password" json:"security_password"`
+	SecuritySQL           SecuritySQLConfig           `yaml:"security_sql" json:"security_sql"`
+	ValidationExtended    ValidationExtendedConfig    `yaml:"validation_extended" json:"validation_extended"`
+	JWTExtended           JWTExtendedConfig           `yaml:"jwt_extended" json:"jwt_extended"`
+}
+
+// AppConfig 应用信息配置
+type AppConfig struct {
+	Name    string `yaml:"name" json:"name"`       // 应用名称
+	Version string `yaml:"version" json:"version"` // 应用版本
 }
 
 // ServerConfig 服务器配置
 type ServerConfig struct {
-	Host string `yaml:"host" json:"host"`
-	Port string `yaml:"port" json:"port"`
-	Mode string `yaml:"mode" json:"mode"`
+	Host                     string `yaml:"host" json:"host"`
+	Port                     string `yaml:"port" json:"port"`
+	Mode                     string `yaml:"mode" json:"mode"`
+	MaxHeaderBytes           int    `yaml:"max_header_bytes" json:"max_header_bytes"`                       // 最大请求头大小（字节）
+	ReadTimeout              int    `yaml:"read_timeout" json:"read_timeout"`                               // 读取超时（秒）
+	WriteTimeout             int    `yaml:"write_timeout" json:"write_timeout"`                             // 写入超时（秒）
+	IdleTimeout              int    `yaml:"idle_timeout" json:"idle_timeout"`                               // 空闲超时（秒）
+	ReadHeaderTimeout        int    `yaml:"read_header_timeout" json:"read_header_timeout"`                 // 读取请求头超时（秒）
+	ShutdownTimeout          int    `yaml:"shutdown_timeout" json:"shutdown_timeout"`                       // 优雅关闭超时（秒）
+	StartupHealthCheckDelay  int    `yaml:"startup_health_check_delay" json:"startup_health_check_delay"`   // 启动后健康检查延迟（毫秒）
+	HealthCheckClientTimeout int    `yaml:"health_check_client_timeout" json:"health_check_client_timeout"` // 健康检查客户端超时（秒）
 }
 
 // JWTConfig JWT配置
@@ -100,6 +122,7 @@ type SecurityConfig struct {
 type AdminConfig struct {
 	Usernames       []string `yaml:"usernames" json:"usernames"`
 	DefaultPassword string   `yaml:"default_password" json:"default_password"` // 管理员默认密码（首次创建时使用）
+	EmailSuffix     string   `yaml:"email_suffix" json:"email_suffix"`         // 管理员邮箱后缀
 }
 
 // CORSConfig CORS配置
@@ -336,12 +359,12 @@ type CompressionConfig struct {
 
 // PaginationConfig 分页配置
 type PaginationConfig struct {
-	DefaultPageSize       int `yaml:"default_page_size" json:"default_page_size"`             // 默认每页大小
-	MaxPageSize           int `yaml:"max_page_size" json:"max_page_size"`                     // 最大每页大小
-	DefaultLimit          int `yaml:"default_limit" json:"default_limit"`                     // 默认限制数量
-	MaxLimit              int `yaml:"max_limit" json:"max_limit"`                             // 最大限制数量
-	HistoryDefaultLimit   int `yaml:"history_default_limit" json:"history_default_limit"`     // 历史记录默认限制
-	AvatarHistoryMaxList  int `yaml:"avatar_history_max_list" json:"avatar_history_max_list"` // 头像历史列表最大数量
+	DefaultPageSize      int `yaml:"default_page_size" json:"default_page_size"`             // 默认每页大小
+	MaxPageSize          int `yaml:"max_page_size" json:"max_page_size"`                     // 最大每页大小
+	DefaultLimit         int `yaml:"default_limit" json:"default_limit"`                     // 默认限制数量
+	MaxLimit             int `yaml:"max_limit" json:"max_limit"`                             // 最大限制数量
+	HistoryDefaultLimit  int `yaml:"history_default_limit" json:"history_default_limit"`     // 历史记录默认限制
+	AvatarHistoryMaxList int `yaml:"avatar_history_max_list" json:"avatar_history_max_list"` // 头像历史列表最大数量
 }
 
 // ImageUploadConfig 图片上传配置
@@ -365,10 +388,10 @@ type RepositoryDefaultsConfig struct {
 
 // StatisticsQueryConfig 统计查询配置
 type StatisticsQueryConfig struct {
-	TopCitiesLimit      int `yaml:"top_cities_limit" json:"top_cities_limit"`           // Top城市统计限制
-	ApiRankingDefault   int `yaml:"api_ranking_default" json:"api_ranking_default"`     // API排行榜默认数量
-	TagsListLimit       int `yaml:"tags_list_limit" json:"tags_list_limit"`             // 标签列表限制
-	ChatMessagesBuffer  int `yaml:"chat_messages_buffer" json:"chat_messages_buffer"`   // 聊天消息缓冲区大小
+	TopCitiesLimit     int `yaml:"top_cities_limit" json:"top_cities_limit"`         // Top城市统计限制
+	ApiRankingDefault  int `yaml:"api_ranking_default" json:"api_ranking_default"`   // API排行榜默认数量
+	TagsListLimit      int `yaml:"tags_list_limit" json:"tags_list_limit"`           // 标签列表限制
+	ChatMessagesBuffer int `yaml:"chat_messages_buffer" json:"chat_messages_buffer"` // 聊天消息缓冲区大小
 }
 
 // LogAdvancedConfig 日志配置扩展
@@ -380,6 +403,66 @@ type LogAdvancedConfig struct {
 type MetricsCapacityConfig struct {
 	ActiveUsersInitial   int `yaml:"active_users_initial" json:"active_users_initial"`     // 活跃用户map初始容量
 	EndpointCallsInitial int `yaml:"endpoint_calls_initial" json:"endpoint_calls_initial"` // 端点调用计数map初始容量
+}
+
+// ProfilerConfig 性能分析器配置
+type ProfilerConfig struct {
+	LatencyMaxRecords      int `yaml:"latency_max_records" json:"latency_max_records"`           // 延迟记录最大数量
+	LatencyCleanupRatio    int `yaml:"latency_cleanup_ratio" json:"latency_cleanup_ratio"`       // 延迟记录清理百分比
+	GoroutineLeakThreshold int `yaml:"goroutine_leak_threshold" json:"goroutine_leak_threshold"` // Goroutine泄露阈值
+	SlowQueryMaxRecords    int `yaml:"slow_query_max_records" json:"slow_query_max_records"`     // 慢查询最大记录数
+	SlowQueryCleanupRatio  int `yaml:"slow_query_cleanup_ratio" json:"slow_query_cleanup_ratio"` // 慢查询记录清理百分比
+	SlowQueryThresholdMS   int `yaml:"slow_query_threshold_ms" json:"slow_query_threshold_ms"`   // 慢查询阈值（毫秒）
+}
+
+// LogExtendedConfig 日志扩展配置
+type LogExtendedConfig struct {
+	SkipPaths               []string `yaml:"skip_paths" json:"skip_paths"`                                 // 跳过详细日志的路径列表
+	RequestBodyTruncateSize int      `yaml:"request_body_truncate_size" json:"request_body_truncate_size"` // 请求体截断大小（字节）
+	SampleRateProduction    int      `yaml:"sample_rate_production" json:"sample_rate_production"`         // 生产环境采样率(%)
+	SampleRateDevelopment   int      `yaml:"sample_rate_development" json:"sample_rate_development"`       // 开发环境采样率(%)
+}
+
+// SecurityHeadersConfig 安全响应头配置
+type SecurityHeadersConfig struct {
+	XFrameOptions         string `yaml:"x_frame_options" json:"x_frame_options"`                 // X-Frame-Options
+	XContentTypeOptions   string `yaml:"x_content_type_options" json:"x_content_type_options"`   // X-Content-Type-Options
+	XXSSProtection        string `yaml:"x_xss_protection" json:"x_xss_protection"`               // X-XSS-Protection
+	ContentSecurityPolicy string `yaml:"content_security_policy" json:"content_security_policy"` // Content-Security-Policy
+	ReferrerPolicy        string `yaml:"referrer_policy" json:"referrer_policy"`                 // Referrer-Policy
+	PermissionsPolicy     string `yaml:"permissions_policy" json:"permissions_policy"`           // Permissions-Policy
+	EnableHSTS            bool   `yaml:"enable_hsts" json:"enable_hsts"`                         // 启用HSTS（生产环境推荐）
+	HSTSMaxAge            int    `yaml:"hsts_max_age" json:"hsts_max_age"`                       // HSTS有效期（秒）
+}
+
+// SecurityPasswordConfig 密码加密配置
+type SecurityPasswordConfig struct {
+	BcryptCostMin    int `yaml:"bcrypt_cost_min" json:"bcrypt_cost_min"`       // bcrypt最小成本
+	BcryptCostMax    int `yaml:"bcrypt_cost_max" json:"bcrypt_cost_max"`       // bcrypt最大成本
+	PasswordMaxBytes int `yaml:"password_max_bytes" json:"password_max_bytes"` // 密码最大字节数（bcrypt限制）
+}
+
+// SecuritySQLConfig SQL注入防护配置
+type SecuritySQLConfig struct {
+	KeywordsBlacklist []string `yaml:"keywords_blacklist" json:"keywords_blacklist"` // SQL关键词黑名单
+}
+
+// ValidationExtendedConfig 验证规则扩展配置
+type ValidationExtendedConfig struct {
+	URLMinLength           int    `yaml:"url_min_length" json:"url_min_length"`                     // URL最小长度
+	PhoneFirstDigit        string `yaml:"phone_first_digit" json:"phone_first_digit"`               // 手机号首位数字
+	PhoneSecondDigitMin    string `yaml:"phone_second_digit_min" json:"phone_second_digit_min"`     // 手机号第二位最小值
+	PhoneSecondDigitMax    string `yaml:"phone_second_digit_max" json:"phone_second_digit_max"`     // 手机号第二位最大值
+	ResourceTitleMax       int    `yaml:"resource_title_max" json:"resource_title_max"`             // 资源标题最大长度
+	ResourceDescriptionMax int    `yaml:"resource_description_max" json:"resource_description_max"` // 资源描述最大长度
+	ArticleTitleMax        int    `yaml:"article_title_max" json:"article_title_max"`               // 文章标题最大长度
+	ArticleDescriptionMax  int    `yaml:"article_description_max" json:"article_description_max"`   // 文章描述最大长度
+	CommentContentMax      int    `yaml:"comment_content_max" json:"comment_content_max"`           // 评论内容最大长度
+}
+
+// JWTExtendedConfig JWT扩展配置
+type JWTExtendedConfig struct {
+	TokenPrefix string `yaml:"token_prefix" json:"token_prefix"` // Token前缀（例如 "Bearer "）
 }
 
 // Load 加载配置（优先级：环境变量 > 配置文件 > 默认值）
@@ -431,10 +514,22 @@ func getConfigFile(env string) string {
 // getDefaultConfig 获取默认配置
 func getDefaultConfig() *Config {
 	return &Config{
+		App: AppConfig{
+			Name:    "Community API",
+			Version: "1.0.0",
+		},
 		Server: ServerConfig{
-			Host: "localhost",
-			Port: "8080",
-			Mode: "release",
+			Host:                     "localhost",
+			Port:                     "8080",
+			Mode:                     "release",
+			MaxHeaderBytes:           1048576, // 1MB
+			ReadTimeout:              30,
+			WriteTimeout:             30,
+			IdleTimeout:              120,
+			ReadHeaderTimeout:        10,
+			ShutdownTimeout:          30,
+			StartupHealthCheckDelay:  500, // 500ms
+			HealthCheckClientTimeout: 3,
 		},
 		JWT: JWTConfig{
 			SecretKey:   getEnv("JWT_SECRET", "default_secret_key_change_in_production"),
@@ -472,6 +567,7 @@ func getDefaultConfig() *Config {
 		Admin: AdminConfig{
 			Usernames:       []string{"admin"}, // 默认管理员
 			DefaultPassword: "admin123",        // 默认密码
+			EmailSuffix:     "@admin.local",    // 管理员邮箱后缀
 		},
 		CORS: CORSConfig{
 			AllowOrigins:     []string{"*"},
@@ -726,6 +822,52 @@ func getDefaultConfig() *Config {
 		MetricsCapacity: MetricsCapacityConfig{
 			ActiveUsersInitial:   500,
 			EndpointCallsInitial: 50,
+		},
+		Profiler: ProfilerConfig{
+			LatencyMaxRecords:      1000,
+			LatencyCleanupRatio:    10,
+			GoroutineLeakThreshold: 100,
+			SlowQueryMaxRecords:    100,
+			SlowQueryCleanupRatio:  20,
+			SlowQueryThresholdMS:   50,
+		},
+		LogExtended: LogExtendedConfig{
+			SkipPaths:               []string{"/health", "/ready", "/live", "/metrics"},
+			RequestBodyTruncateSize: 512,
+			SampleRateProduction:    10,
+			SampleRateDevelopment:   100,
+		},
+		SecurityHeaders: SecurityHeadersConfig{
+			XFrameOptions:         "DENY",
+			XContentTypeOptions:   "nosniff",
+			XXSSProtection:        "1; mode=block",
+			ContentSecurityPolicy: "default-src 'self'",
+			ReferrerPolicy:        "strict-origin-when-cross-origin",
+			PermissionsPolicy:     "geolocation=(), microphone=(), camera=()",
+			EnableHSTS:            false,
+			HSTSMaxAge:            31536000, // 1年
+		},
+		SecurityPassword: SecurityPasswordConfig{
+			BcryptCostMin:    10,
+			BcryptCostMax:    14,
+			PasswordMaxBytes: 72,
+		},
+		SecuritySQL: SecuritySQLConfig{
+			KeywordsBlacklist: []string{"select", "insert", "update", "delete", "drop", "union", "exec", "script", "javascript"},
+		},
+		ValidationExtended: ValidationExtendedConfig{
+			URLMinLength:           7,
+			PhoneFirstDigit:        "1",
+			PhoneSecondDigitMin:    "3",
+			PhoneSecondDigitMax:    "9",
+			ResourceTitleMax:       200,
+			ResourceDescriptionMax: 1000,
+			ArticleTitleMax:        200,
+			ArticleDescriptionMax:  500,
+			CommentContentMax:      1000,
+		},
+		JWTExtended: JWTExtendedConfig{
+			TokenPrefix: "Bearer ",
 		},
 	}
 }

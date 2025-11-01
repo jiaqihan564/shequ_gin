@@ -3,6 +3,8 @@ package utils
 import (
 	"crypto/subtle"
 
+	"gin/internal/config"
+
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -10,10 +12,6 @@ const (
 	// DefaultBcryptCost 默认bcrypt成本（推荐10-12之间）
 	// cost=10: ~100ms, cost=12: ~400ms, cost=14: ~1.6s
 	DefaultBcryptCost = 12
-	// MinBcryptCost 最小允许的bcrypt成本
-	MinBcryptCost = 10
-	// MaxBcryptCost 最大允许的bcrypt成本
-	MaxBcryptCost = 14
 )
 
 // HashPassword 生成密码哈希
@@ -24,17 +22,35 @@ func HashPassword(password string) (string, error) {
 
 // HashPasswordWithCost 使用指定成本生成密码哈希
 func HashPasswordWithCost(password string, cost int) (string, error) {
+	// 使用默认配置验证（向后兼容）
+	return HashPasswordWithConfig(password, cost, nil)
+}
+
+// HashPasswordWithConfig 使用配置生成密码哈希
+func HashPasswordWithConfig(password string, cost int, cfg *config.SecurityPasswordConfig) (string, error) {
+	// 设置默认值
+	maxBytes := 72
+	minCost := 10
+	maxCost := 14
+
+	// 如果提供了配置，使用配置值
+	if cfg != nil {
+		maxBytes = cfg.PasswordMaxBytes
+		minCost = cfg.BcryptCostMin
+		maxCost = cfg.BcryptCostMax
+	}
+
 	// 验证密码长度，防止过长密码导致DoS
-	if len(password) > 72 {
+	if len(password) > maxBytes {
 		return "", ErrInvalidPassword
 	}
 
 	// 验证成本范围
-	if cost < MinBcryptCost {
-		cost = MinBcryptCost
+	if cost < minCost {
+		cost = minCost
 	}
-	if cost > MaxBcryptCost {
-		cost = MaxBcryptCost
+	if cost > maxCost {
+		cost = maxCost
 	}
 
 	bytes, err := bcrypt.GenerateFromPassword([]byte(password), cost)
@@ -47,8 +63,21 @@ func HashPasswordWithCost(password string, cost int) (string, error) {
 // CheckPasswordHash 验证密码哈希
 // bcrypt.CompareHashAndPassword 内部已使用常量时间比较，无需额外处理
 func CheckPasswordHash(password, hash string) bool {
+	return CheckPasswordHashWithConfig(password, hash, nil)
+}
+
+// CheckPasswordHashWithConfig 验证密码哈希（使用配置）
+func CheckPasswordHashWithConfig(password, hash string, cfg *config.SecurityPasswordConfig) bool {
+	// 设置默认值
+	maxBytes := 72
+
+	// 如果提供了配置，使用配置值
+	if cfg != nil {
+		maxBytes = cfg.PasswordMaxBytes
+	}
+
 	// 验证密码长度，防止过长密码导致DoS
-	if len(password) > 72 || len(hash) == 0 {
+	if len(password) > maxBytes || len(hash) == 0 {
 		return false
 	}
 	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))

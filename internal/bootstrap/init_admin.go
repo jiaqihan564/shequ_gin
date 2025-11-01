@@ -48,10 +48,14 @@ func InitAdminAccounts(cfg *config.Config, userRepo *services.UserRepository) er
 		}
 
 		// 创建用户记录
+		emailSuffix := cfg.Admin.EmailSuffix
+		if emailSuffix == "" {
+			emailSuffix = "@admin.local" // 默认后缀
+		}
 		user := &models.User{
 			Username:      username,
 			PasswordHash:  hashedPassword,
-			Email:         username + "@admin.local",
+			Email:         username + emailSuffix,
 			AuthStatus:    1, // 已验证
 			AccountStatus: 1, // 正常
 			CreatedAt:     time.Now(),
