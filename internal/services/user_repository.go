@@ -25,6 +25,18 @@ func NewUserRepository(db *Database) *UserRepository {
 	}
 }
 
+// BeginTx 开始一个数据库事务
+func (r *UserRepository) BeginTx(ctx context.Context) (*sql.Tx, error) {
+	tx, err := r.db.DB.BeginTx(ctx, &sql.TxOptions{
+		Isolation: sql.LevelReadCommitted,
+	})
+	if err != nil {
+		r.logger.Error("开启事务失败", "error", err.Error())
+		return nil, err
+	}
+	return tx, nil
+}
+
 // CreateUser 创建用户
 func (r *UserRepository) CreateUser(ctx context.Context, user *models.User) error {
 	start := time.Now()
@@ -522,5 +534,76 @@ func (r *UserRepository) MarkPasswordResetTokenAsUsed(ctx context.Context, token
 	}
 
 	r.logger.Info("标记密码重置token成功", "tokenID", tokenID)
+	return nil
+}
+
+// GetPasswordResetTokenForUpdate 在事务中使用行锁获取密码重置token
+// 使用 SELECT ... FOR UPDATE 防止并发问题
+func (r *UserRepository) GetPasswordResetTokenForUpdate(ctx context.Context, tx *sql.Tx, token string) (*models.PasswordResetToken, error) {
+	query := `SELECT id, email, token, expires_at, used, created_at 
+			  FROM password_reset_tokens 
+			  WHERE token = ?
+			  FOR UPDATE`
+
+	resetToken := &models.PasswordResetToken{}
+	err := tx.QueryRowContext(ctx, query, token).Scan(
+		&resetToken.ID,
+		&resetToken.Email,
+		&resetToken.Token,
+		&resetToken.ExpiresAt,
+		&resetToken.Used,
+		&resetToken.CreatedAt,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			r.logger.Warn("密码重置token不存在", "token", token[:10]+"...")
+			return nil, utils.ErrInvalidToken
+		}
+		r.logger.Error("查询密码重置token失败（带锁）", "error", err.Error())
+		return nil, utils.ErrDatabaseQuery
+	}
+
+	r.logger.Debug("获取密码重置token成功（带锁）", "tokenID", resetToken.ID)
+	return resetToken, nil
+}
+
+// MarkPasswordResetTokenAsUsedInTx 在事务中标记token为已使用
+func (r *UserRepository) MarkPasswordResetTokenAsUsedInTx(ctx context.Context, tx *sql.Tx, tokenID uint) error {
+	query := `UPDATE password_reset_tokens SET used = true WHERE id = ?`
+
+	result, err := tx.ExecContext(ctx, query, tokenID)
+	if err != nil {
+		r.logger.Error("标记密码重置token失败（事务）", "tokenID", tokenID, "error", err.Error())
+		return utils.ErrDatabaseUpdate
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		r.logger.Warn("标记密码重置token失败：未找到token", "tokenID", tokenID)
+		return utils.ErrInvalidToken
+	}
+
+	r.logger.Info("标记密码重置token成功（事务）", "tokenID", tokenID)
+	return nil
+}
+
+// UpdatePasswordInTx 在事务中更新用户密码
+func (r *UserRepository) UpdatePasswordInTx(ctx context.Context, tx *sql.Tx, userID uint, hashedPassword string) error {
+	query := `UPDATE user_auth SET password_hash = ?, updated_at = ? WHERE id = ?`
+
+	result, err := tx.ExecContext(ctx, query, hashedPassword, time.Now(), userID)
+	if err != nil {
+		r.logger.Error("更新密码失败（事务）", "userID", userID, "error", err.Error())
+		return utils.ErrDatabaseUpdate
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		r.logger.Warn("更新密码失败：未找到用户", "userID", userID)
+		return utils.ErrUserNotFound
+	}
+
+	r.logger.Info("更新密码成功（事务）", "userID", userID)
 	return nil
 }

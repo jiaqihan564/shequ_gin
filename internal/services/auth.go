@@ -377,7 +377,13 @@ func (s *AuthService) ForgotPassword(ctx context.Context, email string) (string,
 	}
 
 	// 生成重置token
-	resetToken := generateResetToken(s.config.AuthPolicy.ResetTokenBytes)
+	resetToken, err := generateResetToken(s.config.AuthPolicy.ResetTokenBytes)
+	if err != nil {
+		s.logger.Error("生成重置token失败",
+			"email", utils.SanitizeEmail(email),
+			"error", err.Error())
+		return "", utils.ErrInternalServerError
+	}
 
 	// 设置过期时间（从配置读取）
 	expiresAt := time.Now().Add(time.Duration(s.config.AuthPolicy.PasswordResetTokenExpireMinutes) * time.Minute)
@@ -408,15 +414,32 @@ func (s *AuthService) ForgotPassword(ctx context.Context, email string) (string,
 	return resetToken, nil
 }
 
-// ResetPassword 重置密码
+// ResetPassword 重置密码（使用事务和行锁防止竞态条件）
 func (s *AuthService) ResetPassword(ctx context.Context, token, newPassword string) error {
 	startTime := time.Now()
 
-	// 验证token
-	tokenRecord, err := s.userRepo.GetPasswordResetToken(ctx, token)
+	// 开启数据库事务
+	tx, err := s.userRepo.BeginTx(ctx)
+	if err != nil {
+		s.logger.Error("开启事务失败", "error", err.Error())
+		return utils.ErrInternalServerError
+	}
+	defer tx.Rollback() // 确保异常时回滚
+
+	// 使用 SELECT ... FOR UPDATE 加行锁获取token
+	// 这会阻止其他事务同时读取该token，防止并发问题
+	tokenRecord, err := s.userRepo.GetPasswordResetTokenForUpdate(ctx, tx, token)
 	if err != nil {
 		s.logger.Warn("重置token无效", "error", err.Error())
 		return utils.ErrInvalidToken
+	}
+
+	// 检查token是否已被使用（双重检查）
+	if tokenRecord.Used {
+		s.logger.Warn("重置token已被使用",
+			"tokenID", tokenRecord.ID,
+			"email", utils.SanitizeEmail(tokenRecord.Email))
+		return utils.ErrTokenAlreadyUsed
 	}
 
 	// 检查token是否过期
@@ -450,17 +473,25 @@ func (s *AuthService) ResetPassword(ctx context.Context, token, newPassword stri
 		return utils.ErrInternalServerError
 	}
 
+	// 先标记token为已使用（关键：在修改密码之前）
+	// 这样即使密码更新失败，token也不能再次使用
+	err = s.userRepo.MarkPasswordResetTokenAsUsedInTx(ctx, tx, tokenRecord.ID)
+	if err != nil {
+		s.logger.Error("标记token失败", "tokenID", tokenRecord.ID, "error", err.Error())
+		return utils.ErrInternalServerError
+	}
+
 	// 更新密码
-	err = s.userRepo.UpdatePassword(ctx, user.ID, hashedPassword)
+	err = s.userRepo.UpdatePasswordInTx(ctx, tx, user.ID, hashedPassword)
 	if err != nil {
 		s.logger.Error("更新密码失败", "userID", user.ID, "error", err.Error())
 		return err
 	}
 
-	// 标记token为已使用
-	err = s.userRepo.MarkPasswordResetTokenAsUsed(ctx, tokenRecord.ID)
-	if err != nil {
-		s.logger.Error("标记token失败", "tokenID", tokenRecord.ID, "error", err.Error())
+	// 提交事务
+	if err := tx.Commit(); err != nil {
+		s.logger.Error("提交事务失败", "error", err.Error())
+		return utils.ErrInternalServerError
 	}
 
 	s.logger.Info("密码重置成功",
@@ -472,20 +503,15 @@ func (s *AuthService) ResetPassword(ctx context.Context, token, newPassword stri
 }
 
 // generateResetToken 生成加密安全的重置token
-func generateResetToken(tokenBytes int) string {
+func generateResetToken(tokenBytes int) (string, error) {
 	b := make([]byte, tokenBytes)
 
 	_, err := rand.Read(b)
 	if err != nil {
-		// 如果crypto/rand失败，使用时间戳作为后备方案
-		return fmt.Sprintf("%d-%d-%d-%d",
-			time.Now().UnixNano(),
-			time.Now().Unix(),
-			time.Now().UnixMicro(),
-			time.Now().UnixMilli())
+		return "", utils.ErrInternalServerError
 	}
 
 	token := base64.URLEncoding.EncodeToString(b)
 	token = strings.ReplaceAll(token, "=", "")
-	return token
+	return token, nil
 }

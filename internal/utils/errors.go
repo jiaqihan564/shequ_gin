@@ -12,6 +12,7 @@ var (
 	ErrInvalidUserID        = errors.New("无效的用户ID")
 	ErrInvalidToken         = errors.New("无效的token")
 	ErrTokenExpired         = errors.New("token已过期")
+	ErrTokenAlreadyUsed     = errors.New("token已被使用")
 	ErrInvalidCredentials   = errors.New("用户名或密码错误")
 	ErrAccountDisabled      = errors.New("账户已被禁用")
 	ErrTooManyLoginAttempts = errors.New("登录尝试次数过多，请稍后再试")
@@ -155,7 +156,7 @@ func GetHTTPStatusCode(err error) int {
 
 	// 标准错误映射
 	switch {
-	case errors.Is(err, ErrUserNotAuthenticated) || errors.Is(err, ErrInvalidToken) || errors.Is(err, ErrTokenExpired):
+	case errors.Is(err, ErrUserNotAuthenticated) || errors.Is(err, ErrInvalidToken) || errors.Is(err, ErrTokenExpired) || errors.Is(err, ErrTokenAlreadyUsed):
 		return 401
 	case errors.Is(err, ErrInvalidCredentials) || errors.Is(err, ErrAccountDisabled) || errors.Is(err, ErrTooManyLoginAttempts):
 		return 401
@@ -201,7 +202,7 @@ func GetErrorCode(err error) string {
 	switch {
 	case errors.Is(err, ErrUserNotAuthenticated) || errors.Is(err, ErrInvalidToken):
 		return ErrCodeAuthRequired
-	case errors.Is(err, ErrTokenExpired):
+	case errors.Is(err, ErrTokenExpired) || errors.Is(err, ErrTokenAlreadyUsed):
 		return ErrCodeTokenExpired
 	case errors.Is(err, ErrInvalidCredentials):
 		return ErrCodeInvalidCredentials
