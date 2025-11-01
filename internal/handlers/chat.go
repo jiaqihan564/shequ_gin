@@ -3,6 +3,7 @@ package handlers
 import (
 	"strconv"
 
+	"gin/internal/config"
 	"gin/internal/models"
 	"gin/internal/services"
 	"gin/internal/utils"
@@ -14,14 +15,16 @@ import (
 type ChatHandler struct {
 	chatRepo *services.ChatRepository
 	userRepo *services.UserRepository
+	config   *config.Config
 	logger   utils.Logger
 }
 
 // NewChatHandler 创建聊天处理器
-func NewChatHandler(chatRepo *services.ChatRepository, userRepo *services.UserRepository) *ChatHandler {
+func NewChatHandler(chatRepo *services.ChatRepository, userRepo *services.UserRepository, cfg *config.Config) *ChatHandler {
 	return &ChatHandler{
 		chatRepo: chatRepo,
 		userRepo: userRepo,
+		config:   cfg,
 		logger:   utils.GetLogger(),
 	}
 }

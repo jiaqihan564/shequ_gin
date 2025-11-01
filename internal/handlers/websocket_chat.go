@@ -3,8 +3,10 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"gin/internal/models"
 	"gin/internal/services"
@@ -16,22 +18,38 @@ import (
 
 const (
 	// WebSocket configuration
-	writeWait      = 10 * time.Second
-	pongWait       = 60 * time.Second
-	pingPeriod     = 30 * time.Second
-	maxMessageSize = 4096 // 4KB, support ~1000+ Chinese characters
+	writeWait           = 10 * time.Second
+	pongWait            = 60 * time.Second
+	pingPeriod          = 30 * time.Second
+	maxMessageSize      = 4096 // 4KB, support ~1000+ Chinese characters
+	maxMessageLength    = 500  // Maximum characters in a chat message
+	maxMessagesPerSecond = 3   // Rate limit: 3 messages per second per user
 )
 
-var (
-	upgrader = websocket.Upgrader{
+// createUpgrader creates a WebSocket upgrader with proper origin checking
+func createUpgrader(allowedOrigins []string, logger utils.Logger) websocket.Upgrader {
+	return websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
 		CheckOrigin: func(r *http.Request) bool {
-			// TODO: In production, check origin properly
-			return true
+			origin := r.Header.Get("Origin")
+			// Same-origin requests (no Origin header)
+			if origin == "" {
+				return true
+			}
+			
+			// Check against allowed origins
+			for _, allowed := range allowedOrigins {
+				if allowed == "*" || allowed == origin {
+					return true
+				}
+			}
+			
+			logger.Warn("WebSocket origin not allowed", "origin", origin, "allowed", allowedOrigins)
+			return false
 		},
 	}
-)
+}
 
 // WSMessage represents a WebSocket message
 type WSMessage struct {
@@ -41,13 +59,25 @@ type WSMessage struct {
 
 // Client represents a WebSocket client connection
 type Client struct {
-	hub      *ConnectionHub
-	conn     *websocket.Conn
-	send     chan []byte
-	userID   uint
-	username string
-	nickname string
-	avatar   string
+	hub             *ConnectionHub
+	conn            *websocket.Conn
+	send            chan []byte
+	userID          uint
+	username        string
+	nickname        string
+	avatar          string
+	ipAddress       string    // Client IP address
+	closeOnce       sync.Once // Ensures connection is closed only once
+	lastMessageTime time.Time // Last message timestamp for rate limiting
+	messageCount    int       // Message count in current time window
+	mu              sync.Mutex // Protects rate limiting fields
+}
+
+// close safely closes the WebSocket connection exactly once
+func (c *Client) close() {
+	c.closeOnce.Do(func() {
+		c.conn.Close()
+	})
 }
 
 // ConnectionHub manages all active WebSocket connections
@@ -87,23 +117,26 @@ func InitConnectionHub(chatRepo *services.ChatRepository, userRepo *services.Use
 func (h *ConnectionHub) run() {
 	for {
 		select {
-		case client := <-h.register:
-			h.mu.Lock()
-			// If user already has a connection, close the old one
-			if oldClient, exists := h.clients[client.userID]; exists {
-				close(oldClient.send)
-				delete(h.clients, client.userID)
-				h.logger.Info("Replaced old connection", "userID", client.userID)
-			}
-			h.clients[client.userID] = client
-			h.mu.Unlock()
+	case client := <-h.register:
+		h.mu.Lock()
+		// If user already has a connection, close the old one
+		if oldClient, exists := h.clients[client.userID]; exists {
+			close(oldClient.send)  // Close send channel first
+			oldClient.close()      // Then close WebSocket connection
+			delete(h.clients, client.userID)
+			h.logger.Info("Replaced old connection", "userID", client.userID)
+		}
+		h.clients[client.userID] = client
+		h.mu.Unlock()
 
-			h.logger.Info("Client connected", "userID", client.userID, "username", client.username)
-			h.broadcastOnlineCount()
+		h.logger.Info("Client connected", "userID", client.userID, "username", client.username)
+		h.broadcastOnlineCount()
 
 		case client := <-h.unregister:
 			h.mu.Lock()
-			if _, exists := h.clients[client.userID]; exists {
+			// Only close channel if this client is still the current connection
+			// Prevents closing already-closed channels when old connections disconnect
+			if currentClient, exists := h.clients[client.userID]; exists && currentClient == client {
 				delete(h.clients, client.userID)
 				close(client.send)
 			}
@@ -175,7 +208,7 @@ func (h *ConnectionHub) GetOnlineUsers() []map[string]interface{} {
 func (c *Client) readPump() {
 	defer func() {
 		c.hub.unregister <- c
-		c.conn.Close()
+		c.close()
 	}()
 
 	c.conn.SetReadLimit(maxMessageSize)
@@ -188,7 +221,7 @@ func (c *Client) readPump() {
 	for {
 		_, messageBytes, err := c.conn.ReadMessage()
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				c.hub.logger.Error("WebSocket read error", "error", err.Error(), "userID", c.userID)
 			}
 			break
@@ -214,16 +247,45 @@ func (c *Client) readPump() {
 			}
 
 			content, ok := dataMap["content"].(string)
-			if !ok || content == "" {
-				c.hub.logger.Error("Empty message content", "userID", c.userID)
+			if !ok {
+				c.hub.logger.Error("Invalid message content type", "userID", c.userID)
 				continue
 			}
 
-			// Get IP address from connection (not available in WebSocket, use empty for now)
-			ipAddress := ""
+			// Trim whitespace
+			content = strings.TrimSpace(content)
+
+			// Validate content is not empty after trimming
+			if len(content) == 0 {
+				c.hub.logger.Warn("Empty message after trim", "userID", c.userID)
+				continue
+			}
+
+			// Validate message length (count characters, not bytes)
+			messageLen := utf8.RuneCountInString(content)
+			if messageLen > maxMessageLength {
+				c.hub.logger.Warn("Message too long", "userID", c.userID, "length", messageLen, "max", maxMessageLength)
+				continue
+			}
+
+			// Rate limiting: check messages per second
+			c.mu.Lock()
+			now := time.Now()
+			if now.Sub(c.lastMessageTime) < time.Second {
+				c.messageCount++
+				if c.messageCount > maxMessagesPerSecond {
+					c.mu.Unlock()
+					c.hub.logger.Warn("Rate limit exceeded", "userID", c.userID, "count", c.messageCount)
+					continue
+				}
+			} else {
+				c.messageCount = 1
+				c.lastMessageTime = now
+			}
+			c.mu.Unlock()
 
 			// Save message to database
-			message, err := c.hub.chatRepo.SendMessage(c.userID, c.username, c.nickname, c.avatar, content, ipAddress)
+			message, err := c.hub.chatRepo.SendMessage(c.userID, c.username, c.nickname, c.avatar, content, c.ipAddress)
 			if err != nil {
 				c.hub.logger.Error("Failed to save message", "error", err.Error(), "userID", c.userID)
 				continue
@@ -242,6 +304,10 @@ func (c *Client) readPump() {
 			}
 
 			c.hub.broadcast <- data
+
+		default:
+			// Unknown message type
+			c.hub.logger.Warn("Unknown message type", "type", wsMsg.Type, "userID", c.userID)
 		}
 	}
 }
@@ -251,7 +317,7 @@ func (c *Client) writePump() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		ticker.Stop()
-		c.conn.Close()
+		c.close()
 	}()
 
 	for {
@@ -292,6 +358,13 @@ func (c *Client) writePump() {
 
 // HandleWebSocket handles WebSocket connection requests
 func (h *ChatHandler) HandleWebSocket(c *gin.Context) {
+	// Check if WebSocket hub is initialized
+	if globalHub == nil {
+		h.logger.Error("WebSocket hub not initialized")
+		utils.ErrorResponse(c, 500, "Chat service unavailable")
+		return
+	}
+
 	// User is already authenticated by AuthMiddleware
 	userID, err := utils.GetUserIDFromContext(c)
 	if err != nil {
@@ -319,6 +392,12 @@ func (h *ChatHandler) HandleWebSocket(c *gin.Context) {
 		avatar = profile.AvatarURL
 	}
 
+	// Get client IP address before upgrade
+	clientIP := c.ClientIP()
+
+	// Create upgrader with CORS origin checking
+	upgrader := createUpgrader(h.config.CORS.AllowOrigins, h.logger)
+
 	// Upgrade HTTP connection to WebSocket
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
@@ -328,21 +407,26 @@ func (h *ChatHandler) HandleWebSocket(c *gin.Context) {
 
 	// Create client
 	client := &Client{
-		hub:      globalHub,
-		conn:     conn,
-		send:     make(chan []byte, 256),
-		userID:   userID,
-		username: user.Username,
-		nickname: nickname,
-		avatar:   avatar,
+		hub:             globalHub,
+		conn:            conn,
+		send:            make(chan []byte, 256),
+		userID:          userID,
+		username:        user.Username,
+		nickname:        nickname,
+		avatar:          avatar,
+		ipAddress:       clientIP,
+		lastMessageTime: time.Now(),
+		messageCount:    0,
 	}
 
 	// Register client
 	globalHub.register <- client
 
-	// Start read and write pumps
+	// Start write pump in background
 	go client.writePump()
-	go client.readPump()
+	
+	// Start read pump as main goroutine (blocks until connection closes)
+	client.readPump()
 }
 
 // GetOnlineCountWS returns online count from WebSocket hub (HTTP fallback)
