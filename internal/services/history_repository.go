@@ -32,7 +32,7 @@ func (r *HistoryRepository) RecordLoginHistory(userID uint, username, loginIP, u
 	query := `INSERT INTO user_login_history (user_id, username, login_time, login_ip, user_agent, login_status, province, city) 
 			  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetUpdateTimeout())
 	defer cancel()
 
 	_, err := r.db.DB.ExecContext(ctx, query, userID, username, time.Now(), loginIP, userAgent, loginStatus, province, city)
@@ -54,7 +54,7 @@ func (r *HistoryRepository) RecordOperationHistory(userID uint, username, operat
 	query := `INSERT INTO user_operation_history (user_id, username, operation_type, operation_desc, operation_time, ip_address) 
 			  VALUES (?, ?, ?, ?, ?, ?)`
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetUpdateTimeout())
 	defer cancel()
 
 	_, err := r.db.DB.ExecContext(ctx, query, userID, username, operationType, operationDesc, time.Now(), ipAddress)
@@ -74,7 +74,7 @@ func (r *HistoryRepository) RecordProfileChange(userID uint, fieldName, oldValue
 	query := `INSERT INTO profile_change_history (user_id, field_name, old_value, new_value, change_time, ip_address) 
 			  VALUES (?, ?, ?, ?, ?, ?)`
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetUpdateTimeout())
 	defer cancel()
 
 	_, err := r.db.DB.ExecContext(ctx, query, userID, fieldName, oldValue, newValue, time.Now(), ipAddress)
@@ -97,7 +97,7 @@ func (r *HistoryRepository) GetLoginHistory(userID uint, limit int) ([]models.Us
 			  ORDER BY login_time DESC
 			  LIMIT ?`
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetQueryTimeout())
 	defer cancel()
 
 	rows, err := r.db.DB.QueryContext(ctx, query, userID, limit)
@@ -150,7 +150,7 @@ func (r *HistoryRepository) GetOperationHistory(userID uint, limit int) ([]model
 			  ORDER BY operation_time DESC
 			  LIMIT ?`
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetQueryTimeout())
 	defer cancel()
 
 	rows, err := r.db.DB.QueryContext(ctx, query, userID, limit)
@@ -194,7 +194,7 @@ func (r *HistoryRepository) GetProfileChangeHistory(userID uint, limit int) ([]m
 			  ORDER BY change_time DESC
 			  LIMIT ?`
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetQueryTimeout())
 	defer cancel()
 
 	rows, err := r.db.DB.QueryContext(ctx, query, userID, limit)
@@ -232,7 +232,7 @@ func (r *HistoryRepository) GetProfileChangeHistory(userID uint, limit int) ([]m
 
 // GetLocationDistribution 获取用户地区分布统计
 func (r *HistoryRepository) GetLocationDistribution() (*models.LocationDistribution, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetQueryTimeout())
 	defer cancel()
 
 	// 按省份统计

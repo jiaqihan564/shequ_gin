@@ -32,7 +32,7 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 
 	// 初始化处理器
 	uploadMaxBytes := int64(cfg.Assets.MaxAvatarSizeMB) * 1024 * 1024
-	authHandler := handlers.NewAuthHandler(ctn.Auth)
+	authHandler := handlers.NewAuthHandler(ctn.Auth, cfg)
 	userHandler := handlers.NewUserHandler(ctn.UserSvc, ctn.HistoryRepo, cfg)
 	healthHandler := handlers.NewHealthHandler(ctn.DB)
 	uploadHandler := handlers.NewUploadHandler(ctn.Storage, ctn.ResourceStorage, ctn.UserSvc, uploadMaxBytes, cfg.Assets.MaxAvatarHistory, ctn.HistoryRepo, cfg)

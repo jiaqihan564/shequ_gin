@@ -39,7 +39,7 @@ func NewResourceStorageService(cfg *config.Config) (*ResourceStorageService, err
 	}
 
 	// 确保资源桶存在
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.MinIO.OperationTimeout)*time.Second)
 	defer cancel()
 
 	bucketName := cfg.ResourcesStorage.Bucket

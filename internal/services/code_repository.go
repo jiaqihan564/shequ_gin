@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"gin/internal/models"
 	"gin/internal/utils"
-	"time"
 
 	"github.com/google/uuid"
 )
@@ -50,7 +49,7 @@ func (r *CodeRepositoryImpl) CreateSnippet(snippet *models.CodeSnippet) error {
 		INSERT INTO code_snippets (user_id, title, language, code, description, is_public)
 		VALUES (?, ?, ?, ?, ?, ?)
 	`
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetUpdateTimeout())
 	defer cancel()
 
 	result, err := r.db.ExecWithCache(ctx, query,
@@ -85,7 +84,7 @@ func (r *CodeRepositoryImpl) GetSnippetByID(id uint) (*models.CodeSnippet, error
 	query := `SELECT id, user_id, title, language, code, description, is_public, share_token, created_at, updated_at 
 			  FROM code_snippets WHERE id = ?`
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetUpdateTimeout())
 	defer cancel()
 
 	row := r.db.QueryRowWithCache(ctx, query, id)
@@ -104,7 +103,7 @@ func (r *CodeRepositoryImpl) GetSnippetByID(id uint) (*models.CodeSnippet, error
 
 // GetSnippetsByUserID 获取用户的代码片段列表（优化：并行查询）
 func (r *CodeRepositoryImpl) GetSnippetsByUserID(userID uint, limit, offset int) ([]models.CodeSnippetListItem, int, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetUpdateTimeout())
 	defer cancel()
 
 	// 并行执行COUNT和列表查询
@@ -182,7 +181,7 @@ func (r *CodeRepositoryImpl) UpdateSnippet(snippet *models.CodeSnippet) error {
 		SET title = ?, code = ?, description = ?, is_public = ?
 		WHERE id = ? AND user_id = ?
 	`
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetUpdateTimeout())
 	defer cancel()
 
 	result, err := r.db.ExecWithCache(ctx, query,
@@ -215,7 +214,7 @@ func (r *CodeRepositoryImpl) UpdateSnippet(snippet *models.CodeSnippet) error {
 // DeleteSnippet 删除代码片段
 func (r *CodeRepositoryImpl) DeleteSnippet(id uint, userID uint) error {
 	query := `DELETE FROM code_snippets WHERE id = ? AND user_id = ?`
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetUpdateTimeout())
 	defer cancel()
 
 	result, err := r.db.ExecWithCache(ctx, query, id, userID)
@@ -244,7 +243,7 @@ func (r *CodeRepositoryImpl) GetSnippetByShareToken(token string) (*models.CodeS
 	query := `SELECT id, user_id, title, language, code, description, is_public, share_token, created_at, updated_at 
 			  FROM code_snippets WHERE share_token = ?`
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetUpdateTimeout())
 	defer cancel()
 
 	row := r.db.QueryRowWithCache(ctx, query, token)
@@ -271,7 +270,7 @@ func (r *CodeRepositoryImpl) GenerateShareToken(snippetID uint, userID uint) (st
 		SET share_token = ?
 		WHERE id = ? AND user_id = ?
 	`
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetUpdateTimeout())
 	defer cancel()
 
 	result, err := r.db.ExecWithCache(ctx, query, token, snippetID, userID)
@@ -301,7 +300,7 @@ func (r *CodeRepositoryImpl) CreateExecution(execution *models.CodeExecution) er
 		INSERT INTO code_executions (snippet_id, user_id, language, code, stdin, output, error, execution_time, memory_usage, status)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetUpdateTimeout())
 	defer cancel()
 
 	result, err := r.db.ExecWithCache(ctx, query,
@@ -331,7 +330,7 @@ func (r *CodeRepositoryImpl) CreateExecution(execution *models.CodeExecution) er
 
 // GetExecutionsByUserID 获取用户的执行记录列表（优化：并行查询）
 func (r *CodeRepositoryImpl) GetExecutionsByUserID(userID uint, limit, offset int) ([]models.CodeExecution, int, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetUpdateTimeout())
 	defer cancel()
 
 	// 并行执行COUNT和列表查询
@@ -412,7 +411,7 @@ func (r *CodeRepositoryImpl) GetExecutionsBySnippetID(snippetID uint, limit, off
 		ORDER BY created_at DESC
 		LIMIT ? OFFSET ?
 	`
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetUpdateTimeout())
 	defer cancel()
 
 	rows, err := r.db.QueryWithCache(ctx, query, snippetID, limit, offset)
@@ -441,7 +440,7 @@ func (r *CodeRepositoryImpl) CreateCollaboration(collab *models.CodeCollaboratio
 		INSERT INTO code_collaborations (snippet_id, session_token, active_users, expires_at)
 		VALUES (?, ?, ?, ?)
 	`
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetUpdateTimeout())
 	defer cancel()
 
 	result, err := r.db.ExecWithCache(ctx, query,
@@ -469,7 +468,7 @@ func (r *CodeRepositoryImpl) GetCollaborationByToken(token string) (*models.Code
 	query := `SELECT id, snippet_id, session_token, active_users, created_at, expires_at 
 			  FROM code_collaborations WHERE session_token = ?`
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetUpdateTimeout())
 	defer cancel()
 
 	row := r.db.QueryRowWithCache(ctx, query, token)
@@ -488,7 +487,7 @@ func (r *CodeRepositoryImpl) GetCollaborationByToken(token string) (*models.Code
 // UpdateCollaborationUsers 更新协作会话的在线用户列表
 func (r *CodeRepositoryImpl) UpdateCollaborationUsers(token string, activeUsers string) error {
 	query := `UPDATE code_collaborations SET active_users = ? WHERE session_token = ?`
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetUpdateTimeout())
 	defer cancel()
 
 	_, err := r.db.ExecWithCache(ctx, query, activeUsers, token)
@@ -500,7 +499,7 @@ func (r *CodeRepositoryImpl) UpdateCollaborationUsers(token string, activeUsers 
 
 // GetPublicSnippets 获取公开的代码片段列表
 func (r *CodeRepositoryImpl) GetPublicSnippets(language string, limit, offset int) ([]models.CodeSnippetWithUser, int, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetUpdateTimeout())
 	defer cancel()
 
 	// 构建查询条件

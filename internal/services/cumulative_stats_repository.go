@@ -28,7 +28,7 @@ func NewCumulativeStatsRepository(db *Database) *CumulativeStatsRepository {
 func (r *CumulativeStatsRepository) IncrementCumulativeStat(statKey string, increment int64) error {
 	query := `UPDATE cumulative_statistics SET stat_value = stat_value + ? WHERE stat_key = ?`
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetQueryTimeout())
 	defer cancel()
 
 	result, err := r.db.DB.ExecContext(ctx, query, increment, statKey)
@@ -56,7 +56,7 @@ func (r *CumulativeStatsRepository) GetAllCumulativeStats() (*models.CumulativeS
 			  FROM cumulative_statistics 
 			  ORDER BY category, stat_key`
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetUpdateTimeout())
 	defer cancel()
 
 	rows, err := r.db.DB.QueryContext(ctx, query)
@@ -120,7 +120,7 @@ func (r *CumulativeStatsRepository) UpsertDailyMetric(date string, activeUsers, 
 			    new_users = VALUES(new_users),
 			    total_requests = VALUES(total_requests)`
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetQueryTimeout())
 	defer cancel()
 
 	_, err := r.db.DB.ExecContext(ctx, query, date, activeUsers, avgResponseTime, successRate, peakConcurrent, mostPopularEndpoint, newUsers, totalRequests)
@@ -142,7 +142,7 @@ func (r *CumulativeStatsRepository) GetDailyMetrics(startDate, endDate string) (
 			  WHERE date >= ? AND date <= ?
 			  ORDER BY date DESC`
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetUpdateTimeout())
 	defer cancel()
 
 	rows, err := r.db.DB.QueryContext(ctx, query, startDate, endDate)
@@ -188,7 +188,7 @@ func (r *CumulativeStatsRepository) UpdateRealtimeMetric(metricKey, metricValue 
 			  VALUES (?, ?)
 			  ON DUPLICATE KEY UPDATE metric_value = VALUES(metric_value)`
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetQueryTimeout())
 	defer cancel()
 
 	_, err := r.db.DB.ExecContext(ctx, query, metricKey, metricValue)
@@ -207,7 +207,7 @@ func (r *CumulativeStatsRepository) UpdateRealtimeMetric(metricKey, metricValue 
 func (r *CumulativeStatsRepository) GetAllRealtimeMetrics() (*models.RealtimeMetricsResponse, error) {
 	query := `SELECT metric_key, metric_value FROM realtime_metrics`
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetUpdateTimeout())
 	defer cancel()
 
 	rows, err := r.db.DB.QueryContext(ctx, query)
@@ -260,7 +260,7 @@ func (r *CumulativeStatsRepository) GetTodayDailyMetric() (*models.DailyMetrics,
 			  FROM daily_metrics 
 			  WHERE date = ?`
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetQueryTimeout())
 	defer cancel()
 
 	metric := &models.DailyMetrics{}

@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"fmt"
 	"time"
 
+	"gin/internal/config"
 	"gin/internal/models"
 	"gin/internal/services"
 	"gin/internal/utils"
@@ -13,13 +15,15 @@ import (
 // AuthHandler 认证处理器
 type AuthHandler struct {
 	authService services.AuthServiceInterface
+	config      *config.Config
 	logger      utils.Logger
 }
 
 // NewAuthHandler 创建认证处理器
-func NewAuthHandler(authService services.AuthServiceInterface) *AuthHandler {
+func NewAuthHandler(authService services.AuthServiceInterface, cfg *config.Config) *AuthHandler {
 	return &AuthHandler{
 		authService: authService,
+		config:      cfg,
 		logger:      utils.GetLogger(),
 	}
 }
@@ -152,12 +156,12 @@ func (h *AuthHandler) validateLoginRequest(req *models.LoginRequest) error {
 	}
 
 	// 验证用户名格式
-	if !utils.ValidateUsername(req.Username) {
+	if !utils.ValidateUsernameWithConfig(req.Username, &h.config.Validation.Username) {
 		return utils.ErrInvalidUsername
 	}
 
 	// 验证密码长度（不验证复杂度，因为是登录不是注册）
-	if len(req.Password) < 6 || len(req.Password) > 100 {
+	if !utils.ValidatePasswordWithConfig(req.Password, &h.config.Validation.Password, true) {
 		return utils.ErrInvalidPassword
 	}
 
@@ -189,14 +193,14 @@ func (h *AuthHandler) validateRegisterRequest(req *models.RegisterRequest) error
 	}
 
 	// 验证用户名格式
-	if !utils.ValidateUsername(req.Username) {
+	if !utils.ValidateUsernameWithConfig(req.Username, &h.config.Validation.Username) {
 		return utils.ErrInvalidUsername
 	}
 
 	// 验证密码强度
-	if !utils.ValidatePassword(req.Password) {
+	if !utils.ValidatePasswordWithConfig(req.Password, &h.config.Validation.Password, false) {
 		return utils.NewAppError(utils.ErrInvalidPassword,
-			"密码必须至少6位，并包含字母和数字", 400)
+			fmt.Sprintf("密码必须至少%d位，并包含字母和数字", h.config.Validation.Password.MinLength), 400)
 	}
 
 	// 验证邮箱格式

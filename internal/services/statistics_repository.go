@@ -28,7 +28,7 @@ func (r *StatisticsRepository) IncrementLoginCount(date string) error {
 			  VALUES (?, 1, 0)
 			  ON DUPLICATE KEY UPDATE login_count = login_count + 1`
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetQueryTimeout())
 	defer cancel()
 
 	_, err := r.db.DB.ExecContext(ctx, query, date)
@@ -46,7 +46,7 @@ func (r *StatisticsRepository) IncrementRegisterCount(date string) error {
 			  VALUES (?, 0, 1)
 			  ON DUPLICATE KEY UPDATE register_count = register_count + 1`
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetQueryTimeout())
 	defer cancel()
 
 	_, err := r.db.DB.ExecContext(ctx, query, date)
@@ -79,7 +79,7 @@ func (r *StatisticsRepository) RecordApiCall(date, endpoint, method string, isSu
 			    error_count = error_count + VALUES(error_count),
 			    avg_latency_ms = (avg_latency_ms * total_count + VALUES(avg_latency_ms)) / (total_count + 1)`
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetQueryTimeout())
 	defer cancel()
 
 	_, err := r.db.DB.ExecContext(ctx, query, date, endpoint, method, successIncr, errorIncr, latencyMs)
@@ -102,7 +102,7 @@ func (r *StatisticsRepository) GetUserStatistics(startDate, endDate string) ([]m
 			  WHERE date >= ? AND date <= ?
 			  ORDER BY date DESC`
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetUpdateTimeout())
 	defer cancel()
 
 	rows, err := r.db.DB.QueryContext(ctx, query, startDate, endDate)
@@ -144,7 +144,7 @@ func (r *StatisticsRepository) GetApiStatistics(startDate, endDate string) ([]mo
 			  WHERE date >= ? AND date <= ?
 			  ORDER BY date DESC, total_count DESC`
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetUpdateTimeout())
 	defer cancel()
 
 	rows, err := r.db.DB.QueryContext(ctx, query, startDate, endDate)
@@ -199,7 +199,7 @@ func (r *StatisticsRepository) GetEndpointRanking(startDate, endDate string, lim
 			  ORDER BY total_count DESC
 			  LIMIT ?`
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetUpdateTimeout())
 	defer cancel()
 
 	rows, err := r.db.DB.QueryContext(ctx, query, startDate, endDate, limit)
@@ -246,7 +246,7 @@ func (r *StatisticsRepository) GetTodayOverview() (*models.StatisticsOverview, e
 				  FROM user_statistics 
 				  WHERE date = ?`
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetQueryTimeout())
 	defer cancel()
 
 	err := r.db.DB.QueryRowContext(ctx, userQuery, today).Scan(&overview.TodayLogin, &overview.TodayRegister)

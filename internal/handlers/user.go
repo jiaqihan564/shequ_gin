@@ -84,12 +84,12 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 	// 持久化昵称/简介到 user_profile
 	if payload.Profile.Nickname != "" || payload.Profile.Bio != "" {
 		// 验证昵称和简介
-		if payload.Profile.Nickname != "" && !utils.ValidateNickname(payload.Profile.Nickname) {
-			utils.ValidationErrorResponse(c, "昵称格式不正确，长度应为1-50个字符")
+		if payload.Profile.Nickname != "" && !utils.ValidateNicknameWithConfig(payload.Profile.Nickname, &h.config.Validation.Nickname) {
+			utils.ValidationErrorResponse(c, fmt.Sprintf("昵称格式不正确，长度应为%d-%d个字符", h.config.Validation.Nickname.MinLength, h.config.Validation.Nickname.MaxLength))
 			return
 		}
-		if payload.Profile.Bio != "" && !utils.ValidateBio(payload.Profile.Bio) {
-			utils.ValidationErrorResponse(c, "简介过长，最多500个字符")
+		if payload.Profile.Bio != "" && !utils.ValidateBioWithConfig(payload.Profile.Bio, &h.config.Validation.Bio) {
+			utils.ValidationErrorResponse(c, fmt.Sprintf("简介过长，最多%d个字符", h.config.Validation.Bio.MaxLength))
 			return
 		}
 
@@ -183,14 +183,14 @@ func (h *UserHandler) UpdateMe(c *gin.Context) {
 	// 如果有个人资料，更新个人资料
 	if payload.Profile.Nickname != "" || payload.Profile.Bio != "" {
 		// 验证昵称和简介
-		if payload.Profile.Nickname != "" && !utils.ValidateNickname(payload.Profile.Nickname) {
+		if payload.Profile.Nickname != "" && !utils.ValidateNicknameWithConfig(payload.Profile.Nickname, &h.config.Validation.Nickname) {
 			h.logger.Warn("昵称格式不正确", "userID", userID, "nickname", payload.Profile.Nickname)
-			utils.ValidationErrorResponse(c, "昵称格式不正确，长度应为1-50个字符")
+			utils.ValidationErrorResponse(c, fmt.Sprintf("昵称格式不正确，长度应为%d-%d个字符", h.config.Validation.Nickname.MinLength, h.config.Validation.Nickname.MaxLength))
 			return
 		}
-		if payload.Profile.Bio != "" && !utils.ValidateBio(payload.Profile.Bio) {
+		if payload.Profile.Bio != "" && !utils.ValidateBioWithConfig(payload.Profile.Bio, &h.config.Validation.Bio) {
 			h.logger.Warn("简介过长", "userID", userID, "bioLength", len(payload.Profile.Bio))
-			utils.ValidationErrorResponse(c, "简介过长，最多500个字符")
+			utils.ValidationErrorResponse(c, fmt.Sprintf("简介过长，最多%d个字符", h.config.Validation.Bio.MaxLength))
 			return
 		}
 

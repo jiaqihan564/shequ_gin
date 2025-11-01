@@ -225,7 +225,7 @@ func (r *ArticleRepository) GetArticleByID(ctx context.Context, articleID uint, 
 		result := queryResult{}
 
 		// 创建子context，设置超时
-		subCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		subCtx, cancel := context.WithTimeout(ctx, r.db.GetAsyncTaskTimeout())
 		defer cancel()
 
 		// 并行查询多个关联数据（使用子goroutine）

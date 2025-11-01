@@ -177,7 +177,7 @@ func (r *UserRepository) UpdateUser(ctx context.Context, user *models.User) erro
 			  last_login_time = ?, last_login_ip = ?, failed_login_count = ?, updated_at = ? 
 			  WHERE id = ?`
 
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, r.db.GetUpdateTimeout())
 	defer cancel()
 
 	result, err := r.db.ExecWithCache(ctx, query,
@@ -215,7 +215,7 @@ func (r *UserRepository) UpdateUser(ctx context.Context, user *models.User) erro
 func (r *UserRepository) GetUserProfile(ctx context.Context, userID uint) (*models.UserExtraProfile, error) {
 	query := `SELECT user_id, nickname, bio, avatar_url, created_at, updated_at FROM user_profile WHERE user_id = ?`
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, r.db.GetQueryTimeout())
 	defer cancel()
 
 	prof := &models.UserExtraProfile{}
@@ -253,7 +253,7 @@ func (r *UserRepository) UpsertUserProfile(ctx context.Context, profile *models.
               VALUES (?, ?, ?, COALESCE(?, NULL), NOW(), NOW())
               ON DUPLICATE KEY UPDATE nickname = VALUES(nickname), bio = VALUES(bio), updated_at = NOW()`
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, r.db.GetUpdateTimeout())
 	defer cancel()
 
 	result, err := r.db.ExecWithCache(ctx, query, profile.UserID, profile.Nickname, profile.Bio, profile.AvatarURL)
@@ -277,7 +277,7 @@ func (r *UserRepository) UpdateUserAvatar(ctx context.Context, profile *models.U
               VALUES (?, ?, NOW(), NOW())
               ON DUPLICATE KEY UPDATE avatar_url = VALUES(avatar_url), updated_at = NOW()`
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, r.db.GetUpdateTimeout())
 	defer cancel()
 
 	_, err := r.db.ExecWithCache(ctx, query, profile.UserID, profile.AvatarURL)
@@ -293,7 +293,7 @@ func (r *UserRepository) UpdateUserAvatar(ctx context.Context, profile *models.U
 func (r *UserRepository) UpdateLoginInfo(ctx context.Context, userID uint, loginTime time.Time, loginIP string) error {
 	query := `UPDATE user_auth SET last_login_time = ?, last_login_ip = ?, failed_login_count = 0, updated_at = ? WHERE id = ?`
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, r.db.GetUpdateTimeout())
 	defer cancel()
 
 	result, err := r.db.ExecWithCache(ctx, query, loginTime, loginIP, time.Now(), userID)
@@ -311,7 +311,7 @@ func (r *UserRepository) UpdateLoginInfo(ctx context.Context, userID uint, login
 func (r *UserRepository) IncrementFailedLoginCount(ctx context.Context, userID uint) error {
 	query := `UPDATE user_auth SET failed_login_count = failed_login_count + 1, updated_at = ? WHERE id = ?`
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, r.db.GetUpdateTimeout())
 	defer cancel()
 
 	_, err := r.db.ExecWithCache(ctx, query, time.Now(), userID)
@@ -327,7 +327,7 @@ func (r *UserRepository) IncrementFailedLoginCount(ctx context.Context, userID u
 func (r *UserRepository) CheckUsernameExists(ctx context.Context, username string) (bool, error) {
 	query := `SELECT COUNT(*) FROM user_auth WHERE username = ?`
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, r.db.GetQueryTimeout())
 	defer cancel()
 
 	var count int
@@ -374,7 +374,7 @@ func (r *UserRepository) BatchGetUserProfiles(ctx context.Context, userIDs []uin
 		WHERE ua.id IN (%s)
 	`, placeholders)
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, r.db.GetQueryTimeout())
 	defer cancel()
 
 	rows, err := r.db.DB.QueryContext(ctx, query, args...)
@@ -410,7 +410,7 @@ func (r *UserRepository) BatchGetUserProfiles(ctx context.Context, userIDs []uin
 func (r *UserRepository) CheckEmailExists(ctx context.Context, email string) (bool, error) {
 	query := `SELECT COUNT(*) FROM user_auth WHERE email = ?`
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, r.db.GetQueryTimeout())
 	defer cancel()
 
 	var count int
@@ -429,7 +429,7 @@ func (r *UserRepository) UpdatePassword(ctx context.Context, userID uint, newPas
 
 	query := `UPDATE user_auth SET password_hash = ?, updated_at = ? WHERE id = ?`
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, r.db.GetUpdateTimeout())
 	defer cancel()
 
 	result, err := r.db.ExecWithCache(ctx, query, newPasswordHash, time.Now(), userID)
@@ -453,7 +453,7 @@ func (r *UserRepository) CreatePasswordResetToken(ctx context.Context, token *mo
 	query := `INSERT INTO password_reset_tokens (email, token, expires_at, used, created_at) 
 			  VALUES (?, ?, ?, ?, ?)`
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, r.db.GetUpdateTimeout())
 	defer cancel()
 
 	result, err := r.db.ExecWithCache(ctx, query,
@@ -482,7 +482,7 @@ func (r *UserRepository) GetPasswordResetToken(ctx context.Context, token string
 			  FROM password_reset_tokens 
 			  WHERE token = ? AND used = false`
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, r.db.GetQueryTimeout())
 	defer cancel()
 
 	resetToken := &models.PasswordResetToken{}
@@ -510,7 +510,7 @@ func (r *UserRepository) GetPasswordResetToken(ctx context.Context, token string
 func (r *UserRepository) MarkPasswordResetTokenAsUsed(ctx context.Context, tokenID uint) error {
 	query := `UPDATE password_reset_tokens SET used = true WHERE id = ?`
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, r.db.GetUpdateTimeout())
 	defer cancel()
 
 	_, err := r.db.ExecWithCache(ctx, query, tokenID)
