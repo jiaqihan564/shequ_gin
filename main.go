@@ -34,6 +34,9 @@ func main() {
 	// 加载配置
 	cfg := config.Load()
 
+	// 初始化每日指标管理器
+	services.InitDailyMetricsManager(cfg)
+
 	// 初始化日志系统
 	if err := utils.InitLogger(&cfg.Log); err != nil {
 		fmt.Printf("初始化日志系统失败: %v\n", err)

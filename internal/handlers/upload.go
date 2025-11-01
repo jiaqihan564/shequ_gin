@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"gin/internal/config"
 	"gin/internal/models"
 	"gin/internal/services"
 	"gin/internal/utils"
@@ -27,10 +28,11 @@ type UploadHandler struct {
 	logger             utils.Logger
 	maxAvatarSizeBytes int64
 	maxAvatarHistory   int
+	config             *config.Config
 }
 
 // NewUploadHandler 创建上传处理器
-func NewUploadHandler(storage services.StorageClient, resourceStorage *services.ResourceStorageService, userService services.UserServiceInterface, maxAvatarSizeBytes int64, maxAvatarHistory int, historyRepo *services.HistoryRepository) *UploadHandler {
+func NewUploadHandler(storage services.StorageClient, resourceStorage *services.ResourceStorageService, userService services.UserServiceInterface, maxAvatarSizeBytes int64, maxAvatarHistory int, historyRepo *services.HistoryRepository, cfg *config.Config) *UploadHandler {
 	return &UploadHandler{
 		storage:            storage,
 		resourceStorage:    resourceStorage,
@@ -39,6 +41,7 @@ func NewUploadHandler(storage services.StorageClient, resourceStorage *services.
 		logger:             utils.GetLogger(),
 		maxAvatarSizeBytes: maxAvatarSizeBytes,
 		maxAvatarHistory:   maxAvatarHistory,
+		config:             cfg,
 	}
 }
 
@@ -111,10 +114,10 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 				taskID := fmt.Sprintf("avatar_history_%d_%d", userID, time.Now().Unix())
 				_ = utils.SubmitTask(taskID, func(taskCtx context.Context) error {
 					h.historyRepo.RecordProfileChange(userID, "avatar", oldAvatarURL, url, reqCtx.ClientIP)
-					h.historyRepo.RecordOperationHistory(userID, username, "修改头像",
-						fmt.Sprintf("上传新头像: %s", fileHeader.Filename), reqCtx.ClientIP)
-					return nil
-				}, 5*time.Second)
+				h.historyRepo.RecordOperationHistory(userID, username, "修改头像",
+					fmt.Sprintf("上传新头像: %s", fileHeader.Filename), reqCtx.ClientIP)
+				return nil
+			}, time.Duration(h.config.AsyncTasks.UploadHistoryTimeout)*time.Second)
 			}
 		}
 	}
@@ -142,7 +145,7 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 	_ = utils.SubmitTask(taskID, func(ctx context.Context) error {
 		h.cleanupAvatarHistory(username)
 		return nil
-	}, 30*time.Second)
+	}, time.Duration(h.config.AsyncTasks.AvatarCleanupTimeout)*time.Second)
 }
 
 // getUserInfo 获取用户身份信息
@@ -176,7 +179,7 @@ func (h *UploadHandler) receiveAndValidateFile(c *gin.Context, userID uint) (*mu
 
 	maxSize := h.maxAvatarSizeBytes
 	if maxSize <= 0 {
-		maxSize = 5 * 1024 * 1024 // 默认5MB
+		maxSize = int64(h.config.ImageUpload.MaxSizeMB) * 1024 * 1024 // 从配置读取
 	}
 
 	validator := utils.NewFileValidator(maxSize, []string{"image/png"})
@@ -234,7 +237,7 @@ func (h *UploadHandler) cleanupAvatarHistory(username string) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(h.config.AsyncTasks.AvatarOperationTimeout)*time.Second)
 	defer cancel()
 
 	objects, err := h.storage.ListObjects(ctx, fmt.Sprintf("%s/", username))
@@ -351,7 +354,7 @@ func (h *UploadHandler) ListAvatarHistory(c *gin.Context) {
 			"last_modified": obj.LastModified.Unix(),
 		})
 		count++
-		if count >= 50 {
+		if count >= h.config.Pagination.AvatarHistoryMaxList {
 			break
 		}
 	}
@@ -380,9 +383,9 @@ func (h *UploadHandler) UploadResourceImage(c *gin.Context) {
 	}
 	defer file.Close()
 
-	maxSize := int64(5 * 1024 * 1024)
+	maxSize := int64(h.config.ImageUpload.MaxSizeMB * 1024 * 1024)
 	if header.Size > maxSize {
-		utils.BadRequestResponse(c, "图片大小不能超过5MB")
+		utils.BadRequestResponse(c, fmt.Sprintf("图片大小不能超过%dMB", h.config.ImageUpload.MaxSizeMB))
 		return
 	}
 
@@ -427,9 +430,9 @@ func (h *UploadHandler) UploadDocumentImage(c *gin.Context) {
 	}
 	defer file.Close()
 
-	maxSize := int64(5 * 1024 * 1024)
+	maxSize := int64(h.config.ImageUpload.MaxSizeMB * 1024 * 1024)
 	if header.Size > maxSize {
-		utils.BadRequestResponse(c, "图片大小不能超过5MB")
+		utils.BadRequestResponse(c, fmt.Sprintf("图片大小不能超过%dMB", h.config.ImageUpload.MaxSizeMB))
 		return
 	}
 

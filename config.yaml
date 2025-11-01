@@ -83,6 +83,7 @@ minio:
   secret_access_key: "minioadmin"
   use_ssl: false
   bucket: "community-assets"
+  operation_timeout: 10  # MinIO操作超时（秒）
 
 # 资源存储配置（独立桶）
 resources_storage:
@@ -95,3 +96,214 @@ code_executor:
   timeout: 10  # 执行超时时间（秒）
   max_memory_mb: 128  # 最大内存限制（MB）
   rate_limit: 10  # 每分钟执行次数限制
+
+# WebSocket配置
+websocket:
+  write_wait: 10  # 写操作超时（秒）
+  pong_wait: 60  # Pong等待超时（秒）
+  ping_period: 30  # Ping间隔（秒）
+  max_message_size: 4096  # 最大消息大小（字节，~1000+汉字）
+  max_message_length: 500  # 最大消息长度（字符数）
+  max_messages_per_second: 3  # 每秒最大消息数（用户限流）
+  read_buffer_size: 1024  # 读缓冲区大小（字节）
+  write_buffer_size: 1024  # 写缓冲区大小（字节）
+  broadcast_buffer_size: 256  # 广播channel缓冲区大小
+  client_send_buffer_size: 256  # 客户端发送channel缓冲区大小
+
+# 限流器配置
+rate_limiter:
+  # 全局API限流
+  global:
+    capacity: 100  # 令牌桶容量
+    requests_per_minute: 100  # 每分钟请求数
+    max_cache_size: 10000  # LRU缓存最大IP数
+  # 登录限流
+  login:
+    capacity: 5  # 令牌桶容量
+    requests_per_minute: 5  # 每分钟请求数
+    max_cache_size: 1000  # LRU缓存最大IP数
+  # 注册限流
+  register:
+    capacity: 10  # 令牌桶容量
+    requests_per_minute: 10  # 每分钟请求数
+    max_cache_size: 1000  # LRU缓存最大IP数
+  # 清理配置
+  cleanup_interval: 10  # 清理间隔（分钟）
+  entry_expire_time: 30  # 条目过期时间（分钟）
+
+# 缓存配置
+cache:
+  # 文章缓存
+  article:
+    capacity: 500  # 最多缓存文章数
+    max_memory_mb: 50  # 最大内存（MB）
+    ttl_minutes: 5  # 缓存有效期（分钟）
+  # 用户缓存
+  user:
+    capacity: 1000  # 最多缓存用户数
+    max_memory_mb: 10  # 最大内存（MB）
+    ttl_minutes: 10  # 缓存有效期（分钟）
+  # 列表缓存
+  list:
+    capacity: 100  # 最多缓存列表数
+    max_memory_mb: 20  # 最大内存（MB）
+    ttl_minutes: 2  # 缓存有效期（分钟）
+  # 分类和标签缓存
+  categories_ttl_minutes: 60  # 分类缓存有效期（分钟）
+  tags_ttl_minutes: 30  # 标签缓存有效期（分钟）
+  article_detail_ttl_minutes: 5  # 文章详情缓存有效期（分钟）
+  online_count_ttl_seconds: 10  # 在线人数缓存有效期（秒）
+  warmup_timeout: 30  # 缓存预热超时（秒）
+
+# 验证规则配置
+validation:
+  username:
+    min_length: 3  # 最小长度
+    max_length: 20  # 最大长度
+  password:
+    min_length: 6  # 最小长度
+    max_length: 50  # 最大长度（注册）
+    max_length_login: 100  # 最大长度（登录，更宽松）
+  nickname:
+    min_length: 1  # 最小长度
+    max_length: 50  # 最大长度
+  bio:
+    max_length: 500  # 最大长度
+  phone:
+    length: 11  # 手机号长度
+
+# 数据库超时配置
+database_timeouts:
+  connection_timeout: 10  # 连接超时（秒）
+  read_timeout: 30  # 读取超时（秒）
+  write_timeout: 30  # 写入超时（秒）
+  pool_monitor_interval: 5  # 连接池监控间隔（分钟）
+  ping_timeout: 5  # Ping超时（秒）
+  test_connection_timeout: 10  # 连接测试超时（秒）
+  warmup_connection_timeout: 3  # 连接预热超时（秒）
+
+# HTTP客户端配置
+http_client:
+  max_idle_conns: 100  # 最大空闲连接数
+  max_idle_conns_per_host: 10  # 每个host最大空闲连接数
+  idle_conn_timeout: 90  # 空闲连接超时（秒）
+
+# 认证策略配置
+auth_policy:
+  password_reset_token_expire_minutes: 15  # 密码重置token有效期（分钟）
+  reset_token_bytes: 48  # 重置token字节数
+  async_task_timeout: 10  # 异步任务超时（秒）
+
+# 实时指标配置
+metrics:
+  online_users_initial_capacity: 1000  # 在线用户map初始容量
+  online_user_cleanup_interval: 1  # 在线用户清理间隔（分钟）
+  online_user_expire_time: 5  # 用户无活动过期时间（分钟）
+  cpu_goroutine_baseline: 200  # CPU估算基准Goroutine数量
+
+# 异步任务超时配置
+async_tasks:
+  # 资源相关
+  resource_view_count_timeout: 3  # 资源浏览计数任务超时（秒）
+  resource_download_count_timeout: 3  # 资源下载计数任务超时（秒）
+  # 上传相关
+  upload_history_timeout: 5  # 上传历史记录任务超时（秒）
+  avatar_cleanup_timeout: 30  # 头像清理任务超时（秒）
+  avatar_operation_timeout: 60  # 头像操作任务超时（秒）
+  # 用户相关
+  user_update_history_timeout: 5  # 用户更新历史任务超时（秒）
+  # 消息相关
+  message_mark_read_timeout: 3  # 标记消息已读任务超时（秒）
+  # 文章相关
+  article_view_count_timeout: 3  # 文章浏览计数任务超时（秒）
+
+# Worker Pool配置
+worker_pool:
+  workers: 10  # worker数量
+  queue_size: 1000  # 任务队列大小
+  default_task_timeout: 30  # 默认任务超时（秒）
+
+# LRU缓存默认配置
+lru_cache_defaults:
+  capacity: 10000  # 默认最大容量
+  max_memory_mb: 100  # 默认最大内存（MB）
+  ttl_minutes: 5  # 默认TTL（分钟）
+  cleanup_interval: 1  # 过期清理间隔（分钟）
+
+# 批量操作配置
+batch_operations:
+  max_concurrency: 10  # 批量查询最大并发数
+
+# 对象池配置
+object_pool:
+  map_initial_capacity: 16  # map池初始容量
+  magic_buffer_size: 16  # 文件魔数验证buffer大小
+
+# 性能监控配置
+performance_monitoring:
+  sample_rate: 10  # 采样率（%）
+  memory_growth_warning_mb: 10  # 内存增长警告阈值（MB）
+  goroutine_growth_warning: 10  # Goroutine增长警告阈值
+  db_pool_warning_threshold: 0.8  # 数据库连接池警告阈值（80%）
+  very_slow_request_ms: 1000  # 非常慢请求阈值（毫秒）
+  slow_request_ms: 500  # 慢请求阈值（毫秒）
+  normal_request_log_ms: 200  # 正常请求日志阈值（毫秒）
+
+# Repository操作超时配置
+repository_timeouts:
+  default_query_timeout: 5  # 默认查询操作超时（秒）
+  default_update_timeout: 10  # 默认更新操作超时（秒）
+  chat_operation_timeout: 5  # 聊天操作超时（秒）
+  user_query_timeout: 5  # 用户查询超时（秒）
+  user_update_timeout: 10  # 用户更新超时（秒）
+
+# 文件上传配置
+file_upload:
+  chunk_size_mb: 2  # 分片大小（MB）
+  upload_expire_hours: 24  # 上传任务过期时间（小时）
+
+# 压缩配置
+compression:
+  min_size_bytes: 1024  # 最小压缩大小（字节，小于此大小不压缩）
+  level: 1  # 压缩级别（1=最快BestSpeed，6=默认，9=最高压缩率BestCompression）
+
+# 分页配置
+pagination:
+  default_page_size: 20  # 默认每页大小
+  max_page_size: 100  # 最大每页大小
+  default_limit: 50  # 默认限制数量
+  max_limit: 100  # 最大限制数量
+  history_default_limit: 10  # 历史记录默认限制
+  avatar_history_max_list: 50  # 头像历史列表最大数量
+
+# 图片上传配置
+image_upload:
+  max_size_mb: 5  # 文档和资源图片最大大小（MB）
+
+# 数据库查询配置
+database_query:
+  slow_query_threshold_ms: 50  # 慢查询阈值（毫秒）
+  idle_timeout_minutes: 5  # 空闲连接超时（分钟）
+  retry_wait_ms: 200  # 连接重试等待（毫秒）
+  retry_backoff_base_ms: 100  # 重试退避基数（毫秒）
+
+# Repository操作默认配置
+repository_defaults:
+  quick_operation_timeout: 5  # 快速操作(查询)超时（秒）
+  normal_operation_timeout: 10  # 普通操作超时（秒）
+
+# 统计查询配置
+statistics_query:
+  top_cities_limit: 20  # Top城市统计限制
+  api_ranking_default: 10  # API排行榜默认数量
+  tags_list_limit: 100  # 标签列表限制
+  chat_messages_buffer: 100  # 聊天消息缓冲区大小
+
+# 日志配置扩展
+log_advanced:
+  flush_wait_ms: 100  # 日志刷新等待时间（毫秒）
+
+# Metrics初始容量配置
+metrics_capacity:
+  active_users_initial: 500  # 活跃用户map初始容量
+  endpoint_calls_initial: 50  # 端点调用计数map初始容量

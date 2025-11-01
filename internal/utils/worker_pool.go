@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"gin/internal/config"
 )
 
 // Task 表示一个异步任务
@@ -17,14 +19,15 @@ type Task struct {
 
 // WorkerPool Goroutine 池
 type WorkerPool struct {
-	workers    int
-	taskQueue  chan Task
-	wg         sync.WaitGroup
-	ctx        context.Context
-	cancel     context.CancelFunc
-	logger     Logger
-	metrics    *PoolMetrics
-	metricsMux sync.RWMutex
+	workers        int
+	taskQueue      chan Task
+	wg             sync.WaitGroup
+	ctx            context.Context
+	cancel         context.CancelFunc
+	logger         Logger
+	metrics        *PoolMetrics
+	metricsMux     sync.RWMutex
+	defaultTimeout time.Duration // 默认任务超时
 }
 
 // PoolMetrics 池指标
@@ -39,14 +42,19 @@ type PoolMetrics struct {
 }
 
 // NewWorkerPool 创建新的 Worker Pool
-func NewWorkerPool(workers int, queueSize int) *WorkerPool {
+func NewWorkerPool(workers int, queueSize int, defaultTimeout time.Duration) *WorkerPool {
+	if defaultTimeout == 0 {
+		defaultTimeout = 30 * time.Second // 回退默认值
+	}
+	
 	ctx, cancel := context.WithCancel(context.Background())
 	pool := &WorkerPool{
-		workers:   workers,
-		taskQueue: make(chan Task, queueSize),
-		ctx:       ctx,
-		cancel:    cancel,
-		logger:    GetLogger(),
+		workers:        workers,
+		taskQueue:      make(chan Task, queueSize),
+		ctx:            ctx,
+		cancel:         cancel,
+		logger:         GetLogger(),
+		defaultTimeout: defaultTimeout,
 		metrics: &PoolMetrics{
 			ActiveWorkers: 0,
 		},
@@ -106,10 +114,10 @@ func (p *WorkerPool) executeTask(workerID int, task Task) {
 		"taskID", task.ID,
 		"execNum", execNum)
 
-	// 设置任务超时
+	// 设置任务超时（使用默认值或任务指定的超时）
 	timeout := task.Timeout
 	if timeout == 0 {
-		timeout = 30 * time.Second // 默认超时30秒
+		timeout = p.defaultTimeout // 使用pool配置的默认超时
 	}
 
 	taskCtx, cancel := context.WithTimeout(p.ctx, timeout)
@@ -278,11 +286,33 @@ var (
 
 // GetGlobalPool 获取全局 Worker Pool
 func GetGlobalPool() *WorkerPool {
+	// Note: 在配置加载前可能被调用，使用默认值
+	return GetGlobalPoolWithConfig(nil)
+}
+
+// GetGlobalPoolWithConfig 使用配置获取全局 Worker Pool
+func GetGlobalPoolWithConfig(cfg *config.WorkerPoolConfig) *WorkerPool {
 	poolOnce.Do(func() {
-		// 默认配置：10个worker，队列大小1000
-		globalPool = NewWorkerPool(10, 1000)
+		// 使用默认配置
+		workers := 10
+		queueSize := 1000
+		defaultTimeout := 30 * time.Second
+
+		// 如果提供了配置，使用配置值
+		if cfg != nil {
+			workers = cfg.Workers
+			queueSize = cfg.QueueSize
+			defaultTimeout = time.Duration(cfg.DefaultTaskTimeout) * time.Second
+		}
+
+		globalPool = NewWorkerPool(workers, queueSize, defaultTimeout)
 	})
 	return globalPool
+}
+
+// InitGlobalPool 初始化全局 Worker Pool（带配置）
+func InitGlobalPool(cfg *config.Config) {
+	GetGlobalPoolWithConfig(&cfg.WorkerPool)
 }
 
 // SubmitTask 提交任务到全局池
@@ -296,13 +326,14 @@ func SubmitTask(taskID string, fn func(context.Context) error, timeout time.Dura
 }
 
 // SubmitSimpleTask 提交简单任务（无context参数）
+// 注意：使用pool配置的默认超时，如需自定义请使用 SubmitTask
 func SubmitSimpleTask(taskID string, fn func() error) error {
 	task := Task{
 		ID: taskID,
 		Execute: func(ctx context.Context) error {
 			return fn()
 		},
-		Timeout: 30 * time.Second,
+		Timeout: 0, // 0表示使用pool的默认超时
 	}
 	return GetGlobalPool().Submit(task)
 }

@@ -34,8 +34,8 @@ func NewStorageService(cfg *config.Config) (*StorageService, error) {
 		return nil, err
 	}
 
-	// 确保桶存在并设置公开访问权限
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// 确保桶存在并设置公开访问权限（使用配置的超时）
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.MinIO.OperationTimeout)*time.Second)
 	defer cancel()
 
 	exists, err := cli.BucketExists(ctx, cfg.MinIO.Bucket)

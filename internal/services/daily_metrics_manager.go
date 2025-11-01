@@ -4,6 +4,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"gin/internal/config"
 )
 
 // DailyMetricsManager 每日指标管理器（内存中维护今日数据）
@@ -26,14 +28,27 @@ type DailyMetricsManager struct {
 
 	// 接口调用计数（需要锁保护）
 	endpointCallCount map[string]int64
+	
+	// 配置的初始容量（用于重置时）
+	activeUsersCapacity   int
+	endpointCallsCapacity int
 }
 
 // NewDailyMetricsManager 创建每日指标管理器
-func NewDailyMetricsManager() *DailyMetricsManager {
+func NewDailyMetricsManager(cfg *config.Config) *DailyMetricsManager {
+	activeUsersInitial := 500  // 默认值
+	endpointCallsInitial := 50 // 默认值
+	if cfg != nil {
+		activeUsersInitial = cfg.MetricsCapacity.ActiveUsersInitial
+		endpointCallsInitial = cfg.MetricsCapacity.EndpointCallsInitial
+	}
+	
 	return &DailyMetricsManager{
-		currentDate:       time.Now().Format("2006-01-02"),
-		activeUserIDs:     make(map[uint]bool, 500),   // 预分配容量（性能优化）
-		endpointCallCount: make(map[string]int64, 50), // 预估50个API端点
+		currentDate:           time.Now().Format("2006-01-02"),
+		activeUserIDs:         make(map[uint]bool, activeUsersInitial),   // 从配置读取容量
+		endpointCallCount:     make(map[string]int64, endpointCallsInitial), // 从配置读取容量
+		activeUsersCapacity:   activeUsersInitial,   // 保存容量用于重置
+		endpointCallsCapacity: endpointCallsInitial, // 保存容量用于重置
 	}
 }
 
@@ -162,7 +177,7 @@ func (m *DailyMetricsManager) checkDateAndReset() {
 	if today != m.currentDate {
 		// 新的一天，重置所有计数
 		m.currentDate = today
-		m.activeUserIDs = make(map[uint]bool, 500)
+		m.activeUserIDs = make(map[uint]bool, m.activeUsersCapacity) // 使用保存的容量值
 		atomic.StoreInt64(&m.totalRequests, 0)
 		atomic.StoreInt64(&m.successRequests, 0)
 		atomic.StoreInt64(&m.errorRequests, 0)
@@ -170,7 +185,7 @@ func (m *DailyMetricsManager) checkDateAndReset() {
 		atomic.StoreInt64(&m.newUsers, 0)
 		atomic.StoreInt64(&m.peakConcurrent, 0)
 		atomic.StoreInt64(&m.currentConcurrent, 0)
-		m.endpointCallCount = make(map[string]int64, 50)
+		m.endpointCallCount = make(map[string]int64, m.endpointCallsCapacity) // 使用保存的容量值
 	}
 }
 
@@ -182,11 +197,17 @@ func (m *DailyMetricsManager) checkAndResetIfNewDay() {
 // 全局单例
 var globalDailyMetricsManager *DailyMetricsManager
 var dailyMetricsOnce sync.Once
+var dailyMetricsConfig *config.Config
+
+// InitDailyMetricsManager 初始化每日指标管理器（必须在使用前调用）
+func InitDailyMetricsManager(cfg *config.Config) {
+	dailyMetricsConfig = cfg
+}
 
 // GetDailyMetricsManager 获取全局每日指标管理器
 func GetDailyMetricsManager() *DailyMetricsManager {
 	dailyMetricsOnce.Do(func() {
-		globalDailyMetricsManager = NewDailyMetricsManager()
+		globalDailyMetricsManager = NewDailyMetricsManager(dailyMetricsConfig)
 	})
 	return globalDailyMetricsManager
 }

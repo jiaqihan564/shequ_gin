@@ -36,12 +36,17 @@ type MapPool struct {
 	pool sync.Pool
 }
 
-// NewMapPool 创建map池
+// NewMapPool 创建map池（使用默认容量）
 func NewMapPool() *MapPool {
+	return NewMapPoolWithCapacity(16) // 默认容量16
+}
+
+// NewMapPoolWithCapacity 创建map池（自定义容量）
+func NewMapPoolWithCapacity(capacity int) *MapPool {
 	return &MapPool{
 		pool: sync.Pool{
 			New: func() interface{} {
-				return make(map[string]interface{}, 16)
+				return make(map[string]interface{}, capacity)
 			},
 		},
 	}

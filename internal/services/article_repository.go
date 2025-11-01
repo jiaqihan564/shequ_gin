@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"gin/internal/config"
 	"gin/internal/models"
 	"gin/internal/utils"
 )
@@ -15,13 +16,15 @@ import (
 type ArticleRepository struct {
 	db     *Database
 	logger utils.Logger
+	config *config.Config
 }
 
 // NewArticleRepository 创建文章仓库
-func NewArticleRepository(db *Database) *ArticleRepository {
+func NewArticleRepository(db *Database, cfg *config.Config) *ArticleRepository {
 	return &ArticleRepository{
 		db:     db,
 		logger: utils.GetLogger(),
+		config: cfg,
 	}
 }
 
@@ -1245,8 +1248,8 @@ func (r *ArticleRepository) GetAllCategories(ctx context.Context) ([]models.Arti
 
 // GetAllTags 获取所有标签
 func (r *ArticleRepository) GetAllTags(ctx context.Context) ([]models.ArticleTag, error) {
-	query := `SELECT id, name, slug, article_count, created_at
-			  FROM article_tags ORDER BY article_count DESC, id ASC LIMIT 100`
+	query := fmt.Sprintf(`SELECT id, name, slug, article_count, created_at
+			  FROM article_tags ORDER BY article_count DESC, id ASC LIMIT %d`, r.config.StatisticsQuery.TagsListLimit)
 
 	rows, err := r.db.DB.QueryContext(ctx, query)
 	if err != nil {

@@ -5,13 +5,15 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"gin/internal/config"
 )
 
 // RealtimeMetricsManager 实时指标管理器
 type RealtimeMetricsManager struct {
 	mu sync.RWMutex
 
-	// 在线用户（最近5分钟活跃的用户）
+	// 在线用户（最近N分钟活跃的用户）
 	onlineUsers map[uint]time.Time // userID -> 最后活跃时间
 
 	// QPS统计
@@ -24,6 +26,9 @@ type RealtimeMetricsManager struct {
 
 	// 启动时间
 	startTime time.Time
+
+	// 配置
+	config *config.MetricsConfig
 }
 
 var (
@@ -33,13 +38,33 @@ var (
 
 // GetRealtimeMetricsManager 获取全局实时指标管理器
 func GetRealtimeMetricsManager() *RealtimeMetricsManager {
+	// Note: 这个函数可能在配置加载前被调用，使用默认值
+	return GetRealtimeMetricsManagerWithConfig(nil)
+}
+
+// GetRealtimeMetricsManagerWithConfig 使用配置获取全局实时指标管理器
+func GetRealtimeMetricsManagerWithConfig(cfg *config.MetricsConfig) *RealtimeMetricsManager {
 	realtimeMetricsOnce.Do(func() {
-		globalRealtimeMetricsManager = &RealtimeMetricsManager{
-			onlineUsers: make(map[uint]time.Time, 1000), // 预分配容量（性能优化）
-			startTime:   time.Now(),
+		// 使用默认配置
+		defaultCfg := &config.MetricsConfig{
+			OnlineUsersInitialCapacity: 1000,
+			OnlineUserCleanupInterval:  1,
+			OnlineUserExpireTime:       5,
+			CPUGoroutineBaseline:       200,
+		}
+		
+		// 如果提供了配置，使用提供的配置
+		if cfg != nil {
+			defaultCfg = cfg
 		}
 
-		// 启动清理协程（每分钟清理超时的在线用户）
+		globalRealtimeMetricsManager = &RealtimeMetricsManager{
+			onlineUsers: make(map[uint]time.Time, defaultCfg.OnlineUsersInitialCapacity),
+			startTime:   time.Now(),
+			config:      defaultCfg,
+		}
+
+		// 启动清理协程（使用配置的间隔清理超时的在线用户）
 		go globalRealtimeMetricsManager.cleanupOnlineUsers()
 	})
 	return globalRealtimeMetricsManager
@@ -112,10 +137,13 @@ func (m *RealtimeMetricsManager) GetSystemMetrics() (cpuPercent, memoryPercent f
 		memoryPercent = float64(mem.HeapAlloc) * 100.0 / float64(mem.HeapSys)
 	}
 
-	// CPU使用率的简化估算：基于Goroutine数量
-	// 正常情况下Goroutine数量在10-50之间，超过100视为高负载
+	// CPU使用率的简化估算：基于Goroutine数量（使用配置的基准值）
 	numGoroutine := runtime.NumGoroutine()
-	cpuPercent = float64(numGoroutine) / 200.0 * 100.0 // 200个goroutine视为100%
+	baseline := float64(m.config.CPUGoroutineBaseline)
+	if baseline == 0 {
+		baseline = 200.0 // 防止除零
+	}
+	cpuPercent = float64(numGoroutine) / baseline * 100.0
 	if cpuPercent > 100.0 {
 		cpuPercent = 100.0
 	}
@@ -123,17 +151,18 @@ func (m *RealtimeMetricsManager) GetSystemMetrics() (cpuPercent, memoryPercent f
 	return
 }
 
-// cleanupOnlineUsers 定期清理超时的在线用户（5分钟无活动视为离线）
+// cleanupOnlineUsers 定期清理超时的在线用户（使用配置的过期时间）
 func (m *RealtimeMetricsManager) cleanupOnlineUsers() {
-	ticker := time.NewTicker(1 * time.Minute)
+	ticker := time.NewTicker(time.Duration(m.config.OnlineUserCleanupInterval) * time.Minute)
 	defer ticker.Stop()
 
 	for range ticker.C {
 		m.mu.Lock()
 		now := time.Now()
+		expireTime := time.Duration(m.config.OnlineUserExpireTime) * time.Minute
 		for userID, lastActive := range m.onlineUsers {
-			// 超过5分钟无活动，视为离线
-			if now.Sub(lastActive) > 5*time.Minute {
+			// 超过配置的时间无活动，视为离线
+			if now.Sub(lastActive) > expireTime {
 				delete(m.onlineUsers, userID)
 			}
 		}

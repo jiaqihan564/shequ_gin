@@ -239,19 +239,19 @@ print "Hello, World!\\n";`,
 }
 
 // NewPistonCodeExecutor 创建新的 Piston 代码执行器
-func NewPistonCodeExecutor(apiURL string, timeout time.Duration) CodeExecutor {
-	// 优化HTTP Client配置
+func NewPistonCodeExecutor(apiURL string, timeout time.Duration, maxIdleConns int, maxIdleConnsPerHost int, idleConnTimeout int) CodeExecutor {
+	// 优化HTTP Client配置（使用配置参数）
 	return &PistonCodeExecutor{
 		apiURL:  apiURL,
 		timeout: timeout,
 		client: &http.Client{
 			Timeout: timeout,
 			Transport: &http.Transport{
-				MaxIdleConns:        100,              // 最大空闲连接数
-				MaxIdleConnsPerHost: 10,               // 每个host的最大空闲连接
-				IdleConnTimeout:     90 * time.Second, // 空闲连接超时
-				DisableCompression:  false,            // 启用压缩
-				DisableKeepAlives:   false,            // 启用keep-alive
+				MaxIdleConns:        maxIdleConns,                                       // 最大空闲连接数
+				MaxIdleConnsPerHost: maxIdleConnsPerHost,                                // 每个host的最大空闲连接
+				IdleConnTimeout:     time.Duration(idleConnTimeout) * time.Second,       // 空闲连接超时
+				DisableCompression:  false,                                              // 启用压缩
+				DisableKeepAlives:   false,                                              // 启用keep-alive
 			},
 		},
 	}

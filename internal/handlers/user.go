@@ -237,7 +237,7 @@ func (h *UserHandler) UpdateMe(c *gin.Context) {
 					h.historyRepo.RecordOperationHistory(userID, username, "修改简介", "修改个人简介", reqCtx.ClientIP)
 				}
 				return nil
-			}, 5*time.Second)
+			}, time.Duration(h.config.AsyncTasks.UserUpdateHistoryTimeout)*time.Second)
 		}
 	}
 

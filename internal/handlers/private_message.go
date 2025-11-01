@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"gin/internal/config"
 	"gin/internal/models"
 	"gin/internal/services"
 	"gin/internal/utils"
@@ -18,14 +19,16 @@ type PrivateMessageHandler struct {
 	msgRepo  *services.PrivateMessageRepository
 	userRepo *services.UserRepository
 	logger   utils.Logger
+	config   *config.Config
 }
 
 // NewPrivateMessageHandler 创建私信处理器
-func NewPrivateMessageHandler(msgRepo *services.PrivateMessageRepository, userRepo *services.UserRepository) *PrivateMessageHandler {
+func NewPrivateMessageHandler(msgRepo *services.PrivateMessageRepository, userRepo *services.UserRepository, cfg *config.Config) *PrivateMessageHandler {
 	return &PrivateMessageHandler{
 		msgRepo:  msgRepo,
 		userRepo: userRepo,
 		logger:   utils.GetLogger(),
+		config:   cfg,
 	}
 }
 
@@ -184,9 +187,9 @@ func (h *PrivateMessageHandler) GetMessages(c *gin.Context) {
 		return
 	}
 
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
-	if limit > 100 {
-		limit = 100
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", strconv.Itoa(h.config.Pagination.DefaultLimit)))
+	if limit > h.config.Pagination.MaxLimit {
+		limit = h.config.Pagination.MaxLimit
 	}
 
 	ctx := c.Request.Context()
@@ -234,7 +237,7 @@ func (h *PrivateMessageHandler) GetMessages(c *gin.Context) {
 	taskID := fmt.Sprintf("mark_read_%d_%d", conversationID, userID)
 	_ = utils.SubmitTask(taskID, func(taskCtx context.Context) error {
 		return h.msgRepo.MarkAsRead(taskCtx, uint(conversationID), userID)
-	}, 3*time.Second)
+	}, time.Duration(h.config.AsyncTasks.MessageMarkReadTimeout)*time.Second)
 
 	h.logger.Info("获取消息成功", "conversationID", conversationID, "count", len(response))
 	utils.SuccessResponse(c, 200, "获取成功", models.MessagesListResponse{

@@ -92,7 +92,7 @@ type lruEntry struct {
 }
 
 // NewLRURateLimiter 创建LRU限流器
-func NewLRURateLimiter(capacity int, refillRate time.Duration, maxSize int) *LRURateLimiter {
+func NewLRURateLimiter(capacity int, refillRate time.Duration, maxSize int, cleanupMinutes int, expireMinutes int) *LRURateLimiter {
 	rl := &LRURateLimiter{
 		capacity:   capacity,
 		refillRate: refillRate,
@@ -102,14 +102,14 @@ func NewLRURateLimiter(capacity int, refillRate time.Duration, maxSize int) *LRU
 		stopClean:  make(chan struct{}),
 	}
 
-	// 启动定期清理（优化：缩短到10分钟）
+	// 启动定期清理（使用配置的清理间隔）
 	go func() {
-		ticker := time.NewTicker(10 * time.Minute)
+		ticker := time.NewTicker(time.Duration(cleanupMinutes) * time.Minute)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ticker.C:
-				rl.cleanup()
+				rl.cleanup(expireMinutes)
 			case <-rl.stopClean:
 				return
 			}
@@ -163,13 +163,13 @@ func (rl *LRURateLimiter) evictOldest() {
 	}
 }
 
-// cleanup 清理过期条目（30分钟未访问）
-func (rl *LRURateLimiter) cleanup() {
+// cleanup 清理过期条目
+func (rl *LRURateLimiter) cleanup(expireMinutes int) {
 	rl.mutex.Lock()
 	defer rl.mutex.Unlock()
 
 	now := time.Now()
-	expireTime := 30 * time.Minute
+	expireTime := time.Duration(expireMinutes) * time.Minute
 	removed := 0
 
 	// 从链表尾部开始清理（最久未使用的）
@@ -217,30 +217,30 @@ var globalIPRateLimiter *LRURateLimiter
 
 // InitRateLimiter 初始化限流器
 func InitRateLimiter(cfg *config.Config) {
-	// 配置：每分钟100个请求，最多缓存10000个IP
-	capacity := 100
-	refillRate := time.Second * 60 / 100 // 每分钟100个请求
-	maxSize := 10000
+	// 从配置读取限流参数
+	capacity := cfg.RateLimiter.Global.Capacity
+	requestsPerMinute := cfg.RateLimiter.Global.RequestsPerMinute
+	maxSize := cfg.RateLimiter.Global.MaxCacheSize
+	refillRate := time.Minute / time.Duration(requestsPerMinute)
 
-	// 如果配置中有限流设置，使用配置值
-	if cfg != nil {
-		// 可以从配置中读取限流参数
-		// 这里暂时使用默认值，后续可以扩展配置
-	}
+	cleanupInterval := cfg.RateLimiter.CleanupInterval
+	expireTime := cfg.RateLimiter.EntryExpireTime
 
-	globalIPRateLimiter = NewLRURateLimiter(capacity, refillRate, maxSize)
+	globalIPRateLimiter = NewLRURateLimiter(capacity, refillRate, maxSize, cleanupInterval, expireTime)
 	utils.GetLogger().Info("限流器初始化完成（LRU）",
 		"capacity", capacity,
-		"refillRate", refillRate,
+		"requestsPerMinute", requestsPerMinute,
 		"maxSize", maxSize)
 }
 
 // RateLimitMiddleware 限流中间件
 func RateLimitMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// globalIPRateLimiter should be initialized before routes setup
 		if globalIPRateLimiter == nil {
-			// 如果没有初始化限流器，使用默认配置
-			InitRateLimiter(nil)
+			utils.GetLogger().Error("Global rate limiter not initialized")
+			c.Next()
+			return
 		}
 
 		clientIP := c.ClientIP()
@@ -256,9 +256,16 @@ func RateLimitMiddleware() gin.HandlerFunc {
 }
 
 // LoginRateLimitMiddleware 登录限流中间件
-func LoginRateLimitMiddleware() gin.HandlerFunc {
-	// 登录限流更严格：每分钟5次尝试，最多缓存1000个IP
-	loginLimiter := NewLRURateLimiter(5, time.Minute/5, 1000)
+func LoginRateLimitMiddleware(cfg *config.Config) gin.HandlerFunc {
+	// 从配置读取登录限流参数
+	capacity := cfg.RateLimiter.Login.Capacity
+	requestsPerMinute := cfg.RateLimiter.Login.RequestsPerMinute
+	maxSize := cfg.RateLimiter.Login.MaxCacheSize
+	refillRate := time.Minute / time.Duration(requestsPerMinute)
+	cleanupInterval := cfg.RateLimiter.CleanupInterval
+	expireTime := cfg.RateLimiter.EntryExpireTime
+
+	loginLimiter := NewLRURateLimiter(capacity, refillRate, maxSize, cleanupInterval, expireTime)
 
 	return func(c *gin.Context) {
 		clientIP := c.ClientIP()
@@ -274,9 +281,16 @@ func LoginRateLimitMiddleware() gin.HandlerFunc {
 }
 
 // RegisterRateLimitMiddleware 注册限流中间件
-func RegisterRateLimitMiddleware() gin.HandlerFunc {
-	// 注册限流：每分钟10次尝试，最多缓存1000个IP
-	registerLimiter := NewLRURateLimiter(10, time.Minute/10, 1000)
+func RegisterRateLimitMiddleware(cfg *config.Config) gin.HandlerFunc {
+	// 从配置读取注册限流参数
+	capacity := cfg.RateLimiter.Register.Capacity
+	requestsPerMinute := cfg.RateLimiter.Register.RequestsPerMinute
+	maxSize := cfg.RateLimiter.Register.MaxCacheSize
+	refillRate := time.Minute / time.Duration(requestsPerMinute)
+	cleanupInterval := cfg.RateLimiter.CleanupInterval
+	expireTime := cfg.RateLimiter.EntryExpireTime
+
+	registerLimiter := NewLRURateLimiter(capacity, refillRate, maxSize, cleanupInterval, expireTime)
 
 	return func(c *gin.Context) {
 		clientIP := c.ClientIP()

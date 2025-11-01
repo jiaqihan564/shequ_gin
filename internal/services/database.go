@@ -17,6 +17,8 @@ import (
 type Database struct {
 	DB          *sql.DB
 	config      *config.DatabaseConfig
+	timeouts    *config.DatabaseTimeoutsConfig
+	queryConfig *config.DatabaseQueryConfig
 	logger      utils.Logger
 	stopMonitor chan struct{} // 用于停止监控goroutine
 	stmtCache   map[string]*sql.Stmt
@@ -29,14 +31,17 @@ type Database struct {
 func NewDatabase(cfg *config.Config) (*Database, error) {
 	logger := utils.GetLogger()
 
-	// 构建数据库连接字符串
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=%s&parseTime=True&loc=Local&timeout=10s&readTimeout=30s&writeTimeout=30s&interpolateParams=true",
+	// 构建数据库连接字符串（使用配置的超时参数）
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=%s&parseTime=True&loc=Local&timeout=%ds&readTimeout=%ds&writeTimeout=%ds&interpolateParams=true",
 		cfg.Database.Username,
 		cfg.Database.Password,
 		cfg.Database.Host,
 		cfg.Database.Port,
 		cfg.Database.Database,
 		cfg.Database.Charset,
+		cfg.DatabaseTimeouts.ConnectionTimeout,
+		cfg.DatabaseTimeouts.ReadTimeout,
+		cfg.DatabaseTimeouts.WriteTimeout,
 	)
 
 	// 连接数据库
@@ -52,7 +57,7 @@ func NewDatabase(cfg *config.Config) (*Database, error) {
 	db.SetConnMaxLifetime(cfg.Database.ConnMaxLifetime)
 
 	// 设置空闲连接超时（优化：更快释放空闲连接）
-	idleTimeout := 5 * time.Minute
+	idleTimeout := time.Duration(cfg.DatabaseQuery.IdleTimeoutMinutes) * time.Minute
 	if cfg.Database.ConnMaxIdleTime > 0 {
 		idleTimeout = cfg.Database.ConnMaxIdleTime
 	}
@@ -65,6 +70,8 @@ func NewDatabase(cfg *config.Config) (*Database, error) {
 	dbInstance := &Database{
 		DB:          db,
 		config:      &cfg.Database,
+		timeouts:    &cfg.DatabaseTimeouts,
+		queryConfig: &cfg.DatabaseQuery,
 		logger:      logger,
 		stopMonitor: make(chan struct{}),
 		stmtCache:   make(map[string]*sql.Stmt),
@@ -72,9 +79,9 @@ func NewDatabase(cfg *config.Config) (*Database, error) {
 		cancel:      cancel,
 	}
 
-	// 启动连接池监控
+	// 启动连接池监控（使用配置的监控间隔）
 	go func() {
-		ticker := time.NewTicker(5 * time.Minute)
+		ticker := time.NewTicker(time.Duration(cfg.DatabaseTimeouts.PoolMonitorInterval) * time.Minute)
 		defer ticker.Stop()
 		for {
 			select {
@@ -94,8 +101,8 @@ func NewDatabase(cfg *config.Config) (*Database, error) {
 		}
 	}()
 
-	// 测试连接
-	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+	// 测试连接（使用配置的超时）
+	ctx, cancel = context.WithTimeout(context.Background(), time.Duration(cfg.DatabaseTimeouts.TestConnectionTimeout)*time.Second)
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
@@ -131,7 +138,7 @@ func (d *Database) warmupConnectionPool(targetConns int) {
 	// 并发创建连接
 	errCount := 0
 	for i := 0; i < targetConns; i++ {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(d.timeouts.WarmupConnectionTimeout)*time.Second)
 		if err := d.DB.PingContext(ctx); err != nil {
 			errCount++
 		}
@@ -171,7 +178,7 @@ func (d *Database) Close() error {
 		// 停止监控goroutine
 		close(d.stopMonitor)
 		// 等待一小段时间让goroutine退出
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(time.Duration(d.queryConfig.RetryWaitMS) * time.Millisecond)
 
 		// 关闭数据库连接
 		if err := d.DB.Close(); err != nil {
@@ -185,9 +192,9 @@ func (d *Database) Close() error {
 	return nil
 }
 
-// Ping 测试数据库连接
+// Ping 测试数据库连接（使用配置的超时）
 func (d *Database) Ping() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(d.timeouts.PingTimeout)*time.Second)
 	defer cancel()
 	return d.DB.PingContext(ctx)
 }
@@ -259,7 +266,7 @@ func (d *Database) RetryQuery(ctx context.Context, maxRetries int, fn func() err
 
 		// 指数退避
 		if i < maxRetries-1 {
-			backoff := time.Duration(1<<uint(i)) * 100 * time.Millisecond
+			backoff := time.Duration(1<<uint(i)) * time.Duration(d.queryConfig.RetryBackoffBaseMS) * time.Millisecond
 			d.logger.Warn("查询失败，准备重试",
 				"attempt", i+1,
 				"maxRetries", maxRetries,
@@ -377,8 +384,8 @@ func (d *Database) ExecWithCache(ctx context.Context, query string, args ...inte
 		"duration", duration,
 		"durationMs", duration.Milliseconds())
 
-	// 慢查询警告（优化：降低阈值到50ms）
-	slowQueryThreshold := 50 * time.Millisecond
+	// 慢查询警告（从配置读取阈值）
+	slowQueryThreshold := time.Duration(d.queryConfig.SlowQueryThresholdMS) * time.Millisecond
 	if duration > slowQueryThreshold {
 		d.logger.Warn("检测到慢查询[ExecWithCache]",
 			"query", utils.TruncateString(query, 200),
@@ -407,8 +414,8 @@ func (d *Database) QueryRowWithCache(ctx context.Context, query string, args ...
 	row := stmt.QueryRowContext(ctx, args...)
 	duration := time.Since(start)
 
-	// 慢查询警告（优化：降低阈值到50ms）
-	slowQueryThreshold := 50 * time.Millisecond
+	// 慢查询警告（从配置读取阈值）
+	slowQueryThreshold := time.Duration(d.queryConfig.SlowQueryThresholdMS) * time.Millisecond
 	if duration > slowQueryThreshold {
 		d.logger.Warn("检测到慢查询[QueryRowWithCache]",
 			"query", utils.TruncateString(query, 200),
@@ -450,8 +457,8 @@ func (d *Database) QueryWithCache(ctx context.Context, query string, args ...int
 		"duration", duration,
 		"durationMs", duration.Milliseconds())
 
-	// 慢查询警告（优化：降低阈值到50ms）
-	slowQueryThreshold := 50 * time.Millisecond
+	// 慢查询警告（从配置读取阈值）
+	slowQueryThreshold := time.Duration(d.queryConfig.SlowQueryThresholdMS) * time.Millisecond
 	if duration > slowQueryThreshold {
 		d.logger.Warn("检测到慢查询[QueryWithCache]",
 			"query", utils.TruncateString(query, 200),

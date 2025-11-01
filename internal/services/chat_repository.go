@@ -3,28 +3,35 @@ package services
 import (
 	"context"
 	"database/sql"
+	"time"
+
+	"gin/internal/config"
 	"gin/internal/models"
 	"gin/internal/utils"
-	"time"
 )
 
 // ChatRepository 聊天消息仓库
 type ChatRepository struct {
-	db     *Database
-	logger utils.Logger
+	db      *Database
+	logger  utils.Logger
+	timeout time.Duration
+	config  *config.Config
 }
 
 // NewChatRepository 创建聊天消息仓库
-func NewChatRepository(db *Database) *ChatRepository {
+func NewChatRepository(db *Database, cfg *config.Config) *ChatRepository {
+	timeout := time.Duration(cfg.RepositoryTimeouts.ChatOperationTimeout) * time.Second
 	return &ChatRepository{
-		db:     db,
-		logger: utils.GetLogger(),
+		db:      db,
+		logger:  utils.GetLogger(),
+		timeout: timeout,
+		config:  cfg,
 	}
 }
 
 // SendMessage 发送消息
 func (r *ChatRepository) SendMessage(userID uint, username, nickname, avatar, content, ipAddress string) (*models.ChatMessage, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
 	defer cancel()
 
 	now := time.Now()
@@ -60,7 +67,7 @@ func (r *ChatRepository) SendMessage(userID uint, username, nickname, avatar, co
 
 // GetMessages 获取消息列表（分页）
 func (r *ChatRepository) GetMessages(limit int, beforeID uint) ([]models.ChatMessage, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
 	defer cancel()
 
 	var query string
@@ -112,24 +119,25 @@ func (r *ChatRepository) GetMessages(limit int, beforeID uint) ([]models.ChatMes
 
 // GetNewMessages 获取新消息（指定ID之后的）
 func (r *ChatRepository) GetNewMessages(afterID uint) ([]models.ChatMessage, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
 	defer cancel()
 
+	bufferSize := r.config.StatisticsQuery.ChatMessagesBuffer
 	query := `SELECT id, user_id, username, nickname, avatar, content, message_type, send_time, status, created_at
 			  FROM chat_messages
 			  WHERE status = 1 AND id > ?
 			  ORDER BY id ASC
-			  LIMIT 100`
+			  LIMIT ?`
 
-	rows, err := r.db.DB.QueryContext(ctx, query, afterID)
+	rows, err := r.db.DB.QueryContext(ctx, query, afterID, bufferSize)
 	if err != nil {
 		r.logger.Error("获取新消息失败", "error", err.Error())
 		return nil, utils.ErrDatabaseQuery
 	}
 	defer rows.Close()
 
-	// 预分配slice容量（性能优化，最多100条）
-	messages := make([]models.ChatMessage, 0, 100)
+	// 预分配slice容量（从配置读取）
+	messages := make([]models.ChatMessage, 0, bufferSize)
 	for rows.Next() {
 		var msg models.ChatMessage
 		if err := rows.Scan(&msg.ID, &msg.UserID, &msg.Username, &msg.Nickname, &msg.Avatar,
@@ -144,7 +152,7 @@ func (r *ChatRepository) GetNewMessages(afterID uint) ([]models.ChatMessage, err
 
 // DeleteMessage 删除消息（软删除）
 func (r *ChatRepository) DeleteMessage(messageID, userID uint) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
 	defer cancel()
 
 	query := `UPDATE chat_messages SET status = 0 WHERE id = ? AND user_id = ?`

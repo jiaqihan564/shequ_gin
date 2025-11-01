@@ -452,7 +452,8 @@ func (bp *BatchProcessor) OptimizedBatchGet(
 	defer stmt.Close()
 
 	// 并行查询（带并发控制）
-	const maxConcurrency = 10
+	// 注意：并发数可通过配置调整，这里使用默认值10
+	maxConcurrency := 10
 	sem := make(chan struct{}, maxConcurrency)
 	var wg sync.WaitGroup
 	errChan := make(chan error, len(ids))

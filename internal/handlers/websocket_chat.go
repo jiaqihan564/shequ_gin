@@ -8,6 +8,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"gin/internal/config"
 	"gin/internal/models"
 	"gin/internal/services"
 	"gin/internal/utils"
@@ -16,21 +17,11 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-const (
-	// WebSocket configuration
-	writeWait           = 10 * time.Second
-	pongWait            = 60 * time.Second
-	pingPeriod          = 30 * time.Second
-	maxMessageSize      = 4096 // 4KB, support ~1000+ Chinese characters
-	maxMessageLength    = 500  // Maximum characters in a chat message
-	maxMessagesPerSecond = 3   // Rate limit: 3 messages per second per user
-)
-
 // createUpgrader creates a WebSocket upgrader with proper origin checking
-func createUpgrader(allowedOrigins []string, logger utils.Logger) websocket.Upgrader {
+func createUpgrader(allowedOrigins []string, cfg *config.WebSocketConfig, logger utils.Logger) websocket.Upgrader {
 	return websocket.Upgrader{
-		ReadBufferSize:  1024,
-		WriteBufferSize: 1024,
+		ReadBufferSize:  cfg.ReadBufferSize,
+		WriteBufferSize: cfg.WriteBufferSize,
 		CheckOrigin: func(r *http.Request) bool {
 			origin := r.Header.Get("Origin")
 			// Same-origin requests (no Origin header)
@@ -90,6 +81,7 @@ type ConnectionHub struct {
 	chatRepo   *services.ChatRepository
 	userRepo   *services.UserRepository
 	logger     utils.Logger
+	config     *config.WebSocketConfig
 }
 
 var (
@@ -98,16 +90,17 @@ var (
 )
 
 // InitConnectionHub initializes the global connection hub
-func InitConnectionHub(chatRepo *services.ChatRepository, userRepo *services.UserRepository) {
+func InitConnectionHub(chatRepo *services.ChatRepository, userRepo *services.UserRepository, cfg *config.Config) {
 	hubOnce.Do(func() {
 		globalHub = &ConnectionHub{
 			clients:    make(map[uint]*Client),
-			broadcast:  make(chan []byte, 256),
+			broadcast:  make(chan []byte, cfg.WebSocket.BroadcastBufferSize),
 			register:   make(chan *Client),
 			unregister: make(chan *Client),
 			chatRepo:   chatRepo,
 			userRepo:   userRepo,
 			logger:     utils.GetLogger(),
+			config:     &cfg.WebSocket,
 		}
 		go globalHub.run()
 	})
@@ -220,10 +213,10 @@ func (c *Client) readPump() {
 		c.close()
 	}()
 
-	c.conn.SetReadLimit(maxMessageSize)
-	c.conn.SetReadDeadline(time.Now().Add(pongWait))
+	c.conn.SetReadLimit(int64(c.hub.config.MaxMessageSize))
+	c.conn.SetReadDeadline(time.Now().Add(time.Duration(c.hub.config.PongWait) * time.Second))
 	c.conn.SetPongHandler(func(string) error {
-		c.conn.SetReadDeadline(time.Now().Add(pongWait))
+		c.conn.SetReadDeadline(time.Now().Add(time.Duration(c.hub.config.PongWait) * time.Second))
 		return nil
 	})
 
@@ -270,23 +263,23 @@ func (c *Client) readPump() {
 				continue
 			}
 
-			// Validate message length (count characters, not bytes)
-			messageLen := utf8.RuneCountInString(content)
-			if messageLen > maxMessageLength {
-				c.hub.logger.Warn("Message too long", "userID", c.userID, "length", messageLen, "max", maxMessageLength)
+		// Validate message length (count characters, not bytes)
+		messageLen := utf8.RuneCountInString(content)
+		if messageLen > c.hub.config.MaxMessageLength {
+			c.hub.logger.Warn("Message too long", "userID", c.userID, "length", messageLen, "max", c.hub.config.MaxMessageLength)
+			continue
+		}
+
+		// Rate limiting: check messages per second
+		c.mu.Lock()
+		now := time.Now()
+		if now.Sub(c.lastMessageTime) < time.Second {
+			c.messageCount++
+			if c.messageCount > c.hub.config.MaxMessagesPerSecond {
+				c.mu.Unlock()
+				c.hub.logger.Warn("Rate limit exceeded", "userID", c.userID, "count", c.messageCount)
 				continue
 			}
-
-			// Rate limiting: check messages per second
-			c.mu.Lock()
-			now := time.Now()
-			if now.Sub(c.lastMessageTime) < time.Second {
-				c.messageCount++
-				if c.messageCount > maxMessagesPerSecond {
-					c.mu.Unlock()
-					c.hub.logger.Warn("Rate limit exceeded", "userID", c.userID, "count", c.messageCount)
-					continue
-				}
 			} else {
 				c.messageCount = 1
 				c.lastMessageTime = now
@@ -323,7 +316,7 @@ func (c *Client) readPump() {
 
 // writePump pumps messages from the hub to the WebSocket connection
 func (c *Client) writePump() {
-	ticker := time.NewTicker(pingPeriod)
+	ticker := time.NewTicker(time.Duration(c.hub.config.PingPeriod) * time.Second)
 	defer func() {
 		ticker.Stop()
 		c.close()
@@ -332,7 +325,7 @@ func (c *Client) writePump() {
 	for {
 		select {
 		case message, ok := <-c.send:
-			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			c.conn.SetWriteDeadline(time.Now().Add(time.Duration(c.hub.config.WriteWait) * time.Second))
 			if !ok {
 				// Hub closed the channel
 				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
@@ -357,7 +350,7 @@ func (c *Client) writePump() {
 			}
 
 		case <-ticker.C:
-			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			c.conn.SetWriteDeadline(time.Now().Add(time.Duration(c.hub.config.WriteWait) * time.Second))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
@@ -405,7 +398,7 @@ func (h *ChatHandler) HandleWebSocket(c *gin.Context) {
 	clientIP := c.ClientIP()
 
 	// Create upgrader with CORS origin checking
-	upgrader := createUpgrader(h.config.CORS.AllowOrigins, h.logger)
+	upgrader := createUpgrader(h.config.CORS.AllowOrigins, &h.config.WebSocket, h.logger)
 
 	// Upgrade HTTP connection to WebSocket
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
@@ -418,7 +411,7 @@ func (h *ChatHandler) HandleWebSocket(c *gin.Context) {
 	client := &Client{
 		hub:             globalHub,
 		conn:            conn,
-		send:            make(chan []byte, 256),
+		send:            make(chan []byte, globalHub.config.ClientSendBufferSize),
 		userID:          userID,
 		username:        user.Username,
 		nickname:        nickname,

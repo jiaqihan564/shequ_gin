@@ -5,6 +5,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"gin/internal/config"
 	"gin/internal/services"
 	"gin/internal/utils"
 
@@ -14,9 +15,14 @@ import (
 var (
 	// 性能监控采样计数器
 	perfSampleCounter uint64
-	// 采样率：10表示10%的请求进行详细性能监控
-	perfSampleRate = 10
+	// 性能监控配置（全局）
+	perfConfig *config.PerformanceMonitoringConfig
 )
+
+// InitPerformanceMonitoring 初始化性能监控配置
+func InitPerformanceMonitoring(cfg *config.Config) {
+	perfConfig = &cfg.PerformanceMonitoring
+}
 
 // shouldMonitorPerformance 判断是否应该进行详细性能监控（采样）
 func shouldMonitorPerformance(c *gin.Context) bool {
@@ -30,9 +36,13 @@ func shouldMonitorPerformance(c *gin.Context) bool {
 		return true
 	}
 
-	// 生产模式下进行采样（10%）
+	// 生产模式下进行采样（使用配置的采样率）
+	sampleRate := 10 // 默认10%
+	if perfConfig != nil {
+		sampleRate = perfConfig.SampleRate
+	}
 	counter := atomic.AddUint64(&perfSampleCounter, 1)
-	return (counter % uint64(100/perfSampleRate)) == 0
+	return (counter % uint64(100/sampleRate)) == 0
 }
 
 // PerformanceMiddleware 性能监控中间件（优化版）
@@ -148,27 +158,39 @@ func PerformanceMiddleware(db *services.Database) gin.HandlerFunc {
 			performanceFields["dbStatsBefore"] = dbStatsBefore
 			performanceFields["dbStatsAfter"] = dbStatsAfter
 
-			// 内存增长警告
-			if memAllocDelta > 10*1024*1024 { // 大于10MB
+			// 内存增长警告（使用配置的阈值）
+			memWarningThreshold := int64(10 * 1024 * 1024) // 默认10MB
+			if perfConfig != nil {
+				memWarningThreshold = int64(perfConfig.MemoryGrowthWarningMB) * 1024 * 1024
+			}
+			if memAllocDelta > memWarningThreshold {
 				logger.Warn("内存使用警告: 单次请求内存增长过大",
 					"path", c.Request.URL.Path,
 					"memAllocDeltaMB", float64(memAllocDelta)/1024/1024,
 					"duration", duration)
 			}
 
-			// Goroutine泄露警告
-			if goroutinesDelta > 10 {
+			// Goroutine泄露警告（使用配置的阈值）
+			goroutineWarning := 10 // 默认10
+			if perfConfig != nil {
+				goroutineWarning = perfConfig.GoroutineGrowthWarning
+			}
+			if goroutinesDelta > goroutineWarning {
 				logger.Warn("Goroutine警告: 请求后goroutine数量增加较多",
 					"path", c.Request.URL.Path,
 					"goroutinesDelta", goroutinesDelta,
 					"goroutinesAfter", goroutinesAfter)
 			}
 
-			// 数据库连接池警告
+			// 数据库连接池警告（使用配置的阈值）
 			if db != nil && db.DB != nil {
 				stats := db.DB.Stats()
 				maxConns := stats.MaxOpenConnections
-				if maxConns > 0 && stats.OpenConnections > int(float64(maxConns)*0.8) {
+				threshold := 0.8 // 默认80%
+				if perfConfig != nil {
+					threshold = perfConfig.DBPoolWarningThreshold
+				}
+				if maxConns > 0 && stats.OpenConnections > int(float64(maxConns)*threshold) {
 					logger.Warn("数据库连接池警告: 连接使用率过高",
 						"path", c.Request.URL.Path,
 						"openConnections", stats.OpenConnections,
@@ -186,16 +208,26 @@ func PerformanceMiddleware(db *services.Database) gin.HandlerFunc {
 			performanceFields["requestID"] = requestID
 		}
 
-		// 根据性能情况选择日志级别
-		if duration > 1*time.Second {
+		// 根据性能情况选择日志级别（使用配置的阈值）
+		verySlowThreshold := 1 * time.Second     // 默认1秒
+		slowThreshold := 500 * time.Millisecond  // 默认500毫秒
+		normalLogThreshold := 200 * time.Millisecond // 默认200毫秒
+		
+		if perfConfig != nil {
+			verySlowThreshold = time.Duration(perfConfig.VerySlowRequestMS) * time.Millisecond
+			slowThreshold = time.Duration(perfConfig.SlowRequestMS) * time.Millisecond
+			normalLogThreshold = time.Duration(perfConfig.NormalRequestLogMS) * time.Millisecond
+		}
+
+		if duration > verySlowThreshold {
 			// 非常慢的请求（总是记录）
 			logger.Warn("性能警告: 请求耗时过长", performanceFields)
-		} else if duration > 500*time.Millisecond {
+		} else if duration > slowThreshold {
 			// 慢请求（总是记录）
 			logger.Info("性能监控: 慢请求", performanceFields)
 		} else if detailedMonitoring {
 			// 采样的正常请求
-			if duration > 200*time.Millisecond {
+			if duration > normalLogThreshold {
 				logger.Info("性能监控: 请求完成", performanceFields)
 			} else {
 				logger.Debug("性能监控: 请求完成", performanceFields)

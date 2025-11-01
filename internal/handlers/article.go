@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"gin/internal/config"
 	"gin/internal/models"
 	"gin/internal/services"
 	"gin/internal/utils"
@@ -18,14 +19,16 @@ type ArticleHandler struct {
 	articleRepo *services.ArticleRepository
 	cacheSvc    *services.CacheService
 	logger      utils.Logger
+	config      *config.Config
 }
 
 // NewArticleHandler 创建文章处理器
-func NewArticleHandler(articleRepo *services.ArticleRepository, cacheSvc *services.CacheService) *ArticleHandler {
+func NewArticleHandler(articleRepo *services.ArticleRepository, cacheSvc *services.CacheService, cfg *config.Config) *ArticleHandler {
 	return &ArticleHandler{
 		articleRepo: articleRepo,
 		cacheSvc:    cacheSvc,
 		logger:      utils.GetLogger(),
+		config:      cfg,
 	}
 }
 
@@ -105,7 +108,7 @@ func (h *ArticleHandler) GetArticleDetail(c *gin.Context) {
 	taskID := fmt.Sprintf("incr_view_%d", articleID)
 	err = utils.SubmitTask(taskID, func(taskCtx context.Context) error {
 		return h.articleRepo.IncrementViewCount(taskCtx, uint(articleID))
-	}, 3*time.Second)
+	}, time.Duration(h.config.AsyncTasks.ArticleViewCountTimeout)*time.Second)
 
 	if err != nil {
 		h.logger.Debug("提交浏览次数更新任务失败", "articleID", articleID, "error", err.Error())
@@ -296,7 +299,7 @@ func (h *ArticleHandler) GetComments(c *gin.Context) {
 	}
 
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", strconv.Itoa(h.config.Pagination.DefaultPageSize)))
 
 	// 获取当前用户ID（可能未登录）
 	userID, _ := utils.GetUserIDFromContext(c)

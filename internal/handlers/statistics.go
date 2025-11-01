@@ -3,6 +3,7 @@ package handlers
 import (
 	"time"
 
+	"gin/internal/config"
 	"gin/internal/services"
 	"gin/internal/utils"
 
@@ -13,13 +14,15 @@ import (
 type StatisticsHandler struct {
 	statsRepo *services.StatisticsRepository
 	logger    utils.Logger
+	config    *config.Config
 }
 
 // NewStatisticsHandler 创建统计处理器
-func NewStatisticsHandler(statsRepo *services.StatisticsRepository) *StatisticsHandler {
+func NewStatisticsHandler(statsRepo *services.StatisticsRepository, cfg *config.Config) *StatisticsHandler {
 	return &StatisticsHandler{
 		statsRepo: statsRepo,
 		logger:    utils.GetLogger(),
+		config:    cfg,
 	}
 }
 
@@ -121,7 +124,7 @@ func (h *StatisticsHandler) GetEndpointRanking(c *gin.Context) {
 	// 获取日期范围参数，默认最近7天
 	endDate := c.DefaultQuery("end", time.Now().Format("2006-01-02"))
 	startDate := c.DefaultQuery("start", time.Now().AddDate(0, 0, -7).Format("2006-01-02"))
-	limit := 10 // 默认Top 10
+	limit := h.config.StatisticsQuery.ApiRankingDefault // 从配置读取默认值
 
 	rankings, err := h.statsRepo.GetEndpointRanking(startDate, endDate, limit)
 	if err != nil {

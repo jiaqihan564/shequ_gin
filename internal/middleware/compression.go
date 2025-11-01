@@ -8,6 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"gin/internal/config"
 	"gin/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -202,6 +203,19 @@ func DefaultCompressionMiddleware() gin.HandlerFunc {
 // FastCompressionMiddleware 快速压缩中间件（速度优先）
 func FastCompressionMiddleware() gin.HandlerFunc {
 	return CompressionMiddleware(BestSpeedCompressionLevel, DefaultMinCompressionSize)
+}
+
+// CompressionMiddlewareWithConfig 使用配置的压缩中间件
+func CompressionMiddlewareWithConfig(cfg *config.Config) gin.HandlerFunc {
+	level := cfg.Compression.Level
+	minSize := cfg.Compression.MinSizeBytes
+	
+	// 验证压缩级别
+	if level < gzip.BestSpeed || level > gzip.BestCompression {
+		level = BestSpeedCompressionLevel // 默认使用最快速度
+	}
+	
+	return CompressionMiddleware(level, minSize)
 }
 
 // BestCompressionMiddleware 最佳压缩中间件（压缩率优先）

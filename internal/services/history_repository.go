@@ -3,8 +3,10 @@ package services
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 
+	"gin/internal/config"
 	"gin/internal/models"
 	"gin/internal/utils"
 )
@@ -13,13 +15,15 @@ import (
 type HistoryRepository struct {
 	db     *Database
 	logger utils.Logger
+	config *config.Config
 }
 
 // NewHistoryRepository 创建历史记录数据访问层
-func NewHistoryRepository(db *Database) *HistoryRepository {
+func NewHistoryRepository(db *Database, cfg *config.Config) *HistoryRepository {
 	return &HistoryRepository{
 		db:     db,
 		logger: utils.GetLogger(),
+		config: cfg,
 	}
 }
 
@@ -255,13 +259,13 @@ func (r *HistoryRepository) GetLocationDistribution() (*models.LocationDistribut
 		provinceStats = append(provinceStats, stat)
 	}
 
-	// 按城市统计（Top 20）
-	cityQuery := `SELECT province, city, COUNT(DISTINCT user_id) as user_count, COUNT(*) as login_count
+	// 按城市统计（从配置读取限制）
+	cityQuery := fmt.Sprintf(`SELECT province, city, COUNT(DISTINCT user_id) as user_count, COUNT(*) as login_count
 				  FROM user_login_history
 				  WHERE city IS NOT NULL AND city != ''
 				  GROUP BY province, city
 				  ORDER BY user_count DESC
-				  LIMIT 20`
+				  LIMIT %d`, r.config.StatisticsQuery.TopCitiesLimit)
 
 	cityRows, err := r.db.DB.QueryContext(ctx, cityQuery)
 	if err != nil {

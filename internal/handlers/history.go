@@ -3,6 +3,7 @@ package handlers
 import (
 	"strconv"
 
+	"gin/internal/config"
 	"gin/internal/services"
 	"gin/internal/utils"
 
@@ -13,13 +14,15 @@ import (
 type HistoryHandler struct {
 	historyRepo *services.HistoryRepository
 	logger      utils.Logger
+	config      *config.Config
 }
 
 // NewHistoryHandler 创建历史记录处理器
-func NewHistoryHandler(historyRepo *services.HistoryRepository) *HistoryHandler {
+func NewHistoryHandler(historyRepo *services.HistoryRepository, cfg *config.Config) *HistoryHandler {
 	return &HistoryHandler{
 		historyRepo: historyRepo,
 		logger:      utils.GetLogger(),
+		config:      cfg,
 	}
 }
 
@@ -31,10 +34,10 @@ func (h *HistoryHandler) GetLoginHistory(c *gin.Context) {
 	}
 
 	// 获取查询参数
-	limitStr := c.DefaultQuery("limit", "10")
+	limitStr := c.DefaultQuery("limit", strconv.Itoa(h.config.Pagination.HistoryDefaultLimit))
 	limit, _ := strconv.Atoi(limitStr)
-	if limit <= 0 || limit > 100 {
-		limit = 10
+	if limit <= 0 || limit > h.config.Pagination.MaxLimit {
+		limit = h.config.Pagination.HistoryDefaultLimit
 	}
 
 	history, err := h.historyRepo.GetLoginHistory(userID, limit)
@@ -57,10 +60,10 @@ func (h *HistoryHandler) GetOperationHistory(c *gin.Context) {
 	}
 
 	// 获取查询参数
-	limitStr := c.DefaultQuery("limit", "10")
+	limitStr := c.DefaultQuery("limit", strconv.Itoa(h.config.Pagination.HistoryDefaultLimit))
 	limit, _ := strconv.Atoi(limitStr)
-	if limit <= 0 || limit > 100 {
-		limit = 10
+	if limit <= 0 || limit > h.config.Pagination.MaxLimit {
+		limit = h.config.Pagination.HistoryDefaultLimit
 	}
 
 	history, err := h.historyRepo.GetOperationHistory(userID, limit)
@@ -83,10 +86,10 @@ func (h *HistoryHandler) GetProfileChangeHistory(c *gin.Context) {
 	}
 
 	// 获取查询参数
-	limitStr := c.DefaultQuery("limit", "10")
+	limitStr := c.DefaultQuery("limit", strconv.Itoa(h.config.Pagination.HistoryDefaultLimit))
 	limit, _ := strconv.Atoi(limitStr)
-	if limit <= 0 || limit > 100 {
-		limit = 10
+	if limit <= 0 || limit > h.config.Pagination.MaxLimit {
+		limit = h.config.Pagination.HistoryDefaultLimit
 	}
 
 	history, err := h.historyRepo.GetProfileChangeHistory(userID, limit)

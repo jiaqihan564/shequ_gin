@@ -87,15 +87,15 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 // GetMessages 获取消息列表
 func (h *ChatHandler) GetMessages(c *gin.Context) {
 	// 获取查询参数
-	limitStr := c.DefaultQuery("limit", "50")
+	limitStr := c.DefaultQuery("limit", strconv.Itoa(h.config.Pagination.DefaultLimit))
 	beforeIDStr := c.DefaultQuery("before_id", "0")
 
 	limit, _ := strconv.Atoi(limitStr)
 	beforeID, _ := strconv.ParseUint(beforeIDStr, 10, 32)
 
 	// 限制单次查询数量
-	if limit <= 0 || limit > 100 {
-		limit = 50
+	if limit <= 0 || limit > h.config.Pagination.MaxLimit {
+		limit = h.config.Pagination.DefaultLimit
 	}
 
 	messages, err := h.chatRepo.GetMessages(limit, uint(beforeID))

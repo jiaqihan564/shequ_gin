@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"gin/internal/config"
 	"gin/internal/models"
 	"gin/internal/utils"
 )
@@ -16,6 +17,7 @@ type CacheService struct {
 	cache       *utils.MemoryCache
 	articleRepo *ArticleRepository
 	logger      utils.Logger
+	config      *config.CacheConfig
 
 	// 分组缓存（不同类型数据使用不同的LRU缓存）
 	articleCache *utils.LRUCache // 文章缓存
@@ -24,36 +26,37 @@ type CacheService struct {
 }
 
 // NewCacheService 创建缓存服务
-func NewCacheService(articleRepo *ArticleRepository) *CacheService {
+func NewCacheService(articleRepo *ArticleRepository, cfg *config.Config) *CacheService {
 	logger := utils.GetLogger()
 
 	service := &CacheService{
 		cache:       utils.GetCache(),
 		articleRepo: articleRepo,
 		logger:      logger,
+		config:      &cfg.Cache,
 
-		// 创建分组缓存
+		// 创建分组缓存（从配置读取）
 		articleCache: utils.NewLRUCache(utils.LRUCacheConfig{
-			Capacity:   500,              // 最多缓存500篇文章
-			MaxMemory:  50 * 1024 * 1024, // 50MB
-			DefaultTTL: 5 * time.Minute,
+			Capacity:   cfg.Cache.Article.Capacity,
+			MaxMemory:  int64(cfg.Cache.Article.MaxMemoryMB) * 1024 * 1024,
+			DefaultTTL: time.Duration(cfg.Cache.Article.TTLMinutes) * time.Minute,
 		}),
 		userCache: utils.NewLRUCache(utils.LRUCacheConfig{
-			Capacity:   1000,             // 最多缓存1000个用户
-			MaxMemory:  10 * 1024 * 1024, // 10MB
-			DefaultTTL: 10 * time.Minute,
+			Capacity:   cfg.Cache.User.Capacity,
+			MaxMemory:  int64(cfg.Cache.User.MaxMemoryMB) * 1024 * 1024,
+			DefaultTTL: time.Duration(cfg.Cache.User.TTLMinutes) * time.Minute,
 		}),
 		listCache: utils.NewLRUCache(utils.LRUCacheConfig{
-			Capacity:   100,              // 最多缓存100个列表查询
-			MaxMemory:  20 * 1024 * 1024, // 20MB
-			DefaultTTL: 2 * time.Minute,
+			Capacity:   cfg.Cache.List.Capacity,
+			MaxMemory:  int64(cfg.Cache.List.MaxMemoryMB) * 1024 * 1024,
+			DefaultTTL: time.Duration(cfg.Cache.List.TTLMinutes) * time.Minute,
 		}),
 	}
 
 	logger.Info("缓存服务已初始化",
-		"articleCacheCapacity", 500,
-		"userCacheCapacity", 1000,
-		"listCacheCapacity", 100)
+		"articleCacheCapacity", cfg.Cache.Article.Capacity,
+		"userCacheCapacity", cfg.Cache.User.Capacity,
+		"listCacheCapacity", cfg.Cache.List.Capacity)
 
 	// 启动缓存预热（异步）
 	go service.warmupCache()
@@ -69,13 +72,25 @@ const (
 	cacheKeyOnlineCount       = "chat:online:count"
 )
 
-// Cache TTL
-const (
-	cacheTTLCategories  = 1 * time.Hour    // 分类变化不频繁
-	cacheTTLTags        = 30 * time.Minute // 标签变化较少
-	cacheTTLArticle     = 5 * time.Minute  // 文章详情
-	cacheTTLOnlineCount = 10 * time.Second // 在线人数（短TTL，准实时）
-)
+// getCategoriesTTL 获取分类缓存TTL
+func (s *CacheService) getCategoriesTTL() time.Duration {
+	return time.Duration(s.config.CategoriesTTLMinutes) * time.Minute
+}
+
+// getTagsTTL 获取标签缓存TTL
+func (s *CacheService) getTagsTTL() time.Duration {
+	return time.Duration(s.config.TagsTTLMinutes) * time.Minute
+}
+
+// getArticleDetailTTL 获取文章详情缓存TTL
+func (s *CacheService) getArticleDetailTTL() time.Duration {
+	return time.Duration(s.config.ArticleDetailTTLMinutes) * time.Minute
+}
+
+// getOnlineCountTTL 获取在线人数缓存TTL
+func (s *CacheService) getOnlineCountTTL() time.Duration {
+	return time.Duration(s.config.OnlineCountTTLSeconds) * time.Second
+}
 
 // =============================================================================
 // 文章分类缓存
@@ -97,8 +112,9 @@ func (s *CacheService) GetArticleCategories(ctx context.Context) ([]models.Artic
 	}
 
 	// 写入缓存
-	s.cache.SetWithTTL(cacheKeyArticleCategories, categories, cacheTTLCategories)
-	s.logger.Info("分类数据已缓存", "count", len(categories), "ttl", cacheTTLCategories)
+	ttl := s.getCategoriesTTL()
+	s.cache.SetWithTTL(cacheKeyArticleCategories, categories, ttl)
+	s.logger.Info("分类数据已缓存", "count", len(categories), "ttl", ttl)
 
 	return categories, nil
 }
@@ -129,8 +145,9 @@ func (s *CacheService) GetArticleTags(ctx context.Context) ([]models.ArticleTag,
 	}
 
 	// 写入缓存
-	s.cache.SetWithTTL(cacheKeyArticleTags, tags, cacheTTLTags)
-	s.logger.Info("标签数据已缓存", "count", len(tags), "ttl", cacheTTLTags)
+	ttl := s.getTagsTTL()
+	s.cache.SetWithTTL(cacheKeyArticleTags, tags, ttl)
+	s.logger.Info("标签数据已缓存", "count", len(tags), "ttl", ttl)
 
 	return tags, nil
 }
@@ -174,7 +191,7 @@ func (s *CacheService) GetArticleDetail(ctx context.Context, articleID uint, use
 	}
 
 	// 写入缓存（使用较短的TTL）
-	s.cache.SetWithTTL(cacheKey, article, cacheTTLArticle)
+	s.cache.SetWithTTL(cacheKey, article, s.getArticleDetailTTL())
 	return article, nil
 }
 
@@ -184,9 +201,9 @@ func (s *CacheService) InvalidateArticleDetail(articleID uint) {
 	// 简单方案：使用前缀匹配删除（内存缓存不支持模式匹配，这里手动处理）
 	// 更好的方案是使用Redis的SCAN + DEL
 
-	// 由于TTL较短（5分钟），简单记录日志即可
+	// 由于TTL较短，简单记录日志即可
 	// 缓存会自动过期
-	s.logger.Info("文章详情缓存将在TTL后自动失效", "articleID", articleID, "ttl", cacheTTLArticle)
+	s.logger.Info("文章详情缓存将在TTL后自动失效", "articleID", articleID, "ttl", s.getArticleDetailTTL())
 }
 
 // =============================================================================
@@ -195,7 +212,7 @@ func (s *CacheService) InvalidateArticleDetail(articleID uint) {
 
 // SetOnlineCount 设置在线用户数缓存
 func (s *CacheService) SetOnlineCount(count int) {
-	s.cache.SetWithTTL(cacheKeyOnlineCount, count, cacheTTLOnlineCount)
+	s.cache.SetWithTTL(cacheKeyOnlineCount, count, s.getOnlineCountTTL())
 }
 
 // GetOnlineCount 获取在线用户数（从缓存）
@@ -236,19 +253,19 @@ func (s *CacheService) ClearAllCache() {
 
 // warmupCache 缓存预热
 func (s *CacheService) warmupCache() {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.config.WarmupTimeout)*time.Second)
 	defer cancel()
 
 	s.logger.Info("开始缓存预热...")
 
 	// 预热分类和标签（最常访问的数据）
 	if categories, err := s.articleRepo.GetAllCategories(ctx); err == nil {
-		s.cache.SetWithTTL(cacheKeyArticleCategories, categories, cacheTTLCategories)
+		s.cache.SetWithTTL(cacheKeyArticleCategories, categories, s.getCategoriesTTL())
 		s.logger.Info("分类数据已预热", "count", len(categories))
 	}
 
 	if tags, err := s.articleRepo.GetAllTags(ctx); err == nil {
-		s.cache.SetWithTTL(cacheKeyArticleTags, tags, cacheTTLTags)
+		s.cache.SetWithTTL(cacheKeyArticleTags, tags, s.getTagsTTL())
 		s.logger.Info("标签数据已预热", "count", len(tags))
 	}
 

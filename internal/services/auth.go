@@ -156,7 +156,7 @@ func (s *AuthService) Login(ctx context.Context, username, password, clientIP, p
 				}
 				return nil
 			},
-			10*time.Second,
+			time.Duration(s.config.AuthPolicy.AsyncTaskTimeout)*time.Second,
 		)
 		if err != nil {
 			s.logger.Warn("提交登录历史记录任务失败", "error", err.Error())
@@ -299,7 +299,7 @@ func (s *AuthService) Register(ctx context.Context, username, password, email, c
 				}
 				return nil
 			},
-			10*time.Second,
+			time.Duration(s.config.AuthPolicy.AsyncTaskTimeout)*time.Second,
 		)
 		if err != nil {
 			s.logger.Warn("提交注册历史记录任务失败", "error", err.Error())
@@ -375,10 +375,10 @@ func (s *AuthService) ForgotPassword(ctx context.Context, email string) (string,
 	}
 
 	// 生成重置token
-	resetToken := generateResetToken()
+	resetToken := generateResetToken(s.config.AuthPolicy.ResetTokenBytes)
 
-	// 设置过期时间（15分钟）
-	expiresAt := time.Now().Add(15 * time.Minute)
+	// 设置过期时间（从配置读取）
+	expiresAt := time.Now().Add(time.Duration(s.config.AuthPolicy.PasswordResetTokenExpireMinutes) * time.Minute)
 
 	// 保存token到数据库
 	tokenRecord := &models.PasswordResetToken{
@@ -470,8 +470,7 @@ func (s *AuthService) ResetPassword(ctx context.Context, token, newPassword stri
 }
 
 // generateResetToken 生成加密安全的重置token
-func generateResetToken() string {
-	const tokenBytes = 48
+func generateResetToken(tokenBytes int) string {
 	b := make([]byte, tokenBytes)
 
 	_, err := rand.Read(b)

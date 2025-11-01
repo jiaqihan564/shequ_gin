@@ -27,6 +27,7 @@ type Container struct {
 	CacheSvc            *services.CacheService // 缓存服务
 	CodeRepo            services.CodeRepository
 	CodeExecutor        services.CodeExecutor
+	Config              *config.Config         // 配置
 }
 
 // New 构建容器
@@ -36,10 +37,10 @@ func New(cfg *config.Config, db *services.Database) (*Container, error) {
 
 	userRepo := services.NewUserRepository(db)
 	statsRepo := services.NewStatisticsRepository(db)
-	historyRepo := services.NewHistoryRepository(db)
+	historyRepo := services.NewHistoryRepository(db, cfg)
 	cumulativeRepo := services.NewCumulativeStatsRepository(db)
-	chatRepo := services.NewChatRepository(db)
-	articleRepo := services.NewArticleRepository(db)
+	chatRepo := services.NewChatRepository(db, cfg)
+	articleRepo := services.NewArticleRepository(db, cfg)
 	privateMsgRepo := services.NewPrivateMessageRepository(db)
 	resourceRepo := services.NewResourceRepository(db)
 	resourceCommentRepo := services.NewResourceCommentRepository(db)
@@ -59,16 +60,19 @@ func New(cfg *config.Config, db *services.Database) (*Container, error) {
 		resourceStorage = nil
 	}
 
-	uploadMgr := services.NewUploadManager(db, storageService)
+	uploadMgr := services.NewUploadManager(db, storageService, cfg)
 
 	// 初始化缓存服务
-	cacheService := services.NewCacheService(articleRepo)
+	cacheService := services.NewCacheService(articleRepo, cfg)
 
 	// 初始化代码仓库和执行器
 	codeRepo := services.NewCodeRepository(db)
 	codeExecutor := services.NewPistonCodeExecutor(
 		cfg.CodeExecutor.PistonAPIURL,
 		time.Duration(cfg.CodeExecutor.Timeout)*time.Second,
+		cfg.HTTPClient.MaxIdleConns,
+		cfg.HTTPClient.MaxIdleConnsPerHost,
+		cfg.HTTPClient.IdleConnTimeout,
 	)
 
 	return &Container{
@@ -90,5 +94,6 @@ func New(cfg *config.Config, db *services.Database) (*Container, error) {
 		CacheSvc:            cacheService,
 		CodeRepo:            codeRepo,
 		CodeExecutor:        codeExecutor,
+		Config:              cfg,
 	}, nil
 }

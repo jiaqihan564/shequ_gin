@@ -12,9 +12,10 @@ import (
 
 // 魔数验证buffer池（性能优化）
 // 注意：存储 *[]byte 而非 []byte，避免 interface{} 装箱时的堆分配
+// 默认buffer大小16字节，可通过配置调整
 var magicNumberBufferPool = sync.Pool{
 	New: func() interface{} {
-		buf := make([]byte, 16)
+		buf := make([]byte, 16) // 默认16字节
 		return &buf // 返回指针，避免 Put 时的内存分配
 	},
 }

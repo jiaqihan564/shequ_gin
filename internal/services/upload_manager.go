@@ -8,6 +8,7 @@ import (
 	"io"
 	"time"
 
+	"gin/internal/config"
 	"gin/internal/models"
 	"gin/internal/utils"
 
@@ -16,17 +17,23 @@ import (
 
 // UploadManager 上传管理器（处理断点续传）
 type UploadManager struct {
-	db      *Database
-	storage StorageClient
-	logger  utils.Logger
+	db        *Database
+	storage   StorageClient
+	logger    utils.Logger
+	chunkSize int
+	expireTime time.Duration
 }
 
 // NewUploadManager 创建上传管理器
-func NewUploadManager(db *Database, storage StorageClient) *UploadManager {
+func NewUploadManager(db *Database, storage StorageClient, cfg *config.Config) *UploadManager {
+	chunkSize := cfg.FileUpload.ChunkSizeMB * 1024 * 1024
+	expireTime := time.Duration(cfg.FileUpload.UploadExpireHours) * time.Hour
 	return &UploadManager{
-		db:      db,
-		storage: storage,
-		logger:  utils.GetLogger(),
+		db:         db,
+		storage:    storage,
+		logger:     utils.GetLogger(),
+		chunkSize:  chunkSize,
+		expireTime: expireTime,
 	}
 }
 
@@ -39,7 +46,7 @@ func (m *UploadManager) InitUpload(ctx context.Context, userID uint, req models.
 		&existing.ID, &existing.UploadID, &existing.UploadedChunks, &existing.ChunkSize, &existing.Status,
 	)
 
-	chunkSize := 2 * 1024 * 1024 // 2MB
+	chunkSize := m.chunkSize // 从配置读取
 
 	if err == nil && existing.Status == 0 {
 		// 有未完成的上传，返回进度
@@ -58,7 +65,7 @@ func (m *UploadManager) InitUpload(ctx context.Context, userID uint, req models.
 
 	// 创建新的上传记录（如果重复则更新）
 	now := time.Now()
-	expiresAt := now.Add(24 * time.Hour) // 24小时过期
+	expiresAt := now.Add(m.expireTime) // 从配置读取过期时间
 
 	insertQuery := `INSERT INTO upload_chunks (upload_id, user_id, file_name, file_size, chunk_size, 
 	                total_chunks, uploaded_chunks, status, expires_at, created_at, updated_at)

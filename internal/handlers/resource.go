@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"gin/internal/config"
 	"gin/internal/models"
 	"gin/internal/services"
 	"gin/internal/utils"
@@ -23,15 +24,17 @@ type ResourceHandler struct {
 	resourceCommentRepo *services.ResourceCommentRepository
 	resourceStorage     *services.ResourceStorageService
 	logger              utils.Logger
+	config              *config.Config
 }
 
 // NewResourceHandler 创建资源处理器
-func NewResourceHandler(resourceRepo *services.ResourceRepository, resourceCommentRepo *services.ResourceCommentRepository, resourceStorage *services.ResourceStorageService) *ResourceHandler {
+func NewResourceHandler(resourceRepo *services.ResourceRepository, resourceCommentRepo *services.ResourceCommentRepository, resourceStorage *services.ResourceStorageService, cfg *config.Config) *ResourceHandler {
 	return &ResourceHandler{
 		resourceRepo:        resourceRepo,
 		resourceCommentRepo: resourceCommentRepo,
 		resourceStorage:     resourceStorage,
 		logger:              utils.GetLogger(),
+		config:              cfg,
 	}
 }
 
@@ -144,7 +147,7 @@ func (h *ResourceHandler) GetResourceDetail(c *gin.Context) {
 	taskID := fmt.Sprintf("incr_resource_view_%d", resourceID)
 	err = utils.SubmitTask(taskID, func(taskCtx context.Context) error {
 		return h.resourceRepo.IncrementViewCount(taskCtx, uint(resourceID))
-	}, 3*time.Second)
+	}, time.Duration(h.config.AsyncTasks.ResourceViewCountTimeout)*time.Second)
 
 	if err != nil {
 		h.logger.Debug("提交浏览次数更新任务失败", "resourceID", resourceID, "error", err.Error())
@@ -248,7 +251,7 @@ func (h *ResourceHandler) DownloadResource(c *gin.Context) {
 	taskID := fmt.Sprintf("incr_download_%d", resourceID)
 	_ = utils.SubmitTask(taskID, func(taskCtx context.Context) error {
 		return h.resourceRepo.IncrementDownloadCount(taskCtx, uint(resourceID))
-	}, 3*time.Second)
+	}, time.Duration(h.config.AsyncTasks.ResourceDownloadCountTimeout)*time.Second)
 
 	// Return download URL for client to download directly from MinIO
 	// 直接返回下载链接比代理更高效
@@ -391,7 +394,7 @@ func (h *ResourceHandler) ProxyDownloadResource(c *gin.Context) {
 	taskID := fmt.Sprintf("incr_download_%d", resourceID)
 	_ = utils.SubmitTask(taskID, func(taskCtx context.Context) error {
 		return h.resourceRepo.IncrementDownloadCount(taskCtx, uint(resourceID))
-	}, 3*time.Second)
+	}, time.Duration(h.config.AsyncTasks.ResourceDownloadCountTimeout)*time.Second)
 
 	// 性能优化：仅在DEBUG模式记录详细信息
 	h.logger.Debug("代理下载成功", "resourceID", resourceID, "fileName", resource.FileName, "size", written, "range", isRangeRequest)
@@ -482,7 +485,7 @@ func (h *ResourceHandler) GetResourceComments(c *gin.Context) {
 
 	// 分页参数
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", strconv.Itoa(h.config.Pagination.DefaultPageSize)))
 
 	ctx := c.Request.Context()
 	response, err := h.resourceCommentRepo.GetCommentsByResourceID(ctx, uint(resourceID), userID, page, pageSize)

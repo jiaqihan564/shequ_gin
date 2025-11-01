@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"gin/internal/config"
 	"gin/internal/models"
 	"gin/internal/services"
 	"gin/internal/utils"
@@ -15,13 +16,15 @@ import (
 type CodeHandler struct {
 	repo     services.CodeRepository
 	executor services.CodeExecutor
+	config   *config.Config
 }
 
 // NewCodeHandler 创建新的代码处理器
-func NewCodeHandler(repo services.CodeRepository, executor services.CodeExecutor) *CodeHandler {
+func NewCodeHandler(repo services.CodeRepository, executor services.CodeExecutor, cfg *config.Config) *CodeHandler {
 	return &CodeHandler{
 		repo:     repo,
 		executor: executor,
+		config:   cfg,
 	}
 }
 
@@ -136,13 +139,13 @@ func (h *CodeHandler) GetSnippets(c *gin.Context) {
 
 	// 分页参数
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", strconv.Itoa(h.config.Pagination.DefaultPageSize)))
 
 	if page < 1 {
 		page = 1
 	}
-	if pageSize < 1 || pageSize > 100 {
-		pageSize = 20
+	if pageSize < 1 || pageSize > h.config.Pagination.MaxPageSize {
+		pageSize = h.config.Pagination.DefaultPageSize
 	}
 
 	offset := (page - 1) * pageSize
@@ -272,13 +275,13 @@ func (h *CodeHandler) GetExecutions(c *gin.Context) {
 
 	// 分页参数
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", strconv.Itoa(h.config.Pagination.DefaultPageSize)))
 
 	if page < 1 {
 		page = 1
 	}
-	if pageSize < 1 || pageSize > 100 {
-		pageSize = 20
+	if pageSize < 1 || pageSize > h.config.Pagination.MaxPageSize {
+		pageSize = h.config.Pagination.DefaultPageSize
 	}
 
 	offset := (page - 1) * pageSize
@@ -355,14 +358,14 @@ func (h *CodeHandler) GetLanguages(c *gin.Context) {
 func (h *CodeHandler) GetPublicSnippets(c *gin.Context) {
 	// 分页参数
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", strconv.Itoa(h.config.Pagination.DefaultPageSize)))
 	language := c.Query("language") // 可选的语言筛选
 
 	if page < 1 {
 		page = 1
 	}
-	if pageSize < 1 || pageSize > 100 {
-		pageSize = 20
+	if pageSize < 1 || pageSize > h.config.Pagination.MaxPageSize {
+		pageSize = h.config.Pagination.DefaultPageSize
 	}
 
 	offset := (page - 1) * pageSize

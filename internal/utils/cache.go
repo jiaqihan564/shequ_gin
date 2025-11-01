@@ -46,7 +46,9 @@ type LRUCacheConfig struct {
 }
 
 // NewLRUCache 创建LRU缓存
+// 注意：默认值将在运行时应用，如果未提供配置则使用硬编码默认值
 func NewLRUCache(config LRUCacheConfig) *LRUCache {
+	// 应用默认值（这些默认值可通过全局配置覆盖）
 	if config.Capacity <= 0 {
 		config.Capacity = 10000 // 默认最多1万条
 	}
@@ -54,8 +56,11 @@ func NewLRUCache(config LRUCacheConfig) *LRUCache {
 		config.MaxMemory = 100 * 1024 * 1024 // 默认最多100MB
 	}
 	if config.DefaultTTL <= 0 {
-		config.DefaultTTL = 5 * time.Minute
+		config.DefaultTTL = 5 * time.Minute // 默认5分钟
 	}
+
+	// 清理间隔默认1分钟
+	cleanupInterval := 1 * time.Minute
 
 	cache := &LRUCache{
 		capacity:   config.Capacity,
@@ -66,9 +71,9 @@ func NewLRUCache(config LRUCacheConfig) *LRUCache {
 		defaultTTL: config.DefaultTTL,
 	}
 
-	// 启动定期清理过期条目（每1分钟清理一次）
+	// 启动定期清理过期条目（使用默认清理间隔）
 	go func() {
-		ticker := time.NewTicker(1 * time.Minute)
+		ticker := time.NewTicker(cleanupInterval)
 		defer ticker.Stop()
 		for {
 			select {
