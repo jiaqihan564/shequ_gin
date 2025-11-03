@@ -8,10 +8,7 @@ import (
 	"gin/internal/models"
 	"gin/internal/utils"
 	"net/http"
-	"regexp"
-	"strings"
 	"time"
-	"unicode"
 )
 
 // CodeExecutor 代码执行器接口
@@ -270,16 +267,6 @@ func (e *PistonCodeExecutor) Execute(ctx context.Context, language, code, stdin 
 		return nil, fmt.Errorf("不支持的语言: %s", language)
 	}
 
-	// 对JVM语言进行中文预处理（Unicode转义）
-	if language == "java" || language == "kotlin" || language == "scala" {
-		processed, hasChinese := preprocessJVMCode(code, language)
-		if hasChinese {
-			logger.Info("JVM代码包含中文，转义前", "language", language, "original", code)
-			code = processed
-			logger.Info("JVM代码包含中文，已转义为Unicode", "language", language, "processed", code)
-		}
-	}
-
 	// 构建 Piston API 请求
 	pistonReq := models.PistonExecuteRequest{
 		Language: langInfo.PistonName,
@@ -290,23 +277,6 @@ func (e *PistonCodeExecutor) Execute(ctx context.Context, language, code, stdin 
 			{Content: code},
 		},
 		Stdin: stdin,
-	}
-
-	// 为 JVM 语言添加 UTF-8 编码参数，解决中文显示问题
-	// 尝试多种参数组合方式
-	switch language {
-	case "java":
-		// Java 需要编译和运行时都指定UTF-8
-		pistonReq.CompileArgs = []string{"-encoding", "UTF-8", "-J-Dfile.encoding=UTF-8"}
-		pistonReq.RunArgs = []string{"-Dfile.encoding=UTF-8", "-Duser.language=zh", "-Duser.country=CN"}
-	case "scala":
-		// Scala 使用 scalac 编译器参数
-		pistonReq.CompileArgs = []string{"-encoding", "UTF-8"}
-		pistonReq.RunArgs = []string{"-Dfile.encoding=UTF-8", "-Duser.language=zh", "-Duser.country=CN"}
-	case "kotlin":
-		// Kotlin 编译器参数
-		pistonReq.CompileArgs = []string{"-Dfile.encoding=UTF-8"}
-		pistonReq.RunArgs = []string{"-Dfile.encoding=UTF-8", "-Duser.language=zh", "-Duser.country=CN"}
 	}
 
 	reqBody, err := json.Marshal(pistonReq)
@@ -387,58 +357,4 @@ func (e *PistonCodeExecutor) GetSupportedLanguages() []models.LanguageInfo {
 		languages = append(languages, lang)
 	}
 	return languages
-}
-
-// containsChinese 检查字符串是否包含中文字符
-func containsChinese(s string) bool {
-	for _, r := range s {
-		if r >= 0x4E00 && r <= 0x9FA5 {
-			return true
-		}
-	}
-	return false
-}
-
-// escapeChineseToUnicode 将字符串中的中文字符转义为\uXXXX格式
-func escapeChineseToUnicode(input string) string {
-	var result strings.Builder
-	for _, r := range input {
-		if r > 127 && unicode.Is(unicode.Han, r) {
-			// 中文字符，转义为 \uXXXX
-			result.WriteString(fmt.Sprintf("\\u%04x", r))
-		} else {
-			result.WriteRune(r)
-		}
-	}
-	return result.String()
-}
-
-// preprocessJVMCode 预处理JVM语言代码，处理中文字符串
-func preprocessJVMCode(code string, language string) (string, bool) {
-	if !containsChinese(code) {
-		return code, false
-	}
-
-	// 匹配字符串字面量（简化版，支持双引号字符串）
-	// Java/Kotlin/Scala 都使用双引号字符串
-	// 使用正则表达式匹配未转义的双引号字符串
-	stringPattern := regexp.MustCompile(`"([^"\\]*(\\.[^"\\]*)*)"`)
-
-	hasChinese := false
-	processedCode := stringPattern.ReplaceAllStringFunc(code, func(match string) string {
-		if len(match) < 2 {
-			return match
-		}
-
-		content := match[1 : len(match)-1] // 去掉引号
-		if !containsChinese(content) {
-			return match
-		}
-
-		hasChinese = true
-		escaped := escapeChineseToUnicode(content)
-		return `"` + escaped + `"`
-	})
-
-	return processedCode, hasChinese
 }
