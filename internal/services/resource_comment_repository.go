@@ -211,7 +211,7 @@ func (r *ResourceCommentRepository) ToggleCommentLike(ctx context.Context, comme
 	case sql.ErrNoRows:
 		// 未点赞，执行点赞
 		_, err := r.db.DB.ExecContext(ctx, `INSERT INTO resource_comment_likes (comment_id, user_id, created_at) VALUES (?, ?, ?)`,
-			commentID, userID, time.Now())
+			commentID, userID, time.Now().UTC())
 		if err != nil {
 			return false, utils.ErrDatabaseInsert
 		}
@@ -409,7 +409,7 @@ func (r *ResourceCommentRepository) DeleteComment(ctx context.Context, commentID
 	}
 
 	// 软删除
-	_, err = r.db.DB.ExecContext(ctx, `UPDATE resource_comments SET status = 0, updated_at = ? WHERE id = ?`, time.Now(), commentID)
+	_, err = r.db.DB.ExecContext(ctx, `UPDATE resource_comments SET status = 0, updated_at = ? WHERE id = ?`, time.Now().UTC(), commentID)
 	if err != nil {
 		return utils.ErrDatabaseUpdate
 	}

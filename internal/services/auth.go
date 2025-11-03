@@ -35,7 +35,7 @@ func NewAuthService(cfg *config.Config, userRepo *UserRepository, historyRepo *H
 
 // Login 用户登录
 func (s *AuthService) Login(ctx context.Context, username, password, clientIP, province, city string) (*models.LoginResponse, error) {
-	startTime := time.Now()
+	startTime := time.Now().UTC()
 
 	// 获取用户信息
 	user, err := s.userRepo.GetUserByUsername(ctx, username)
@@ -78,7 +78,7 @@ func (s *AuthService) Login(ctx context.Context, username, password, clientIP, p
 	}
 
 	// 更新登录信息
-	now := time.Now()
+	now := time.Now().UTC()
 	err = s.userRepo.UpdateLoginInfo(ctx, user.ID, now, clientIP)
 	if err != nil {
 		s.logger.Error("更新登录信息失败", "userID", user.ID, "error", err.Error())
@@ -143,7 +143,7 @@ func (s *AuthService) Login(ctx context.Context, username, password, clientIP, p
 		ct := city
 
 		err := utils.SubmitTask(
-			fmt.Sprintf("login-history-%d-%d", userID, time.Now().Unix()),
+			fmt.Sprintf("login-history-%d-%d", userID, time.Now().UTC().Unix()),
 			func(ctx context.Context) error {
 				userAgentStr := ""
 				if err := s.historyRepo.RecordLoginHistory(userID, userName, userIP, userAgentStr, prov, ct, 1); err != nil {
@@ -168,7 +168,7 @@ func (s *AuthService) Login(ctx context.Context, username, password, clientIP, p
 
 // Register 用户注册
 func (s *AuthService) Register(ctx context.Context, username, password, email, clientIP, userAgent, province, city string) (*models.LoginResponse, error) {
-	startTime := time.Now()
+	startTime := time.Now().UTC()
 
 	// 检查用户名是否已存在
 	usernameExists, err := s.userRepo.CheckUsernameExists(ctx, username)
@@ -202,7 +202,7 @@ func (s *AuthService) Register(ctx context.Context, username, password, email, c
 	}
 
 	// 创建新用户
-	now := time.Now()
+	now := time.Now().UTC()
 	user := &models.User{
 		Username:      username,
 		PasswordHash:  hashedPassword,
@@ -289,7 +289,7 @@ func (s *AuthService) Register(ctx context.Context, username, password, email, c
 		ct := city
 
 		err := utils.SubmitTask(
-			fmt.Sprintf("register-history-%d-%d", userID, time.Now().Unix()),
+			fmt.Sprintf("register-history-%d-%d", userID, time.Now().UTC().Unix()),
 			func(ctx context.Context) error {
 				if err := s.historyRepo.RecordOperationHistory(userID, userName, "注册", "用户注册账号", userIP); err != nil {
 					s.logger.Error("记录操作历史失败", "userID", userID, "error", err.Error())
@@ -325,7 +325,7 @@ func (s *AuthService) generateJWT(userID uint, username string) (string, error) 
 
 // ChangePassword 修改密码
 func (s *AuthService) ChangePassword(ctx context.Context, userID uint, currentPassword, newPassword string) error {
-	startTime := time.Now()
+	startTime := time.Now().UTC()
 
 	// 获取用户信息
 	user, err := s.userRepo.GetUserByID(ctx, userID)
@@ -367,7 +367,7 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID uint, currentPa
 
 // ForgotPassword 忘记密码 - 生成重置token
 func (s *AuthService) ForgotPassword(ctx context.Context, email string) (string, error) {
-	startTime := time.Now()
+	startTime := time.Now().UTC()
 
 	// 检查邮箱是否存在
 	user, err := s.userRepo.GetUserByEmail(ctx, email)
@@ -386,7 +386,7 @@ func (s *AuthService) ForgotPassword(ctx context.Context, email string) (string,
 	}
 
 	// 设置过期时间（从配置读取）
-	expiresAt := time.Now().Add(time.Duration(s.config.AuthPolicy.PasswordResetTokenExpireMinutes) * time.Minute)
+	expiresAt := time.Now().UTC().Add(time.Duration(s.config.AuthPolicy.PasswordResetTokenExpireMinutes) * time.Minute)
 
 	// 保存token到数据库
 	tokenRecord := &models.PasswordResetToken{
@@ -394,7 +394,7 @@ func (s *AuthService) ForgotPassword(ctx context.Context, email string) (string,
 		Token:     resetToken,
 		ExpiresAt: expiresAt,
 		Used:      false,
-		CreatedAt: time.Now(),
+		CreatedAt: time.Now().UTC(),
 	}
 
 	err = s.userRepo.CreatePasswordResetToken(ctx, tokenRecord)
@@ -416,7 +416,7 @@ func (s *AuthService) ForgotPassword(ctx context.Context, email string) (string,
 
 // ResetPassword 重置密码（使用事务和行锁防止竞态条件）
 func (s *AuthService) ResetPassword(ctx context.Context, token, newPassword string) error {
-	startTime := time.Now()
+	startTime := time.Now().UTC()
 
 	// 开启数据库事务
 	tx, err := s.userRepo.BeginTx(ctx)
@@ -443,7 +443,7 @@ func (s *AuthService) ResetPassword(ctx context.Context, token, newPassword stri
 	}
 
 	// 检查token是否过期
-	if time.Now().After(tokenRecord.ExpiresAt) {
+	if time.Now().UTC().After(tokenRecord.ExpiresAt) {
 		s.logger.Warn("重置token已过期",
 			"tokenID", tokenRecord.ID,
 			"email", utils.SanitizeEmail(tokenRecord.Email),

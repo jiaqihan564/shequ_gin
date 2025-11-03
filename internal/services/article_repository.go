@@ -30,7 +30,7 @@ func NewArticleRepository(db *Database, cfg *config.Config) *ArticleRepository {
 
 // CreateArticle 创建文章
 func (r *ArticleRepository) CreateArticle(ctx context.Context, article *models.Article, codeBlocks []models.CreateArticleCodeBlock, categoryIDs, tagIDs []uint) error {
-	start := time.Now()
+	start := time.Now().UTC()
 	r.logger.Info("开始创建文章",
 		"userID", article.UserID,
 		"title", article.Title,
@@ -70,7 +70,7 @@ func (r *ArticleRepository) CreateArticle(ctx context.Context, article *models.A
 		blockQuery := `INSERT INTO article_code_blocks (article_id, language, code_content, description, order_index, created_at) VALUES `
 		blockValues := []string{}
 		blockArgs := []interface{}{}
-		now := time.Now()
+		now := time.Now().UTC()
 
 		for _, block := range codeBlocks {
 			blockValues = append(blockValues, "(?, ?, ?, ?, ?, ?)")
@@ -90,7 +90,7 @@ func (r *ArticleRepository) CreateArticle(ctx context.Context, article *models.A
 		catQuery := `INSERT INTO article_category_relations (article_id, category_id, created_at) VALUES `
 		catValues := []string{}
 		catArgs := []interface{}{}
-		now := time.Now()
+		now := time.Now().UTC()
 
 		for _, catID := range categoryIDs {
 			catValues = append(catValues, "(?, ?, ?)")
@@ -118,7 +118,7 @@ func (r *ArticleRepository) CreateArticle(ctx context.Context, article *models.A
 		tagQuery := `INSERT INTO article_tag_relations (article_id, tag_id, created_at) VALUES `
 		tagValues := []string{}
 		tagArgs := []interface{}{}
-		now := time.Now()
+		now := time.Now().UTC()
 
 		for _, tagID := range tagIDs {
 			tagValues = append(tagValues, "(?, ?, ?)")
@@ -158,7 +158,7 @@ func (r *ArticleRepository) CreateArticle(ctx context.Context, article *models.A
 // GetArticleByID 根据ID获取文章详情（优化版本：使用JOIN减少查询次数）
 // 原版本需要6次查询，优化后只需要2-3次查询
 func (r *ArticleRepository) GetArticleByID(ctx context.Context, articleID uint, userID uint) (*models.ArticleDetailResponse, error) {
-	start := time.Now()
+	start := time.Now().UTC()
 
 	// 第一步：使用JOIN一次性获取文章基本信息、作者信息
 	// 合并原来的2次查询为1次
@@ -310,7 +310,7 @@ func (r *ArticleRepository) GetArticleByID(ctx context.Context, articleID uint, 
 
 // ListArticles 获取文章列表
 func (r *ArticleRepository) ListArticles(ctx context.Context, query models.ArticleListQuery) (*models.ArticleListResponse, error) {
-	start := time.Now()
+	start := time.Now().UTC()
 
 	// 设置默认值（从配置读取）
 	if query.Page <= 0 {
@@ -520,7 +520,7 @@ func (r *ArticleRepository) ListArticles(ctx context.Context, query models.Artic
 
 // UpdateArticle 更新文章
 func (r *ArticleRepository) UpdateArticle(ctx context.Context, articleID, userID uint, req models.UpdateArticleRequest) error {
-	start := time.Now()
+	start := time.Now().UTC()
 
 	// 检查文章是否存在且属于当前用户
 	checkQuery := `SELECT user_id FROM articles WHERE id = ? AND status != 2`
@@ -566,7 +566,7 @@ func (r *ArticleRepository) UpdateArticle(ctx context.Context, articleID, userID
 
 	if len(updates) > 0 {
 		updates = append(updates, "updated_at = ?")
-		args = append(args, time.Now())
+		args = append(args, time.Now().UTC())
 		args = append(args, articleID)
 
 		updateQuery := fmt.Sprintf("UPDATE articles SET %s WHERE id = ?", strings.Join(updates, ", "))
@@ -584,7 +584,7 @@ func (r *ArticleRepository) UpdateArticle(ctx context.Context, articleID, userID
 			blockQuery := `INSERT INTO article_code_blocks (article_id, language, code_content, description, order_index, created_at) VALUES `
 			blockValues := []string{}
 			blockArgs := []interface{}{}
-			now := time.Now()
+			now := time.Now().UTC()
 
 			for _, block := range req.CodeBlocks {
 				blockValues = append(blockValues, "(?, ?, ?, ?, ?, ?)")
@@ -609,7 +609,7 @@ func (r *ArticleRepository) UpdateArticle(ctx context.Context, articleID, userID
 			catQuery := `INSERT INTO article_category_relations (article_id, category_id, created_at) VALUES `
 			catValues := []string{}
 			catArgs := []interface{}{}
-			now := time.Now()
+			now := time.Now().UTC()
 
 			for _, catID := range req.CategoryIDs {
 				catValues = append(catValues, "(?, ?, ?)")
@@ -630,7 +630,7 @@ func (r *ArticleRepository) UpdateArticle(ctx context.Context, articleID, userID
 			tagQuery := `INSERT INTO article_tag_relations (article_id, tag_id, created_at) VALUES `
 			tagValues := []string{}
 			tagArgs := []interface{}{}
-			now := time.Now()
+			now := time.Now().UTC()
 
 			for _, tagID := range req.TagIDs {
 				tagValues = append(tagValues, "(?, ?, ?)")
@@ -653,7 +653,7 @@ func (r *ArticleRepository) UpdateArticle(ctx context.Context, articleID, userID
 
 // DeleteArticle 删除文章（软删除）
 func (r *ArticleRepository) DeleteArticle(ctx context.Context, articleID, userID uint) error {
-	start := time.Now()
+	start := time.Now().UTC()
 
 	// 检查文章所有权
 	checkQuery := `SELECT user_id FROM articles WHERE id = ? AND status != 2`
@@ -671,7 +671,7 @@ func (r *ArticleRepository) DeleteArticle(ctx context.Context, articleID, userID
 
 	// 软删除
 	query := `UPDATE articles SET status = 2, updated_at = ? WHERE id = ?`
-	_, err = r.db.DB.ExecContext(ctx, query, time.Now(), articleID)
+	_, err = r.db.DB.ExecContext(ctx, query, time.Now().UTC(), articleID)
 	if err != nil {
 		r.logger.Error("删除文章失败", "error", err.Error())
 		return utils.ErrDatabaseUpdate
@@ -683,7 +683,7 @@ func (r *ArticleRepository) DeleteArticle(ctx context.Context, articleID, userID
 
 // ToggleArticleLike 切换文章点赞
 func (r *ArticleRepository) ToggleArticleLike(ctx context.Context, articleID, userID uint) (bool, error) {
-	start := time.Now()
+	start := time.Now().UTC()
 
 	// 检查是否已点赞
 	checkQuery := `SELECT id FROM article_likes WHERE article_id = ? AND user_id = ?`
@@ -695,7 +695,7 @@ func (r *ArticleRepository) ToggleArticleLike(ctx context.Context, articleID, us
 	case sql.ErrNoRows:
 		// 未点赞，执行点赞
 		insertQuery := `INSERT INTO article_likes (article_id, user_id, created_at) VALUES (?, ?, ?)`
-		_, err := r.db.DB.ExecContext(ctx, insertQuery, articleID, userID, time.Now())
+		_, err := r.db.DB.ExecContext(ctx, insertQuery, articleID, userID, time.Now().UTC())
 		if err != nil {
 			r.logger.Error("点赞失败", "error", err.Error())
 			return false, utils.ErrDatabaseInsert
@@ -735,7 +735,7 @@ func (r *ArticleRepository) IncrementViewCount(ctx context.Context, articleID ui
 
 // CreateComment 创建评论
 func (r *ArticleRepository) CreateComment(ctx context.Context, comment *models.ArticleComment) error {
-	start := time.Now()
+	start := time.Now().UTC()
 
 	// 如果是回复评论，需要确定 root_id
 	rootID := comment.RootID
@@ -782,7 +782,7 @@ func (r *ArticleRepository) CreateComment(ctx context.Context, comment *models.A
 
 // GetComments 获取评论列表
 func (r *ArticleRepository) GetComments(ctx context.Context, articleID uint, page, pageSize int, userID uint) (*models.CommentsResponse, error) {
-	start := time.Now()
+	start := time.Now().UTC()
 
 	if page <= 0 {
 		page = 1
@@ -1129,7 +1129,7 @@ func (r *ArticleRepository) batchGetCommentUsers(ctx context.Context, userIDs []
 
 // ToggleCommentLike 切换评论点赞
 func (r *ArticleRepository) ToggleCommentLike(ctx context.Context, commentID, userID uint) (bool, error) {
-	start := time.Now()
+	start := time.Now().UTC()
 
 	// 检查是否已点赞
 	checkQuery := `SELECT id FROM article_comment_likes WHERE comment_id = ? AND user_id = ?`
@@ -1141,7 +1141,7 @@ func (r *ArticleRepository) ToggleCommentLike(ctx context.Context, commentID, us
 	case sql.ErrNoRows:
 		// 未点赞，执行点赞
 		insertQuery := `INSERT INTO article_comment_likes (comment_id, user_id, created_at) VALUES (?, ?, ?)`
-		_, err := r.db.DB.ExecContext(ctx, insertQuery, commentID, userID, time.Now())
+		_, err := r.db.DB.ExecContext(ctx, insertQuery, commentID, userID, time.Now().UTC())
 		if err != nil {
 			r.logger.Error("点赞评论失败", "error", err.Error())
 			return false, utils.ErrDatabaseInsert
@@ -1170,7 +1170,7 @@ func (r *ArticleRepository) ToggleCommentLike(ctx context.Context, commentID, us
 
 // DeleteComment 删除评论（软删除）
 func (r *ArticleRepository) DeleteComment(ctx context.Context, commentID, userID uint) error {
-	start := time.Now()
+	start := time.Now().UTC()
 
 	// 检查评论所有权
 	checkQuery := `SELECT user_id, article_id FROM article_comments WHERE id = ? AND status != 0`
@@ -1188,7 +1188,7 @@ func (r *ArticleRepository) DeleteComment(ctx context.Context, commentID, userID
 
 	// 软删除
 	query := `UPDATE article_comments SET status = 0, updated_at = ? WHERE id = ?`
-	_, err = r.db.DB.ExecContext(ctx, query, time.Now(), commentID)
+	_, err = r.db.DB.ExecContext(ctx, query, time.Now().UTC(), commentID)
 	if err != nil {
 		r.logger.Error("删除评论失败", "error", err.Error())
 		return utils.ErrDatabaseUpdate
@@ -1203,7 +1203,7 @@ func (r *ArticleRepository) DeleteComment(ctx context.Context, commentID, userID
 
 // CreateReport 创建举报
 func (r *ArticleRepository) CreateReport(ctx context.Context, report *models.ArticleReport) error {
-	start := time.Now()
+	start := time.Now().UTC()
 
 	query := `INSERT INTO article_reports (article_id, comment_id, user_id, reason, status, created_at)
 			  VALUES (?, ?, ?, ?, 0, ?)`
@@ -1282,7 +1282,7 @@ func (r *ArticleRepository) CreateOrGetTag(ctx context.Context, tagName string) 
 	// 不存在则创建
 	slug := strings.ToLower(strings.ReplaceAll(tagName, " ", "-"))
 	insertQuery := `INSERT INTO article_tags (name, slug, created_at) VALUES (?, ?, ?)`
-	result, err := r.db.DB.ExecContext(ctx, insertQuery, tagName, slug, time.Now())
+	result, err := r.db.DB.ExecContext(ctx, insertQuery, tagName, slug, time.Now().UTC())
 	if err != nil {
 		r.logger.Error("创建标签失败", "tagName", tagName, "error", err.Error())
 		return 0, utils.ErrDatabaseInsert

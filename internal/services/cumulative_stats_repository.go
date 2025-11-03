@@ -260,7 +260,7 @@ func (r *CumulativeStatsRepository) GetTodayDailyMetric() (*models.DailyMetrics,
 	if r.config != nil {
 		dateFormat = r.config.DateTimeFormats.DateOnly
 	}
-	today := time.Now().Format(dateFormat)
+	today := time.Now().UTC().Format(dateFormat)
 
 	query := `SELECT id, date, active_users, avg_response_time, success_rate, peak_concurrent, 
 				most_popular_endpoint, new_users, total_requests, created_at, updated_at
@@ -289,7 +289,7 @@ func (r *CumulativeStatsRepository) GetTodayDailyMetric() (*models.DailyMetrics,
 		if err == sql.ErrNoRows {
 			// 今日没有记录，返回默认值
 			return &models.DailyMetrics{
-				Date:            time.Now(),
+				Date:            time.Now().UTC(),
 				ActiveUsers:     0,
 				AvgResponseTime: 0,
 				SuccessRate:     0,

@@ -8,7 +8,10 @@ import (
 	"gin/internal/models"
 	"gin/internal/utils"
 	"net/http"
+	"regexp"
+	"strings"
 	"time"
+	"unicode"
 )
 
 // CodeExecutor 代码执行器接口
@@ -267,9 +270,15 @@ func (e *PistonCodeExecutor) Execute(ctx context.Context, language, code, stdin 
 		return nil, fmt.Errorf("不支持的语言: %s", language)
 	}
 
-	// 对于JVM语言，如果代码包含中文，尝试在代码层面处理编码
-	if language == "java" && containsChinese(code) {
-		code = wrapJavaCodeWithUTF8(code)
+	// 对JVM语言进行中文预处理（Unicode转义）
+	var chineseProcessed bool
+	if language == "java" || language == "kotlin" || language == "scala" {
+		processed, hasChinese := preprocessJVMCode(code, language)
+		if hasChinese {
+			code = processed
+			chineseProcessed = true
+			logger.Info("JVM代码包含中文，已转义为Unicode", "language", language)
+		}
 	}
 
 	// 构建 Piston API 请求
@@ -307,7 +316,7 @@ func (e *PistonCodeExecutor) Execute(ctx context.Context, language, code, stdin 
 	}
 
 	// 记录开始时间
-	startTime := time.Now()
+	startTime := time.Now().UTC()
 
 	// 使用对象池创建请求体（优化内存分配）
 	buf := utils.GetBuffer()
@@ -353,6 +362,10 @@ func (e *PistonCodeExecutor) Execute(ctx context.Context, language, code, stdin 
 	if pistonResp.Run.Code == 0 && pistonResp.Run.Stderr == "" {
 		result.Status = "success"
 		result.Output = pistonResp.Run.Stdout
+		// 如果进行了中文处理，添加提示
+		if chineseProcessed {
+			result.Output = "✓ 中文字符已自动转换为Unicode编码\n\n" + result.Output
+		}
 	} else if pistonResp.Run.Signal != "" {
 		result.Status = "timeout"
 		result.Error = fmt.Sprintf("执行被信号终止: %s", pistonResp.Run.Signal)
@@ -391,19 +404,46 @@ func containsChinese(s string) bool {
 	return false
 }
 
-// wrapJavaCodeWithUTF8 为Java代码包装UTF-8编码设置
-func wrapJavaCodeWithUTF8(code string) string {
-	// 在 System.out.println 调用前设置编码
-	// 注意：这是一个备用方案，主要依赖运行参数
-	wrapper := `import java.io.*;
-import java.nio.charset.StandardCharsets;
-
-// 原始代码开始
-`
-	// 检查是否已经有import语句
-	if !bytes.Contains([]byte(code), []byte("import")) {
-		return wrapper + code
+// escapeChineseToUnicode 将字符串中的中文字符转义为\uXXXX格式
+func escapeChineseToUnicode(input string) string {
+	var result strings.Builder
+	for _, r := range input {
+		if r > 127 && unicode.Is(unicode.Han, r) {
+			// 中文字符，转义为 \uXXXX
+			result.WriteString(fmt.Sprintf("\\u%04x", r))
+		} else {
+			result.WriteRune(r)
+		}
 	}
-	// 如果已有import，直接返回原代码（避免重复包装）
-	return code
+	return result.String()
+}
+
+// preprocessJVMCode 预处理JVM语言代码，处理中文字符串
+func preprocessJVMCode(code string, language string) (string, bool) {
+	if !containsChinese(code) {
+		return code, false
+	}
+
+	// 匹配字符串字面量（简化版，支持双引号字符串）
+	// Java/Kotlin/Scala 都使用双引号字符串
+	// 使用正则表达式匹配未转义的双引号字符串
+	stringPattern := regexp.MustCompile(`"([^"\\]*(\\.[^"\\]*)*)"`)
+	
+	hasChinese := false
+	processedCode := stringPattern.ReplaceAllStringFunc(code, func(match string) string {
+		if len(match) < 2 {
+			return match
+		}
+		
+		content := match[1:len(match)-1] // 去掉引号
+		if !containsChinese(content) {
+			return match
+		}
+		
+		hasChinese = true
+		escaped := escapeChineseToUnicode(content)
+		return `"` + escaped + `"`
+	})
+	
+	return processedCode, hasChinese
 }

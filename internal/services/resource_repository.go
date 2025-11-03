@@ -62,7 +62,7 @@ func (r *ResourceRepository) CreateResource(ctx context.Context, resource *model
 		imgQuery := `INSERT INTO resource_images (resource_id, image_url, image_order, is_cover, created_at) VALUES `
 		imgValues := make([]string, 0, len(imageURLs))
 		imgArgs := make([]interface{}, 0, len(imageURLs)*5)
-		now := time.Now()
+		now := time.Now().UTC()
 
 		for i, url := range imageURLs {
 			isCover := 0
@@ -96,7 +96,7 @@ func (r *ResourceRepository) CreateResource(ctx context.Context, resource *model
 			tagQuery := `INSERT INTO resource_tags (resource_id, tag_name, created_at) VALUES `
 			tagValues := make([]string, 0, len(validTags))
 			tagArgs := make([]interface{}, 0, len(validTags)*3)
-			now := time.Now()
+			now := time.Now().UTC()
 
 			for _, tag := range validTags {
 				tagValues = append(tagValues, "(?, ?, ?)")
@@ -392,7 +392,7 @@ func (r *ResourceRepository) ToggleResourceLike(ctx context.Context, resourceID,
 	case sql.ErrNoRows:
 		// 未点赞，执行点赞
 		_, err := r.db.DB.ExecContext(ctx, `INSERT INTO resource_likes (resource_id, user_id, created_at) VALUES (?, ?, ?)`,
-			resourceID, userID, time.Now())
+			resourceID, userID, time.Now().UTC())
 		if err != nil {
 			return false, utils.ErrDatabaseInsert
 		}
@@ -442,7 +442,7 @@ func (r *ResourceRepository) DeleteResource(ctx context.Context, resourceID, use
 	}
 
 	// 软删除
-	_, err = r.db.DB.ExecContext(ctx, `UPDATE resources SET status = 0, updated_at = ? WHERE id = ?`, time.Now(), resourceID)
+	_, err = r.db.DB.ExecContext(ctx, `UPDATE resources SET status = 0, updated_at = ? WHERE id = ?`, time.Now().UTC(), resourceID)
 	return err
 }
 
@@ -489,7 +489,7 @@ func (r *ResourceRepository) UpdateResourceImages(ctx context.Context, resourceI
 			if i == 0 {
 				isCover = 1
 			}
-			_, err := tx.ExecContext(ctx, imgQuery, resourceID, url, i, isCover, time.Now())
+			_, err := tx.ExecContext(ctx, imgQuery, resourceID, url, i, isCover, time.Now().UTC())
 			if err != nil {
 				r.logger.Error("插入新图片记录失败", "resourceID", resourceID, "index", i, "error", err.Error())
 				return utils.ErrDatabaseInsert

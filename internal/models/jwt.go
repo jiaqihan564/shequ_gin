@@ -16,7 +16,7 @@ type Claims struct {
 
 // CreateClaims 创建JWT声明
 func CreateClaims(userID uint, username string, issuer string, expireHours int) *Claims {
-	now := time.Now()
+	now := time.Now().UTC()
 	expirationTime := now.Add(time.Duration(expireHours) * time.Hour)
 
 	return &Claims{

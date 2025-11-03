@@ -244,7 +244,7 @@ func (r *StatisticsRepository) GetTodayOverview() (*models.StatisticsOverview, e
 	if r.config != nil {
 		dateFormat = r.config.DateTimeFormats.DateOnly
 	}
-	today := time.Now().Format(dateFormat)
+	today := time.Now().UTC().Format(dateFormat)
 
 	overview := &models.StatisticsOverview{}
 

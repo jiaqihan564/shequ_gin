@@ -146,20 +146,25 @@ func (h *ConnectionHub) run() {
 		h.logger.Info("Client connected", "userID", client.userID, "username", client.username)
 		h.broadcastOnlineCount()
 
-		case client := <-h.unregister:
-			h.mu.Lock()
-			// Only close channel if this client is still the current connection
-			// Prevents closing already-closed channels when old connections disconnect
-			if currentClient, exists := h.clients[client.userID]; exists && currentClient == client {
-				delete(h.clients, client.userID)
-				h.mu.Unlock()
-				client.closeSendChannel() // 使用安全的关闭方法，防止panic
-			} else {
-				h.mu.Unlock()
-			}
+	case client := <-h.unregister:
+		h.mu.Lock()
+		var shouldBroadcast bool
+		var onlineCount int
+		
+		// Only close channel if this client is still the current connection
+		// Prevents closing already-closed channels when old connections disconnect
+		if currentClient, exists := h.clients[client.userID]; exists && currentClient == client {
+			delete(h.clients, client.userID)
+			shouldBroadcast = true
+			onlineCount = len(h.clients) // 在锁内读取准确人数
+		}
+		h.mu.Unlock()
 
-			h.logger.Info("Client disconnected", "userID", client.userID)
-			h.broadcastOnlineCount()
+		if shouldBroadcast {
+			client.closeSendChannel() // 使用安全的关闭方法，防止panic
+			h.logger.Info("Client disconnected", "userID", client.userID, "onlineCount", onlineCount)
+			h.broadcastOnlineCountValue(onlineCount)
+		}
 
 		case message := <-h.broadcast:
 			h.mu.RLock()
@@ -182,6 +187,11 @@ func (h *ConnectionHub) broadcastOnlineCount() {
 	count := len(h.clients)
 	h.mu.RUnlock()
 
+	h.broadcastOnlineCountValue(count)
+}
+
+// broadcastOnlineCountValue sends a specific online count to all clients
+func (h *ConnectionHub) broadcastOnlineCountValue(count int) {
 	msg := WSMessage{
 		Type: "online_count",
 		Data: map[string]int{"count": count},

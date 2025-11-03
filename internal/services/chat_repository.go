@@ -34,7 +34,7 @@ func (r *ChatRepository) SendMessage(userID uint, username, nickname, avatar, co
 	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
 	defer cancel()
 
-	now := time.Now()
+	now := time.Now().UTC()
 	query := `INSERT INTO chat_messages (user_id, username, nickname, avatar, content, message_type, send_time, ip_address, status, created_at)
 			  VALUES (?, ?, ?, ?, ?, 1, ?, ?, 1, ?)`
 

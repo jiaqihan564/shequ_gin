@@ -35,7 +35,7 @@ func (r *HistoryRepository) RecordLoginHistory(userID uint, username, loginIP, u
 	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetUpdateTimeout())
 	defer cancel()
 
-	_, err := r.db.DB.ExecContext(ctx, query, userID, username, time.Now(), loginIP, userAgent, loginStatus, province, city)
+	_, err := r.db.DB.ExecContext(ctx, query, userID, username, time.Now().UTC(), loginIP, userAgent, loginStatus, province, city)
 	if err != nil {
 		r.logger.Error("记录登录历史失败",
 			"userID", userID,
@@ -57,7 +57,7 @@ func (r *HistoryRepository) RecordOperationHistory(userID uint, username, operat
 	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetUpdateTimeout())
 	defer cancel()
 
-	_, err := r.db.DB.ExecContext(ctx, query, userID, username, operationType, operationDesc, time.Now(), ipAddress)
+	_, err := r.db.DB.ExecContext(ctx, query, userID, username, operationType, operationDesc, time.Now().UTC(), ipAddress)
 	if err != nil {
 		r.logger.Error("记录操作历史失败",
 			"userID", userID,
@@ -77,7 +77,7 @@ func (r *HistoryRepository) RecordProfileChange(userID uint, fieldName, oldValue
 	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetUpdateTimeout())
 	defer cancel()
 
-	_, err := r.db.DB.ExecContext(ctx, query, userID, fieldName, oldValue, newValue, time.Now(), ipAddress)
+	_, err := r.db.DB.ExecContext(ctx, query, userID, fieldName, oldValue, newValue, time.Now().UTC(), ipAddress)
 	if err != nil {
 		r.logger.Error("记录资料修改历史失败",
 			"userID", userID,

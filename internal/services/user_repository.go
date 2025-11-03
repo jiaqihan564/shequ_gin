@@ -39,7 +39,7 @@ func (r *UserRepository) BeginTx(ctx context.Context) (*sql.Tx, error) {
 
 // CreateUser 创建用户
 func (r *UserRepository) CreateUser(ctx context.Context, user *models.User) error {
-	start := time.Now()
+	start := time.Now().UTC()
 
 	query := `INSERT INTO user_auth (username, password_hash, email, auth_status, account_status, last_login_time, last_login_ip, created_at, updated_at) 
 			  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
@@ -261,11 +261,14 @@ func (r *UserRepository) GetUserProfile(ctx context.Context, userID uint) (*mode
 
 // UpsertUserProfile 创建或更新扩展资料（昵称/简介）
 func (r *UserRepository) UpsertUserProfile(ctx context.Context, profile *models.UserExtraProfile) error {
-	start := time.Now()
+	start := time.Now().UTC()
 
 	query := `INSERT INTO user_profile (user_id, nickname, bio, avatar_url, created_at, updated_at)
               VALUES (?, ?, ?, COALESCE(?, NULL), NOW(), NOW())
-              ON DUPLICATE KEY UPDATE nickname = VALUES(nickname), bio = VALUES(bio), updated_at = NOW()`
+              ON DUPLICATE KEY UPDATE 
+                nickname = CASE WHEN VALUES(nickname) != '' THEN VALUES(nickname) ELSE nickname END,
+                bio = CASE WHEN VALUES(bio) != '' THEN VALUES(bio) ELSE bio END,
+                updated_at = NOW()`
 
 	ctx, cancel := context.WithTimeout(ctx, r.db.GetUpdateTimeout())
 	defer cancel()
@@ -310,7 +313,7 @@ func (r *UserRepository) UpdateLoginInfo(ctx context.Context, userID uint, login
 	ctx, cancel := context.WithTimeout(ctx, r.db.GetUpdateTimeout())
 	defer cancel()
 
-	result, err := r.db.ExecWithCache(ctx, query, loginTime, loginIP, time.Now(), userID)
+	result, err := r.db.ExecWithCache(ctx, query, loginTime, loginIP, time.Now().UTC(), userID)
 	if err != nil {
 		r.logger.Error("更新登录信息失败", "userID", userID, "error", err.Error())
 		return utils.ErrDatabaseUpdate
@@ -328,7 +331,7 @@ func (r *UserRepository) IncrementFailedLoginCount(ctx context.Context, userID u
 	ctx, cancel := context.WithTimeout(ctx, r.db.GetUpdateTimeout())
 	defer cancel()
 
-	_, err := r.db.ExecWithCache(ctx, query, time.Now(), userID)
+	_, err := r.db.ExecWithCache(ctx, query, time.Now().UTC(), userID)
 	if err != nil {
 		r.logger.Error("更新登录失败次数失败", "userID", userID, "error", err.Error())
 		return utils.ErrDatabaseUpdate
@@ -439,14 +442,14 @@ func (r *UserRepository) CheckEmailExists(ctx context.Context, email string) (bo
 
 // UpdatePassword 更新用户密码
 func (r *UserRepository) UpdatePassword(ctx context.Context, userID uint, newPasswordHash string) error {
-	start := time.Now()
+	start := time.Now().UTC()
 
 	query := `UPDATE user_auth SET password_hash = ?, updated_at = ? WHERE id = ?`
 
 	ctx, cancel := context.WithTimeout(ctx, r.db.GetUpdateTimeout())
 	defer cancel()
 
-	result, err := r.db.ExecWithCache(ctx, query, newPasswordHash, time.Now(), userID)
+	result, err := r.db.ExecWithCache(ctx, query, newPasswordHash, time.Now().UTC(), userID)
 	if err != nil {
 		r.logger.Error("更新密码失败", "userID", userID, "error", err.Error())
 		return utils.ErrDatabaseUpdate
@@ -592,7 +595,7 @@ func (r *UserRepository) MarkPasswordResetTokenAsUsedInTx(ctx context.Context, t
 func (r *UserRepository) UpdatePasswordInTx(ctx context.Context, tx *sql.Tx, userID uint, hashedPassword string) error {
 	query := `UPDATE user_auth SET password_hash = ?, updated_at = ? WHERE id = ?`
 
-	result, err := tx.ExecContext(ctx, query, hashedPassword, time.Now(), userID)
+	result, err := tx.ExecContext(ctx, query, hashedPassword, time.Now().UTC(), userID)
 	if err != nil {
 		r.logger.Error("更新密码失败（事务）", "userID", userID, "error", err.Error())
 		return utils.ErrDatabaseUpdate

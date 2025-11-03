@@ -64,7 +64,7 @@ func (m *UploadManager) InitUpload(ctx context.Context, userID uint, req models.
 	}
 
 	// 创建新的上传记录（如果重复则更新）
-	now := time.Now()
+	now := time.Now().UTC()
 	expiresAt := now.Add(m.expireTime) // 从配置读取过期时间
 
 	insertQuery := `INSERT INTO upload_chunks (upload_id, user_id, file_name, file_size, chunk_size, 
@@ -136,7 +136,7 @@ func (m *UploadManager) UploadChunk(ctx context.Context, uploadID string, chunkI
 
 	newChunksJSON, _ := json.Marshal(uploadedChunks)
 	updateQuery := `UPDATE upload_chunks SET uploaded_chunks = ?, updated_at = ? WHERE upload_id = ?`
-	_, err = m.db.DB.ExecContext(ctx, updateQuery, string(newChunksJSON), time.Now(), uploadID)
+	_, err = m.db.DB.ExecContext(ctx, updateQuery, string(newChunksJSON), time.Now().UTC(), uploadID)
 
 	m.logger.Info("分片上传成功", "uploadID", uploadID, "chunkIndex", chunkIndex, "progress", fmt.Sprintf("%d chunks", len(uploadedChunks)))
 	return err
@@ -166,7 +166,7 @@ func (m *UploadManager) MergeChunks(ctx context.Context, uploadID string) (*mode
 	}
 
 	// 生成最终存储路径
-	now := time.Now()
+	now := time.Now().UTC()
 	storagePath := fmt.Sprintf("resources/%d/%02d/%s_%s", now.Year(), now.Month(), uploadID[:8], chunk.FileName)
 
 	m.logger.Info("开始合并分片", "uploadID", uploadID, "totalChunks", chunk.TotalChunks, "storagePath", storagePath)
@@ -180,7 +180,7 @@ func (m *UploadManager) MergeChunks(ctx context.Context, uploadID string) (*mode
 
 	// 更新状态为已完成
 	updateQuery := `UPDATE upload_chunks SET status = 1, storage_path = ?, updated_at = ? WHERE upload_id = ?`
-	_, err = m.db.DB.ExecContext(ctx, updateQuery, storagePath, time.Now(), uploadID)
+	_, err = m.db.DB.ExecContext(ctx, updateQuery, storagePath, time.Now().UTC(), uploadID)
 	if err != nil {
 		return nil, fmt.Errorf("更新上传状态失败")
 	}
@@ -300,7 +300,7 @@ func (m *UploadManager) CancelUpload(ctx context.Context, uploadID string, userI
 	}
 
 	// 更新状态为已取消
-	_, err = m.db.DB.ExecContext(ctx, `UPDATE upload_chunks SET status = 2, updated_at = ? WHERE upload_id = ?`, time.Now(), uploadID)
+	_, err = m.db.DB.ExecContext(ctx, `UPDATE upload_chunks SET status = 2, updated_at = ? WHERE upload_id = ?`, time.Now().UTC(), uploadID)
 	if err != nil {
 		return fmt.Errorf("取消上传失败")
 	}

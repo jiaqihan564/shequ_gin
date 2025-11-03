@@ -68,7 +68,7 @@ func (r *PrivateMessageRepository) GetOrCreateConversation(ctx context.Context, 
 	}
 
 	// 不存在则创建新会话
-	now := time.Now()
+	now := time.Now().UTC()
 	insertQuery := `
 		INSERT INTO private_conversations (user1_id, user2_id, user1_unread, user2_unread, created_at, updated_at)
 		VALUES (?, ?, 0, 0, ?, ?)
@@ -99,7 +99,7 @@ func (r *PrivateMessageRepository) SendMessage(ctx context.Context, senderID, re
 	}
 
 	// 插入消息
-	now := time.Now()
+	now := time.Now().UTC()
 	insertQuery := `
 		INSERT INTO private_messages (conversation_id, sender_id, receiver_id, content, is_read, created_at)
 		VALUES (?, ?, ?, ?, 0, ?)

@@ -383,15 +383,17 @@ func (h *UploadHandler) UploadResourceImage(c *gin.Context) {
 	}
 	defer file.Close()
 
-	maxSize := int64(h.config.ImageUpload.MaxSizeMB * 1024 * 1024)
-	if header.Size > maxSize {
-		utils.BadRequestResponse(c, fmt.Sprintf("图片大小不能超过%dMB", h.config.ImageUpload.MaxSizeMB))
-		return
-	}
-
+	// 先检查Content-Type（轻量级检查）
 	contentType := header.Header.Get("Content-Type")
 	if !strings.HasPrefix(contentType, "image/") {
 		utils.BadRequestResponse(c, "只能上传图片文件")
+		return
+	}
+
+	// 再检查文件大小
+	maxSize := int64(h.config.ImageUpload.MaxSizeMB * 1024 * 1024)
+	if header.Size > maxSize {
+		utils.BadRequestResponse(c, fmt.Sprintf("图片大小不能超过%dMB", h.config.ImageUpload.MaxSizeMB))
 		return
 	}
 
@@ -430,15 +432,17 @@ func (h *UploadHandler) UploadDocumentImage(c *gin.Context) {
 	}
 	defer file.Close()
 
-	maxSize := int64(h.config.ImageUpload.MaxSizeMB * 1024 * 1024)
-	if header.Size > maxSize {
-		utils.BadRequestResponse(c, fmt.Sprintf("图片大小不能超过%dMB", h.config.ImageUpload.MaxSizeMB))
-		return
-	}
-
+	// 先检查Content-Type（轻量级检查）
 	contentType := header.Header.Get("Content-Type")
 	if !strings.HasPrefix(contentType, "image/") {
 		utils.BadRequestResponse(c, "只能上传图片文件")
+		return
+	}
+
+	// 再检查文件大小
+	maxSize := int64(h.config.ImageUpload.MaxSizeMB * 1024 * 1024)
+	if header.Size > maxSize {
+		utils.BadRequestResponse(c, fmt.Sprintf("图片大小不能超过%dMB", h.config.ImageUpload.MaxSizeMB))
 		return
 	}
 

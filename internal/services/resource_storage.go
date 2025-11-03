@@ -111,7 +111,7 @@ func (s *ResourceStorageService) UploadDocumentImage(ctx context.Context, file i
 	}
 
 	// 构建路径: documents/{year}/{month}/{uuid}_{filename}
-	now := time.Now()
+	now := time.Now().UTC()
 	uniqueID := uuid.New().String()[:8]
 	objectPath := fmt.Sprintf("documents/%d/%02d/%s_%s", now.Year(), now.Month(), uniqueID, filename)
 

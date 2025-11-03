@@ -485,8 +485,8 @@ type MinioAdvancedConfig struct {
 
 // DatabaseQueryAdvancedConfig 数据库查询高级配置
 type DatabaseQueryAdvancedConfig struct {
-	QueryLogTruncateLength  int `yaml:"query_log_truncate_length" json:"query_log_truncate_length"`    // 查询日志截断长度
-	PreparedStmtCacheSize   int `yaml:"prepared_stmt_cache_size" json:"prepared_stmt_cache_size"`      // Prepared Statement 缓存大小限制（默认1000）
+	QueryLogTruncateLength int `yaml:"query_log_truncate_length" json:"query_log_truncate_length"` // 查询日志截断长度
+	PreparedStmtCacheSize  int `yaml:"prepared_stmt_cache_size" json:"prepared_stmt_cache_size"`   // Prepared Statement 缓存大小限制（默认1000）
 }
 
 // StatisticsQueryExtendedConfig 统计查询扩展配置

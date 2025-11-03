@@ -60,7 +60,7 @@ func GetRealtimeMetricsManagerWithConfig(cfg *config.MetricsConfig) *RealtimeMet
 
 		globalRealtimeMetricsManager = &RealtimeMetricsManager{
 			onlineUsers: make(map[uint]time.Time, defaultCfg.OnlineUsersInitialCapacity),
-			startTime:   time.Now(),
+			startTime:   time.Now().UTC(),
 			config:      defaultCfg,
 		}
 
@@ -79,12 +79,12 @@ func (m *RealtimeMetricsManager) RecordUserActivity(userID uint) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.onlineUsers[userID] = time.Now()
+	m.onlineUsers[userID] = time.Now().UTC()
 }
 
 // RecordRequest 记录请求（用于QPS统计）
 func (m *RealtimeMetricsManager) RecordRequest() {
-	currentSecond := time.Now().Unix()
+	currentSecond := time.Now().UTC().Unix()
 	lastSec := atomic.LoadInt64(&m.lastSecond)
 
 	if currentSecond != lastSec {
@@ -103,7 +103,7 @@ func (m *RealtimeMetricsManager) RecordError() {
 	defer m.mu.Unlock()
 
 	// 使用标准的日期时间格式（与config.yaml中的datetime_full格式一致）
-	m.lastErrorTime = time.Now().Format("2006-01-02 15:04:05")
+	m.lastErrorTime = time.Now().UTC().Format("2006-01-02 15:04:05")
 }
 
 // GetOnlineUsers 获取在线用户数
@@ -159,7 +159,7 @@ func (m *RealtimeMetricsManager) cleanupOnlineUsers() {
 
 	for range ticker.C {
 		m.mu.Lock()
-		now := time.Now()
+		now := time.Now().UTC()
 		expireTime := time.Duration(m.config.OnlineUserExpireTime) * time.Minute
 		for userID, lastActive := range m.onlineUsers {
 			// 超过配置的时间无活动，视为离线

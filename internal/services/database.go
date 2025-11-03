@@ -5,7 +5,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"hash/fnv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"gin/internal/config"
@@ -16,36 +18,44 @@ import (
 
 // stmtCacheEntry Prepared Statement 缓存条目（LRU）
 type stmtCacheEntry struct {
-	query   string
-	stmt    *sql.Stmt
-	element *list.Element // 在LRU链表中的位置
+	query      string
+	stmt       *sql.Stmt
+	element    *list.Element // 在LRU链表中的位置
+	lastAccess int64         // 最后访问时间（Unix时间戳）
 }
+
+// stmtCacheShard Prepared Statement缓存分片
+type stmtCacheShard struct {
+	cache   map[string]*stmtCacheEntry
+	lruList *list.List
+	mu      sync.RWMutex
+}
+
+const numShards = 16 // Prepared Statement缓存分片数量
 
 // Database 数据库服务
 type Database struct {
-	DB                 *sql.DB
-	config             *config.DatabaseConfig
-	timeouts           *config.DatabaseTimeoutsConfig
-	queryConfig        *config.DatabaseQueryConfig
-	queryAdvanced      *config.DatabaseQueryAdvancedConfig
-	repositoryTimeouts *config.RepositoryTimeoutsConfig
-	asyncTasksTimeouts *config.AsyncTasksConfig
-	logger             utils.Logger
-	stopMonitor        chan struct{} // 用于停止监控goroutine
-	stmtCache          map[string]*stmtCacheEntry
-	stmtLRUList        *list.List
-	stmtMaxSize        int
-	stmtMutex          sync.RWMutex
-	ctx                context.Context
-	cancel             context.CancelFunc
+	DB                  *sql.DB
+	config              *config.DatabaseConfig
+	timeouts            *config.DatabaseTimeoutsConfig
+	queryConfig         *config.DatabaseQueryConfig
+	queryAdvanced       *config.DatabaseQueryAdvancedConfig
+	repositoryTimeouts  *config.RepositoryTimeoutsConfig
+	asyncTasksTimeouts  *config.AsyncTasksConfig
+	logger              utils.Logger
+	stopMonitor         chan struct{} // 用于停止监控goroutine
+	stmtShards          [numShards]*stmtCacheShard
+	stmtMaxSizePerShard int
+	ctx                 context.Context
+	cancel              context.CancelFunc
 }
 
 // NewDatabase 创建数据库连接
 func NewDatabase(cfg *config.Config) (*Database, error) {
 	logger := utils.GetLogger()
 
-	// 构建数据库连接字符串（使用配置的超时参数）
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=%s&parseTime=True&loc=Local&timeout=%ds&readTimeout=%ds&writeTimeout=%ds&interpolateParams=true",
+	// 构建数据库连接字符串（使用配置的超时参数，时区统一为UTC）
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=%s&parseTime=True&loc=UTC&timeout=%ds&readTimeout=%ds&writeTimeout=%ds&interpolateParams=true",
 		cfg.Database.Username,
 		cfg.Database.Password,
 		cfg.Database.Host,
@@ -87,20 +97,26 @@ func NewDatabase(cfg *config.Config) (*Database, error) {
 
 	// 创建数据库实例
 	dbInstance := &Database{
-		DB:                 db,
-		config:             &cfg.Database,
-		timeouts:           &cfg.DatabaseTimeouts,
-		queryConfig:        &cfg.DatabaseQuery,
-		queryAdvanced:      &cfg.DatabaseQueryAdvanced,
-		repositoryTimeouts: &cfg.RepositoryTimeouts,
-		asyncTasksTimeouts: &cfg.AsyncTasks,
-		logger:             logger,
-		stopMonitor:        make(chan struct{}),
-		stmtCache:          make(map[string]*stmtCacheEntry),
-		stmtLRUList:        list.New(),
-		stmtMaxSize:        stmtMaxSize,
-		ctx:                ctx,
-		cancel:             cancel,
+		DB:                  db,
+		config:              &cfg.Database,
+		timeouts:            &cfg.DatabaseTimeouts,
+		queryConfig:         &cfg.DatabaseQuery,
+		queryAdvanced:       &cfg.DatabaseQueryAdvanced,
+		repositoryTimeouts:  &cfg.RepositoryTimeouts,
+		asyncTasksTimeouts:  &cfg.AsyncTasks,
+		logger:              logger,
+		stopMonitor:         make(chan struct{}),
+		stmtMaxSizePerShard: stmtMaxSize / numShards, // 每个分片的容量
+		ctx:                 ctx,
+		cancel:              cancel,
+	}
+
+	// 初始化所有分片
+	for i := 0; i < numShards; i++ {
+		dbInstance.stmtShards[i] = &stmtCacheShard{
+			cache:   make(map[string]*stmtCacheEntry),
+			lruList: list.New(),
+		}
 	}
 
 	// 启动连接池监控（使用配置的监控间隔）
@@ -187,18 +203,23 @@ func (d *Database) Close() error {
 			d.cancel()
 		}
 
-		// 关闭所有缓存的prepared statements
-		d.stmtMutex.Lock()
-		stmtCount := len(d.stmtCache)
-		for key, entry := range d.stmtCache {
-			if err := entry.stmt.Close(); err != nil {
-				d.logger.Warn("关闭prepared statement失败", "key", key, "error", err.Error())
+		// 关闭所有分片中缓存的prepared statements
+		totalCount := 0
+		for i := 0; i < numShards; i++ {
+			shard := d.stmtShards[i]
+			shard.mu.Lock()
+			shardCount := len(shard.cache)
+			for key, entry := range shard.cache {
+				if err := entry.stmt.Close(); err != nil {
+					d.logger.Warn("关闭prepared statement失败", "shard", i, "key", key, "error", err.Error())
+				}
 			}
+			shard.cache = make(map[string]*stmtCacheEntry)
+			shard.lruList = list.New()
+			shard.mu.Unlock()
+			totalCount += shardCount
 		}
-		d.stmtCache = make(map[string]*stmtCacheEntry)
-		d.stmtLRUList = list.New()
-		d.stmtMutex.Unlock()
-		d.logger.Info("已清理prepared statements", "count", stmtCount)
+		d.logger.Info("已清理prepared statements", "count", totalCount, "shards", numShards)
 
 		// 停止监控goroutine
 		close(d.stopMonitor)
@@ -346,33 +367,41 @@ func contains(s, substr string) bool {
 	return false
 }
 
-// PrepareStmt 获取或创建prepared statement（带LRU缓存，防止内存泄漏）
+// getShardForQuery 获取查询对应的分片
+func (d *Database) getShardForQuery(query string) *stmtCacheShard {
+	hash := fnv.New32a()
+	hash.Write([]byte(query))
+	return d.stmtShards[hash.Sum32()%numShards]
+}
+
+// PrepareStmt 获取或创建prepared statement（使用分片锁，提升并发性能）
 func (d *Database) PrepareStmt(ctx context.Context, query string) (*sql.Stmt, error) {
-	// 先尝试从缓存获取
-	d.stmtMutex.RLock()
-	if entry, exists := d.stmtCache[query]; exists {
-		// 移到LRU链表前端（表示最近使用）
-		d.stmtMutex.RUnlock()
-		d.stmtMutex.Lock()
-		d.stmtLRUList.MoveToFront(entry.element)
-		d.stmtMutex.Unlock()
+	shard := d.getShardForQuery(query)
+
+	// 先尝试从分片缓存获取（只需读锁）
+	shard.mu.RLock()
+	entry, exists := shard.cache[query]
+	shard.mu.RUnlock()
+
+	if exists {
+		// 使用原子操作更新访问时间，无需获取锁
+		atomic.StoreInt64(&entry.lastAccess, time.Now().UTC().Unix())
 		return entry.stmt, nil
 	}
-	d.stmtMutex.RUnlock()
 
 	// 缓存中没有，创建新的prepared statement
-	d.stmtMutex.Lock()
-	defer d.stmtMutex.Unlock()
+	shard.mu.Lock()
+	defer shard.mu.Unlock()
 
 	// 双重检查，防止并发创建
-	if entry, exists := d.stmtCache[query]; exists {
-		d.stmtLRUList.MoveToFront(entry.element)
+	if entry, exists := shard.cache[query]; exists {
+		atomic.StoreInt64(&entry.lastAccess, time.Now().UTC().Unix())
 		return entry.stmt, nil
 	}
 
 	// 检查是否达到最大容量，淘汰最久未使用的
-	if len(d.stmtCache) >= d.stmtMaxSize {
-		d.evictOldestStmt()
+	if len(shard.cache) >= d.stmtMaxSizePerShard {
+		d.evictOldestInShard(shard)
 	}
 
 	stmt, err := d.DB.PrepareContext(ctx, query)
@@ -382,44 +411,58 @@ func (d *Database) PrepareStmt(ctx context.Context, query string) (*sql.Stmt, er
 	}
 
 	// 添加到缓存
-	entry := &stmtCacheEntry{
-		query: query,
-		stmt:  stmt,
+	nowUnix := time.Now().UTC().Unix()
+	entry = &stmtCacheEntry{
+		query:      query,
+		stmt:       stmt,
+		lastAccess: nowUnix,
 	}
-	entry.element = d.stmtLRUList.PushFront(entry)
-	d.stmtCache[query] = entry
+	entry.element = shard.lruList.PushFront(entry)
+	shard.cache[query] = entry
 
 	d.logger.Debug("Prepared statement已缓存",
 		"query", utils.TruncateString(query, 50),
-		"cacheSize", len(d.stmtCache),
-		"maxSize", d.stmtMaxSize)
+		"shardSize", len(shard.cache),
+		"maxPerShard", d.stmtMaxSizePerShard)
 
 	return stmt, nil
 }
 
-// evictOldestStmt 淘汰最久未使用的prepared statement
-func (d *Database) evictOldestStmt() {
-	elem := d.stmtLRUList.Back()
-	if elem == nil {
+// evictOldestInShard 在分片中淘汰最久未访问的prepared statement
+func (d *Database) evictOldestInShard(shard *stmtCacheShard) {
+	if len(shard.cache) == 0 {
 		return
 	}
 
-	entry := elem.Value.(*stmtCacheEntry)
+	var oldestEntry *stmtCacheEntry
+	var oldestTime int64 = (1 << 63) - 1 // MaxInt64
 
-	// 关闭statement
-	if err := entry.stmt.Close(); err != nil {
-		d.logger.Warn("关闭淘汰的prepared statement失败",
-			"query", utils.TruncateString(entry.query, 50),
-			"error", err.Error())
+	// 找到最久未访问的entry
+	for _, entry := range shard.cache {
+		accessTime := atomic.LoadInt64(&entry.lastAccess)
+		if accessTime < oldestTime {
+			oldestTime = accessTime
+			oldestEntry = entry
+		}
 	}
 
-	// 从缓存中删除
-	delete(d.stmtCache, entry.query)
-	d.stmtLRUList.Remove(elem)
+	if oldestEntry != nil {
+		// 关闭statement
+		if err := oldestEntry.stmt.Close(); err != nil {
+			d.logger.Warn("关闭淘汰的prepared statement失败",
+				"query", utils.TruncateString(oldestEntry.query, 50),
+				"error", err.Error())
+		}
 
-	d.logger.Debug("LRU淘汰prepared statement",
-		"query", utils.TruncateString(entry.query, 50),
-		"cacheSize", len(d.stmtCache))
+		// 从缓存中删除
+		delete(shard.cache, oldestEntry.query)
+		shard.lruList.Remove(oldestEntry.element)
+
+		d.logger.Debug("淘汰prepared statement",
+			"query", utils.TruncateString(oldestEntry.query, 50),
+			"lastAccess", time.Unix(oldestTime, 0),
+			"shardSize", len(shard.cache))
+	}
 }
 
 // ExecWithCache 使用缓存的prepared statement执行查询

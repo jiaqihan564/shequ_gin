@@ -53,7 +53,7 @@ func NewDailyMetricsManager(cfg *config.Config) *DailyMetricsManager {
 	}
 
 	return &DailyMetricsManager{
-		currentDate:           time.Now().Format(dateFormat),
+		currentDate:           time.Now().UTC().Format(dateFormat),
 		activeUserIDs:         make(map[uint]bool, activeUsersInitial),      // 从配置读取容量
 		endpointCallCount:     make(map[string]int64, endpointCallsInitial), // 从配置读取容量
 		activeUsersCapacity:   activeUsersInitial,                           // 保存容量用于重置
@@ -172,7 +172,7 @@ func (m *DailyMetricsManager) checkDateAndReset() {
 	if m.config != nil {
 		dateFormat = m.config.DateTimeFormats.DateOnly
 	}
-	today := time.Now().Format(dateFormat)
+	today := time.Now().UTC().Format(dateFormat)
 
 	// 先用读锁检查
 	m.mu.RLock()

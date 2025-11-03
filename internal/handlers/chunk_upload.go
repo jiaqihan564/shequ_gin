@@ -69,6 +69,12 @@ func (h *ChunkUploadHandler) UploadChunk(c *gin.Context) {
 		return
 	}
 
+	// 验证分片索引范围
+	if chunkIndex < 0 || chunkIndex >= 10000 {
+		utils.ValidationErrorResponse(c, "分片索引超出范围（0-9999）")
+		return
+	}
+
 	// 读取分片数据
 	file, err := c.FormFile("chunk")
 	if err != nil {
