@@ -18,17 +18,17 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 	r := gin.New() // 使用 gin.New() 而不是 gin.Default()，手动控制中间件
 
 	// 添加中间件（顺序很重要）
-	r.Use(middleware.PanicRecoveryMiddleware())                                                           // 1. Panic恢复（最先执行）
-	r.Use(middleware.RequestIDMiddleware())                                                               // 2. 请求ID中间件
-	r.Use(middleware.SecurityHeadersMiddleware(cfg))                                                      // 3. 安全响应头（从配置读取）
-	r.Use(middleware.CORSMiddleware(cfg))                                                                 // 4. CORS跨域
-	r.Use(middleware.RequestSizeLimitMiddleware(int64(cfg.Security.MaxRequestSizeMB) * 1024 * 1024))     // 5. 请求体大小限制（从配置读取）
-	r.Use(middleware.FastCompressionMiddleware())                             // 6. 响应压缩（速度优先）
-	r.Use(middleware.LoggerMiddleware(cfg))                                   // 7. 详细日志（包含请求/响应体，从配置读取）
-	r.Use(middleware.PerformanceMiddleware(ctn.DB))                           // 8. 性能追踪（内存、CPU、数据库连接池）
-	r.Use(middleware.MetricsMiddleware())                                     // 9. 性能监控中间件
-	r.Use(middleware.RateLimitMiddleware())                                   // 10. 添加全局限流
-	r.Use(middleware.StatisticsMiddleware(ctn.StatsRepo, ctn.CumulativeRepo)) // 11. 统计中间件（自动收集数据）
+	r.Use(middleware.PanicRecoveryMiddleware())                                                      // 1. Panic恢复（最先执行）
+	r.Use(middleware.RequestIDMiddleware())                                                          // 2. 请求ID中间件
+	r.Use(middleware.SecurityHeadersMiddleware(cfg))                                                 // 3. 安全响应头（从配置读取）
+	r.Use(middleware.CORSMiddleware(cfg))                                                            // 4. CORS跨域
+	r.Use(middleware.RequestSizeLimitMiddleware(int64(cfg.Security.MaxRequestSizeMB) * 1024 * 1024)) // 5. 请求体大小限制（从配置读取）
+	r.Use(middleware.FastCompressionMiddleware())                                                    // 6. 响应压缩（速度优先）
+	r.Use(middleware.LoggerMiddleware(cfg))                                                          // 7. 详细日志（包含请求/响应体，从配置读取）
+	r.Use(middleware.PerformanceMiddleware(ctn.DB))                                                  // 8. 性能追踪（内存、CPU、数据库连接池）
+	r.Use(middleware.MetricsMiddleware())                                                            // 9. 性能监控中间件
+	r.Use(middleware.RateLimitMiddleware())                                                          // 10. 添加全局限流
+	r.Use(middleware.StatisticsMiddleware(ctn.StatsRepo, ctn.CumulativeRepo))                        // 11. 统计中间件（自动收集数据）
 
 	// 初始化处理器
 	uploadMaxBytes := int64(cfg.Assets.MaxAvatarSizeMB) * 1024 * 1024
@@ -125,8 +125,8 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 	api := r.Group("/api")
 	{
 		// 用户认证相关路由（使用专门的限流）
-		api.POST("/auth/register", middleware.RegisterRateLimitMiddleware(cfg), authHandler.Register)
-		api.POST("/auth/login", middleware.LoginRateLimitMiddleware(cfg), authHandler.Login)
+		api.POST("/auth/register", middleware.RegisterRateLimitMiddleware(), authHandler.Register)
+		api.POST("/auth/login", middleware.LoginRateLimitMiddleware(), authHandler.Login)
 		api.POST("/auth/forgot-password", authHandler.ForgotPassword) // 忘记密码
 		api.POST("/auth/reset-password", authHandler.ResetPassword)   // 重置密码
 

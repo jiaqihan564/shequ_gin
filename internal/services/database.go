@@ -1,6 +1,7 @@
 package services
 
 import (
+	"container/list"
 	"context"
 	"database/sql"
 	"fmt"
@@ -13,6 +14,13 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 )
 
+// stmtCacheEntry Prepared Statement 缓存条目（LRU）
+type stmtCacheEntry struct {
+	query   string
+	stmt    *sql.Stmt
+	element *list.Element // 在LRU链表中的位置
+}
+
 // Database 数据库服务
 type Database struct {
 	DB                 *sql.DB
@@ -24,7 +32,9 @@ type Database struct {
 	asyncTasksTimeouts *config.AsyncTasksConfig
 	logger             utils.Logger
 	stopMonitor        chan struct{} // 用于停止监控goroutine
-	stmtCache          map[string]*sql.Stmt
+	stmtCache          map[string]*stmtCacheEntry
+	stmtLRUList        *list.List
+	stmtMaxSize        int
 	stmtMutex          sync.RWMutex
 	ctx                context.Context
 	cancel             context.CancelFunc
@@ -69,6 +79,12 @@ func NewDatabase(cfg *config.Config) (*Database, error) {
 	// 创建上下文
 	ctx, cancel := context.WithCancel(context.Background())
 
+	// 从配置读取 Prepared Statement 缓存大小限制（默认1000）
+	stmtMaxSize := 1000
+	if cfg.DatabaseQueryAdvanced.PreparedStmtCacheSize > 0 {
+		stmtMaxSize = cfg.DatabaseQueryAdvanced.PreparedStmtCacheSize
+	}
+
 	// 创建数据库实例
 	dbInstance := &Database{
 		DB:                 db,
@@ -80,7 +96,9 @@ func NewDatabase(cfg *config.Config) (*Database, error) {
 		asyncTasksTimeouts: &cfg.AsyncTasks,
 		logger:             logger,
 		stopMonitor:        make(chan struct{}),
-		stmtCache:          make(map[string]*sql.Stmt),
+		stmtCache:          make(map[string]*stmtCacheEntry),
+		stmtLRUList:        list.New(),
+		stmtMaxSize:        stmtMaxSize,
 		ctx:                ctx,
 		cancel:             cancel,
 	}
@@ -172,12 +190,13 @@ func (d *Database) Close() error {
 		// 关闭所有缓存的prepared statements
 		d.stmtMutex.Lock()
 		stmtCount := len(d.stmtCache)
-		for key, stmt := range d.stmtCache {
-			if err := stmt.Close(); err != nil {
+		for key, entry := range d.stmtCache {
+			if err := entry.stmt.Close(); err != nil {
 				d.logger.Warn("关闭prepared statement失败", "key", key, "error", err.Error())
 			}
 		}
-		d.stmtCache = make(map[string]*sql.Stmt)
+		d.stmtCache = make(map[string]*stmtCacheEntry)
+		d.stmtLRUList = list.New()
 		d.stmtMutex.Unlock()
 		d.logger.Info("已清理prepared statements", "count", stmtCount)
 
@@ -327,13 +346,17 @@ func contains(s, substr string) bool {
 	return false
 }
 
-// PrepareStmt 获取或创建prepared statement（带缓存）
+// PrepareStmt 获取或创建prepared statement（带LRU缓存，防止内存泄漏）
 func (d *Database) PrepareStmt(ctx context.Context, query string) (*sql.Stmt, error) {
 	// 先尝试从缓存获取
 	d.stmtMutex.RLock()
-	if stmt, exists := d.stmtCache[query]; exists {
+	if entry, exists := d.stmtCache[query]; exists {
+		// 移到LRU链表前端（表示最近使用）
 		d.stmtMutex.RUnlock()
-		return stmt, nil
+		d.stmtMutex.Lock()
+		d.stmtLRUList.MoveToFront(entry.element)
+		d.stmtMutex.Unlock()
+		return entry.stmt, nil
 	}
 	d.stmtMutex.RUnlock()
 
@@ -342,8 +365,14 @@ func (d *Database) PrepareStmt(ctx context.Context, query string) (*sql.Stmt, er
 	defer d.stmtMutex.Unlock()
 
 	// 双重检查，防止并发创建
-	if stmt, exists := d.stmtCache[query]; exists {
-		return stmt, nil
+	if entry, exists := d.stmtCache[query]; exists {
+		d.stmtLRUList.MoveToFront(entry.element)
+		return entry.stmt, nil
+	}
+
+	// 检查是否达到最大容量，淘汰最久未使用的
+	if len(d.stmtCache) >= d.stmtMaxSize {
+		d.evictOldestStmt()
 	}
 
 	stmt, err := d.DB.PrepareContext(ctx, query)
@@ -352,8 +381,45 @@ func (d *Database) PrepareStmt(ctx context.Context, query string) (*sql.Stmt, er
 		return nil, err
 	}
 
-	d.stmtCache[query] = stmt
+	// 添加到缓存
+	entry := &stmtCacheEntry{
+		query: query,
+		stmt:  stmt,
+	}
+	entry.element = d.stmtLRUList.PushFront(entry)
+	d.stmtCache[query] = entry
+
+	d.logger.Debug("Prepared statement已缓存",
+		"query", utils.TruncateString(query, 50),
+		"cacheSize", len(d.stmtCache),
+		"maxSize", d.stmtMaxSize)
+
 	return stmt, nil
+}
+
+// evictOldestStmt 淘汰最久未使用的prepared statement
+func (d *Database) evictOldestStmt() {
+	elem := d.stmtLRUList.Back()
+	if elem == nil {
+		return
+	}
+
+	entry := elem.Value.(*stmtCacheEntry)
+
+	// 关闭statement
+	if err := entry.stmt.Close(); err != nil {
+		d.logger.Warn("关闭淘汰的prepared statement失败",
+			"query", utils.TruncateString(entry.query, 50),
+			"error", err.Error())
+	}
+
+	// 从缓存中删除
+	delete(d.stmtCache, entry.query)
+	d.stmtLRUList.Remove(elem)
+
+	d.logger.Debug("LRU淘汰prepared statement",
+		"query", utils.TruncateString(entry.query, 50),
+		"cacheSize", len(d.stmtCache))
 }
 
 // ExecWithCache 使用缓存的prepared statement执行查询

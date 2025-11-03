@@ -157,6 +157,17 @@ func main() {
 		logger.Info("服务器已优雅关闭")
 	}
 
+	// 关闭限流器（释放goroutine和内存）
+	logger.Info("正在关闭限流器...")
+	middleware.ShutdownRateLimiters()
+
+	// 关闭Worker Pool
+	logger.Info("正在关闭Worker Pool...")
+	pool := utils.GetGlobalPool()
+	if err := pool.Shutdown(10 * time.Second); err != nil {
+		logger.Warn("Worker Pool关闭超时", "error", err.Error())
+	}
+
 	// 关闭日志（flush 异步队列）
 	logger.Info("正在关闭日志系统...")
 	if err := utils.CloseLogger(); err != nil {

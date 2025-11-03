@@ -59,9 +59,10 @@ type Client struct {
 	avatar          string
 	ipAddress       string    // Client IP address
 	closeOnce       sync.Once // Ensures connection is closed only once
+	channelClosed   bool      // Track if send channel is closed
 	lastMessageTime time.Time // Last message timestamp for rate limiting
 	messageCount    int       // Message count in current time window
-	mu              sync.Mutex // Protects rate limiting fields
+	mu              sync.Mutex // Protects rate limiting fields and channelClosed
 }
 
 // close safely closes the WebSocket connection exactly once
@@ -69,6 +70,17 @@ func (c *Client) close() {
 	c.closeOnce.Do(func() {
 		c.conn.Close()
 	})
+}
+
+// closeSendChannel safely closes the send channel, preventing panic from double-close
+func (c *Client) closeSendChannel() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if !c.channelClosed {
+		close(c.send)
+		c.channelClosed = true
+	}
 }
 
 // ConnectionHub manages all active WebSocket connections
@@ -126,7 +138,7 @@ func (h *ConnectionHub) run() {
 
 		// Close old connection outside the lock (if exists)
 		if oldClient != nil {
-			close(oldClient.send)
+			oldClient.closeSendChannel() // 使用安全的关闭方法，防止panic
 			oldClient.close()
 			h.logger.Info("Old connection closed", "userID", client.userID)
 		}
@@ -140,9 +152,11 @@ func (h *ConnectionHub) run() {
 			// Prevents closing already-closed channels when old connections disconnect
 			if currentClient, exists := h.clients[client.userID]; exists && currentClient == client {
 				delete(h.clients, client.userID)
-				close(client.send)
+				h.mu.Unlock()
+				client.closeSendChannel() // 使用安全的关闭方法，防止panic
+			} else {
+				h.mu.Unlock()
 			}
-			h.mu.Unlock()
 
 			h.logger.Info("Client disconnected", "userID", client.userID)
 			h.broadcastOnlineCount()

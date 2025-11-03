@@ -212,25 +212,80 @@ func (rl *LRURateLimiter) Size() int {
 	return len(rl.limiters)
 }
 
-// 全局IP限流器（使用LRU优化）
-var globalIPRateLimiter *LRURateLimiter
+// 全局限流器（使用LRU优化）
+var (
+	globalIPRateLimiter       *LRURateLimiter
+	globalLoginRateLimiter    *LRURateLimiter
+	globalRegisterRateLimiter *LRURateLimiter
+	rateLimiterOnce           sync.Once
+)
 
-// InitRateLimiter 初始化限流器
+// InitRateLimiter 初始化所有限流器（应在应用启动时调用一次）
 func InitRateLimiter(cfg *config.Config) {
-	// 从配置读取限流参数
-	capacity := cfg.RateLimiter.Global.Capacity
-	requestsPerMinute := cfg.RateLimiter.Global.RequestsPerMinute
-	maxSize := cfg.RateLimiter.Global.MaxCacheSize
-	refillRate := time.Minute / time.Duration(requestsPerMinute)
+	rateLimiterOnce.Do(func() {
+		logger := utils.GetLogger()
 
-	cleanupInterval := cfg.RateLimiter.CleanupInterval
-	expireTime := cfg.RateLimiter.EntryExpireTime
+		// 1. 全局IP限流器
+		capacity := cfg.RateLimiter.Global.Capacity
+		requestsPerMinute := cfg.RateLimiter.Global.RequestsPerMinute
+		maxSize := cfg.RateLimiter.Global.MaxCacheSize
+		refillRate := time.Minute / time.Duration(requestsPerMinute)
+		cleanupInterval := cfg.RateLimiter.CleanupInterval
+		expireTime := cfg.RateLimiter.EntryExpireTime
 
-	globalIPRateLimiter = NewLRURateLimiter(capacity, refillRate, maxSize, cleanupInterval, expireTime)
-	utils.GetLogger().Info("限流器初始化完成（LRU）",
-		"capacity", capacity,
-		"requestsPerMinute", requestsPerMinute,
-		"maxSize", maxSize)
+		globalIPRateLimiter = NewLRURateLimiter(capacity, refillRate, maxSize, cleanupInterval, expireTime)
+		logger.Info("全局限流器初始化完成",
+			"capacity", capacity,
+			"requestsPerMinute", requestsPerMinute,
+			"maxSize", maxSize)
+
+		// 2. 登录限流器
+		loginCapacity := cfg.RateLimiter.Login.Capacity
+		loginRPM := cfg.RateLimiter.Login.RequestsPerMinute
+		loginMaxSize := cfg.RateLimiter.Login.MaxCacheSize
+		loginRefillRate := time.Minute / time.Duration(loginRPM)
+
+		globalLoginRateLimiter = NewLRURateLimiter(loginCapacity, loginRefillRate, loginMaxSize, cleanupInterval, expireTime)
+		logger.Info("登录限流器初始化完成",
+			"capacity", loginCapacity,
+			"requestsPerMinute", loginRPM,
+			"maxSize", loginMaxSize)
+
+		// 3. 注册限流器
+		regCapacity := cfg.RateLimiter.Register.Capacity
+		regRPM := cfg.RateLimiter.Register.RequestsPerMinute
+		regMaxSize := cfg.RateLimiter.Register.MaxCacheSize
+		regRefillRate := time.Minute / time.Duration(regRPM)
+
+		globalRegisterRateLimiter = NewLRURateLimiter(regCapacity, regRefillRate, regMaxSize, cleanupInterval, expireTime)
+		logger.Info("注册限流器初始化完成",
+			"capacity", regCapacity,
+			"requestsPerMinute", regRPM,
+			"maxSize", regMaxSize)
+
+		logger.Info("所有限流器初始化完成（LRU）")
+	})
+}
+
+// ShutdownRateLimiters 优雅关闭所有限流器，释放资源
+func ShutdownRateLimiters() {
+	logger := utils.GetLogger()
+	logger.Info("开始关闭所有限流器")
+
+	if globalIPRateLimiter != nil {
+		globalIPRateLimiter.Stop()
+		logger.Info("全局限流器已关闭")
+	}
+	if globalLoginRateLimiter != nil {
+		globalLoginRateLimiter.Stop()
+		logger.Info("登录限流器已关闭")
+	}
+	if globalRegisterRateLimiter != nil {
+		globalRegisterRateLimiter.Stop()
+		logger.Info("注册限流器已关闭")
+	}
+
+	logger.Info("所有限流器已关闭")
 }
 
 // RateLimitMiddleware 限流中间件
@@ -255,22 +310,19 @@ func RateLimitMiddleware() gin.HandlerFunc {
 	}
 }
 
-// LoginRateLimitMiddleware 登录限流中间件
-func LoginRateLimitMiddleware(cfg *config.Config) gin.HandlerFunc {
-	// 从配置读取登录限流参数
-	capacity := cfg.RateLimiter.Login.Capacity
-	requestsPerMinute := cfg.RateLimiter.Login.RequestsPerMinute
-	maxSize := cfg.RateLimiter.Login.MaxCacheSize
-	refillRate := time.Minute / time.Duration(requestsPerMinute)
-	cleanupInterval := cfg.RateLimiter.CleanupInterval
-	expireTime := cfg.RateLimiter.EntryExpireTime
-
-	loginLimiter := NewLRURateLimiter(capacity, refillRate, maxSize, cleanupInterval, expireTime)
-
+// LoginRateLimitMiddleware 登录限流中间件（使用全局限流器，防止内存泄漏）
+func LoginRateLimitMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if globalLoginRateLimiter == nil {
+			utils.GetLogger().Error("登录限流器未初始化")
+			// 限流器未初始化时不阻止请求，但记录错误
+			c.Next()
+			return
+		}
+
 		clientIP := c.ClientIP()
 
-		if !loginLimiter.Allow(clientIP) {
+		if !globalLoginRateLimiter.Allow(clientIP) {
 			utils.TooManyRequestsResponse(c, "登录尝试次数过多，请稍后再试")
 			c.Abort()
 			return
@@ -280,22 +332,19 @@ func LoginRateLimitMiddleware(cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-// RegisterRateLimitMiddleware 注册限流中间件
-func RegisterRateLimitMiddleware(cfg *config.Config) gin.HandlerFunc {
-	// 从配置读取注册限流参数
-	capacity := cfg.RateLimiter.Register.Capacity
-	requestsPerMinute := cfg.RateLimiter.Register.RequestsPerMinute
-	maxSize := cfg.RateLimiter.Register.MaxCacheSize
-	refillRate := time.Minute / time.Duration(requestsPerMinute)
-	cleanupInterval := cfg.RateLimiter.CleanupInterval
-	expireTime := cfg.RateLimiter.EntryExpireTime
-
-	registerLimiter := NewLRURateLimiter(capacity, refillRate, maxSize, cleanupInterval, expireTime)
-
+// RegisterRateLimitMiddleware 注册限流中间件（使用全局限流器，防止内存泄漏）
+func RegisterRateLimitMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if globalRegisterRateLimiter == nil {
+			utils.GetLogger().Error("注册限流器未初始化")
+			// 限流器未初始化时不阻止请求，但记录错误
+			c.Next()
+			return
+		}
+
 		clientIP := c.ClientIP()
 
-		if !registerLimiter.Allow(clientIP) {
+		if !globalRegisterRateLimiter.Allow(clientIP) {
 			utils.TooManyRequestsResponse(c, "注册尝试次数过多，请稍后再试")
 			c.Abort()
 			return
