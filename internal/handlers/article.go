@@ -78,6 +78,11 @@ func (h *ArticleHandler) CreateArticle(c *gin.Context) {
 	}
 
 	h.logger.Info("创建文章成功", "articleID", article.ID, "userID", userID, "title", article.Title)
+
+	// 失效相关缓存
+	h.cacheSvc.InvalidateArticleCategories()
+	h.cacheSvc.InvalidateArticleTags()
+
 	utils.SuccessResponse(c, 201, "创建成功", gin.H{
 		"article_id": article.ID,
 	})
@@ -184,6 +189,12 @@ func (h *ArticleHandler) UpdateArticle(c *gin.Context) {
 	}
 
 	h.logger.Info("更新文章成功", "articleID", articleID, "userID", userID)
+
+	// 失效相关缓存
+	h.cacheSvc.InvalidateArticleDetail(uint(articleID))
+	h.cacheSvc.InvalidateArticleCategories()
+	h.cacheSvc.InvalidateArticleTags()
+
 	utils.SuccessResponse(c, 200, "更新成功", nil)
 }
 
@@ -211,6 +222,12 @@ func (h *ArticleHandler) DeleteArticle(c *gin.Context) {
 	}
 
 	h.logger.Info("删除文章成功", "articleID", articleID, "userID", userID)
+
+	// 失效相关缓存
+	h.cacheSvc.InvalidateArticleDetail(uint(articleID))
+	h.cacheSvc.InvalidateArticleCategories()
+	h.cacheSvc.InvalidateArticleTags()
+
 	utils.SuccessResponse(c, 200, "删除成功", nil)
 }
 
@@ -238,6 +255,10 @@ func (h *ArticleHandler) ToggleArticleLike(c *gin.Context) {
 	}
 
 	h.logger.Info("切换文章点赞成功", "articleID", articleID, "userID", userID, "isLiked", isLiked)
+
+	// 失效文章详情缓存（点赞数已变化）
+	h.cacheSvc.InvalidateArticleDetail(uint(articleID))
+
 	utils.SuccessResponse(c, 200, "操作成功", gin.H{
 		"is_liked": isLiked,
 	})
@@ -284,6 +305,10 @@ func (h *ArticleHandler) CreateComment(c *gin.Context) {
 	}
 
 	h.logger.Info("创建评论成功", "commentID", comment.ID, "articleID", articleID, "userID", userID)
+
+	// 失效文章详情缓存（评论数已变化）
+	h.cacheSvc.InvalidateArticleDetail(uint(articleID))
+
 	utils.SuccessResponse(c, 201, "评论成功", gin.H{
 		"comment_id": comment.ID,
 	})
