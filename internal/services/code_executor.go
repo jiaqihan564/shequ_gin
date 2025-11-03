@@ -250,11 +250,11 @@ func NewPistonCodeExecutor(apiURL string, timeout time.Duration, maxIdleConns in
 		client: &http.Client{
 			Timeout: timeout,
 			Transport: &http.Transport{
-				MaxIdleConns:        maxIdleConns,                                       // 最大空闲连接数
-				MaxIdleConnsPerHost: maxIdleConnsPerHost,                                // 每个host的最大空闲连接
-				IdleConnTimeout:     time.Duration(idleConnTimeout) * time.Second,       // 空闲连接超时
-				DisableCompression:  false,                                              // 启用压缩
-				DisableKeepAlives:   false,                                              // 启用keep-alive
+				MaxIdleConns:        maxIdleConns,                                 // 最大空闲连接数
+				MaxIdleConnsPerHost: maxIdleConnsPerHost,                          // 每个host的最大空闲连接
+				IdleConnTimeout:     time.Duration(idleConnTimeout) * time.Second, // 空闲连接超时
+				DisableCompression:  false,                                        // 启用压缩
+				DisableKeepAlives:   false,                                        // 启用keep-alive
 			},
 		},
 	}
@@ -271,13 +271,12 @@ func (e *PistonCodeExecutor) Execute(ctx context.Context, language, code, stdin 
 	}
 
 	// 对JVM语言进行中文预处理（Unicode转义）
-	var chineseProcessed bool
 	if language == "java" || language == "kotlin" || language == "scala" {
 		processed, hasChinese := preprocessJVMCode(code, language)
 		if hasChinese {
+			logger.Info("JVM代码包含中文，转义前", "language", language, "original", code)
 			code = processed
-			chineseProcessed = true
-			logger.Info("JVM代码包含中文，已转义为Unicode", "language", language)
+			logger.Info("JVM代码包含中文，已转义为Unicode", "language", language, "processed", code)
 		}
 	}
 
@@ -362,10 +361,6 @@ func (e *PistonCodeExecutor) Execute(ctx context.Context, language, code, stdin 
 	if pistonResp.Run.Code == 0 && pistonResp.Run.Stderr == "" {
 		result.Status = "success"
 		result.Output = pistonResp.Run.Stdout
-		// 如果进行了中文处理，添加提示
-		if chineseProcessed {
-			result.Output = "✓ 中文字符已自动转换为Unicode编码\n\n" + result.Output
-		}
 	} else if pistonResp.Run.Signal != "" {
 		result.Status = "timeout"
 		result.Error = fmt.Sprintf("执行被信号终止: %s", pistonResp.Run.Signal)
@@ -428,22 +423,22 @@ func preprocessJVMCode(code string, language string) (string, bool) {
 	// Java/Kotlin/Scala 都使用双引号字符串
 	// 使用正则表达式匹配未转义的双引号字符串
 	stringPattern := regexp.MustCompile(`"([^"\\]*(\\.[^"\\]*)*)"`)
-	
+
 	hasChinese := false
 	processedCode := stringPattern.ReplaceAllStringFunc(code, func(match string) string {
 		if len(match) < 2 {
 			return match
 		}
-		
-		content := match[1:len(match)-1] // 去掉引号
+
+		content := match[1 : len(match)-1] // 去掉引号
 		if !containsChinese(content) {
 			return match
 		}
-		
+
 		hasChinese = true
 		escaped := escapeChineseToUnicode(content)
 		return `"` + escaped + `"`
 	})
-	
+
 	return processedCode, hasChinese
 }
