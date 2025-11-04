@@ -35,7 +35,7 @@ database:
 
 # JWT配置
 jwt:
-  secret_key: "your_secret_key_change_this_in_production"
+  secret_key: "3utnrQNHKL/XYYKyApJIRw5+Yz5/IKnxVW9RZjjky6s4WWEVwQArx7iNE2GLYV9L"
   expire_hours: 24
   issuer: "community-api"
 

@@ -54,6 +54,17 @@ func main() {
 		"numCPU", runtime.NumCPU(),
 		"GOMAXPROCS", runtime.GOMAXPROCS(0))
 
+	// 安全检查：检测JWT密钥是否为默认值
+	defaultJWTKey := "your_secret_key_change_this_in_production"
+	if cfg.JWT.SecretKey == defaultJWTKey {
+		logger.Error("安全警告：JWT密钥使用默认值！",
+			"message", "请在配置文件中修改JWT密钥，否则应用存在严重安全风险")
+		if cfg.Server.Mode == "release" {
+			logger.Fatal("生产环境禁止使用默认JWT密钥，应用拒绝启动")
+		}
+		logger.Warn("开发/测试环境检测到默认JWT密钥，建议立即修改")
+	}
+
 	// 初始化数据库连接
 	db, err := services.NewDatabase(cfg)
 	if err != nil {

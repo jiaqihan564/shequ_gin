@@ -43,7 +43,8 @@ type Database struct {
 	repositoryTimeouts  *config.RepositoryTimeoutsConfig
 	asyncTasksTimeouts  *config.AsyncTasksConfig
 	logger              utils.Logger
-	stopMonitor         chan struct{} // 用于停止监控goroutine
+	stopMonitor         chan struct{}  // 用于停止监控goroutine
+	monitorWg           sync.WaitGroup // 等待监控goroutine退出
 	stmtShards          [numShards]*stmtCacheShard
 	stmtMaxSizePerShard int
 	ctx                 context.Context
@@ -120,7 +121,9 @@ func NewDatabase(cfg *config.Config) (*Database, error) {
 	}
 
 	// 启动连接池监控（使用配置的监控间隔）
+	dbInstance.monitorWg.Add(1)
 	go func() {
+		defer dbInstance.monitorWg.Done()
 		ticker := time.NewTicker(time.Duration(cfg.DatabaseTimeouts.PoolMonitorInterval) * time.Minute)
 		defer ticker.Stop()
 		for {
@@ -221,10 +224,11 @@ func (d *Database) Close() error {
 		}
 		d.logger.Info("已清理prepared statements", "count", totalCount, "shards", numShards)
 
-		// 停止监控goroutine
+		// 停止监控goroutine并等待其退出
 		close(d.stopMonitor)
-		// 等待一小段时间让goroutine退出
-		time.Sleep(time.Duration(d.queryConfig.RetryWaitMS) * time.Millisecond)
+		d.logger.Info("等待监控goroutine退出...")
+		d.monitorWg.Wait()
+		d.logger.Info("监控goroutine已安全退出")
 
 		// 关闭数据库连接
 		if err := d.DB.Close(); err != nil {
@@ -429,40 +433,36 @@ func (d *Database) PrepareStmt(ctx context.Context, query string) (*sql.Stmt, er
 }
 
 // evictOldestInShard 在分片中淘汰最久未访问的prepared statement
+// 优化：使用LRU链表，O(1)时间复杂度
 func (d *Database) evictOldestInShard(shard *stmtCacheShard) {
-	if len(shard.cache) == 0 {
+	if shard.lruList.Len() == 0 {
 		return
 	}
 
-	var oldestEntry *stmtCacheEntry
-	var oldestTime int64 = (1 << 63) - 1 // MaxInt64
-
-	// 找到最久未访问的entry
-	for _, entry := range shard.cache {
-		accessTime := atomic.LoadInt64(&entry.lastAccess)
-		if accessTime < oldestTime {
-			oldestTime = accessTime
-			oldestEntry = entry
-		}
+	// 从LRU链表尾部获取最旧的条目（O(1)操作）
+	elem := shard.lruList.Back()
+	if elem == nil {
+		return
 	}
 
-	if oldestEntry != nil {
-		// 关闭statement
-		if err := oldestEntry.stmt.Close(); err != nil {
-			d.logger.Warn("关闭淘汰的prepared statement失败",
-				"query", utils.TruncateString(oldestEntry.query, 50),
-				"error", err.Error())
-		}
+	oldestEntry := elem.Value.(*stmtCacheEntry)
 
-		// 从缓存中删除
-		delete(shard.cache, oldestEntry.query)
-		shard.lruList.Remove(oldestEntry.element)
-
-		d.logger.Debug("淘汰prepared statement",
+	// 关闭statement
+	if err := oldestEntry.stmt.Close(); err != nil {
+		d.logger.Warn("关闭淘汰的prepared statement失败",
 			"query", utils.TruncateString(oldestEntry.query, 50),
-			"lastAccess", time.Unix(oldestTime, 0),
-			"shardSize", len(shard.cache))
+			"error", err.Error())
 	}
+
+	// 从缓存中删除
+	delete(shard.cache, oldestEntry.query)
+	shard.lruList.Remove(elem)
+
+	accessTime := atomic.LoadInt64(&oldestEntry.lastAccess)
+	d.logger.Debug("淘汰prepared statement",
+		"query", utils.TruncateString(oldestEntry.query, 50),
+		"lastAccess", time.Unix(accessTime, 0),
+		"shardSize", len(shard.cache))
 }
 
 // ExecWithCache 使用缓存的prepared statement执行查询

@@ -114,10 +114,10 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 				taskID := fmt.Sprintf("avatar_history_%d_%d", userID, time.Now().Unix())
 				_ = utils.SubmitTask(taskID, func(taskCtx context.Context) error {
 					h.historyRepo.RecordProfileChange(userID, "avatar", oldAvatarURL, url, reqCtx.ClientIP)
-				h.historyRepo.RecordOperationHistory(userID, username, "修改头像",
-					fmt.Sprintf("上传新头像: %s", fileHeader.Filename), reqCtx.ClientIP)
-				return nil
-			}, time.Duration(h.config.AsyncTasks.UploadHistoryTimeout)*time.Second)
+					h.historyRepo.RecordOperationHistory(userID, username, "修改头像",
+						fmt.Sprintf("上传新头像: %s", fileHeader.Filename), reqCtx.ClientIP)
+					return nil
+				}, time.Duration(h.config.AsyncTasks.UploadHistoryTimeout)*time.Second)
 			}
 		}
 	}
@@ -383,17 +383,20 @@ func (h *UploadHandler) UploadResourceImage(c *gin.Context) {
 	}
 	defer file.Close()
 
-	// 先检查Content-Type（轻量级检查）
-	contentType := header.Header.Get("Content-Type")
-	if !strings.HasPrefix(contentType, "image/") {
-		utils.BadRequestResponse(c, "只能上传图片文件")
-		return
-	}
-
-	// 再检查文件大小
+	// 使用FileValidator进行完整验证（包括magic number）
 	maxSize := int64(h.config.ImageUpload.MaxSizeMB * 1024 * 1024)
-	if header.Size > maxSize {
-		utils.BadRequestResponse(c, fmt.Sprintf("图片大小不能超过%dMB", h.config.ImageUpload.MaxSizeMB))
+	validator := utils.NewFileValidator(maxSize, []string{
+		"image/png", "image/jpeg", "image/gif", "image/webp",
+	})
+
+	if err := validator.Validate(header); err != nil {
+		h.logger.Warn("文件验证失败", "filename", header.Filename, "error", err.Error())
+		statusCode := utils.GetHTTPStatusCode(err)
+		if statusCode == 413 {
+			utils.BadRequestResponse(c, fmt.Sprintf("图片大小不能超过%dMB", h.config.ImageUpload.MaxSizeMB))
+		} else {
+			utils.BadRequestResponse(c, "只能上传PNG、JPEG、GIF或WebP格式的图片")
+		}
 		return
 	}
 
@@ -432,17 +435,20 @@ func (h *UploadHandler) UploadDocumentImage(c *gin.Context) {
 	}
 	defer file.Close()
 
-	// 先检查Content-Type（轻量级检查）
-	contentType := header.Header.Get("Content-Type")
-	if !strings.HasPrefix(contentType, "image/") {
-		utils.BadRequestResponse(c, "只能上传图片文件")
-		return
-	}
-
-	// 再检查文件大小
+	// 使用FileValidator进行完整验证（包括magic number）
 	maxSize := int64(h.config.ImageUpload.MaxSizeMB * 1024 * 1024)
-	if header.Size > maxSize {
-		utils.BadRequestResponse(c, fmt.Sprintf("图片大小不能超过%dMB", h.config.ImageUpload.MaxSizeMB))
+	validator := utils.NewFileValidator(maxSize, []string{
+		"image/png", "image/jpeg", "image/gif", "image/webp",
+	})
+
+	if err := validator.Validate(header); err != nil {
+		h.logger.Warn("文件验证失败", "filename", header.Filename, "error", err.Error())
+		statusCode := utils.GetHTTPStatusCode(err)
+		if statusCode == 413 {
+			utils.BadRequestResponse(c, fmt.Sprintf("图片大小不能超过%dMB", h.config.ImageUpload.MaxSizeMB))
+		} else {
+			utils.BadRequestResponse(c, "只能上传PNG、JPEG、GIF或WebP格式的图片")
+		}
 		return
 	}
 

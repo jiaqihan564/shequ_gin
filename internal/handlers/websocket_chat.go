@@ -28,14 +28,14 @@ func createUpgrader(allowedOrigins []string, cfg *config.WebSocketConfig, logger
 			if origin == "" {
 				return true
 			}
-			
+
 			// Check against allowed origins
 			for _, allowed := range allowedOrigins {
 				if allowed == "*" || allowed == origin {
 					return true
 				}
 			}
-			
+
 			logger.Warn("WebSocket origin not allowed", "origin", origin, "allowed", allowedOrigins)
 			return false
 		},
@@ -57,11 +57,11 @@ type Client struct {
 	username        string
 	nickname        string
 	avatar          string
-	ipAddress       string    // Client IP address
-	closeOnce       sync.Once // Ensures connection is closed only once
-	channelClosed   bool      // Track if send channel is closed
-	lastMessageTime time.Time // Last message timestamp for rate limiting
-	messageCount    int       // Message count in current time window
+	ipAddress       string     // Client IP address
+	closeOnce       sync.Once  // Ensures connection is closed only once
+	channelClosed   bool       // Track if send channel is closed
+	lastMessageTime time.Time  // Last message timestamp for rate limiting
+	messageCount    int        // Message count in current time window
 	mu              sync.Mutex // Protects rate limiting fields and channelClosed
 }
 
@@ -122,49 +122,49 @@ func InitConnectionHub(chatRepo *services.ChatRepository, userRepo *services.Use
 func (h *ConnectionHub) run() {
 	for {
 		select {
-	case client := <-h.register:
-		h.mu.Lock()
-		var oldClient *Client
-		// Check if user already has a connection
-		if existing, exists := h.clients[client.userID]; exists {
-			oldClient = existing
-			// Remove from map immediately to prevent broadcast attempting to send
-			delete(h.clients, client.userID)
-			h.logger.Info("Replacing old connection", "userID", client.userID)
-		}
-		// Add new client to map
-		h.clients[client.userID] = client
-		h.mu.Unlock()
+		case client := <-h.register:
+			h.mu.Lock()
+			var oldClient *Client
+			// Check if user already has a connection
+			if existing, exists := h.clients[client.userID]; exists {
+				oldClient = existing
+				// Remove from map immediately to prevent broadcast attempting to send
+				delete(h.clients, client.userID)
+				h.logger.Info("Replacing old connection", "userID", client.userID)
+			}
+			// Add new client to map
+			h.clients[client.userID] = client
+			h.mu.Unlock()
 
-		// Close old connection outside the lock (if exists)
-		if oldClient != nil {
-			oldClient.closeSendChannel() // 使用安全的关闭方法，防止panic
-			oldClient.close()
-			h.logger.Info("Old connection closed", "userID", client.userID)
-		}
+			// Close old connection outside the lock (if exists)
+			if oldClient != nil {
+				oldClient.closeSendChannel() // 使用安全的关闭方法，防止panic
+				oldClient.close()
+				h.logger.Info("Old connection closed", "userID", client.userID)
+			}
 
-		h.logger.Info("Client connected", "userID", client.userID, "username", client.username)
-		h.broadcastOnlineCount()
+			h.logger.Info("Client connected", "userID", client.userID, "username", client.username)
+			h.broadcastOnlineCount()
 
-	case client := <-h.unregister:
-		h.mu.Lock()
-		var shouldBroadcast bool
-		var onlineCount int
-		
-		// Only close channel if this client is still the current connection
-		// Prevents closing already-closed channels when old connections disconnect
-		if currentClient, exists := h.clients[client.userID]; exists && currentClient == client {
-			delete(h.clients, client.userID)
-			shouldBroadcast = true
-			onlineCount = len(h.clients) // 在锁内读取准确人数
-		}
-		h.mu.Unlock()
+		case client := <-h.unregister:
+			h.mu.Lock()
+			var shouldBroadcast bool
+			var onlineCount int
 
-		if shouldBroadcast {
-			client.closeSendChannel() // 使用安全的关闭方法，防止panic
-			h.logger.Info("Client disconnected", "userID", client.userID, "onlineCount", onlineCount)
-			h.broadcastOnlineCountValue(onlineCount)
-		}
+			// Only close channel if this client is still the current connection
+			// Prevents closing already-closed channels when old connections disconnect
+			if currentClient, exists := h.clients[client.userID]; exists && currentClient == client {
+				delete(h.clients, client.userID)
+				shouldBroadcast = true
+				onlineCount = len(h.clients) // 在锁内读取准确人数
+			}
+			h.mu.Unlock()
+
+			if shouldBroadcast {
+				client.closeSendChannel() // 使用安全的关闭方法，防止panic
+				h.logger.Info("Client disconnected", "userID", client.userID, "onlineCount", onlineCount)
+				h.broadcastOnlineCountValue(onlineCount)
+			}
 
 		case message := <-h.broadcast:
 			h.mu.RLock()
@@ -261,8 +261,19 @@ func (c *Client) readPump() {
 
 		switch wsMsg.Type {
 		case "heartbeat":
-			// Heartbeat - do nothing, just reset read deadline
+			// Heartbeat - respond to client to acknowledge receipt
 			// Don't save heartbeat to database
+			heartbeatResp := WSMessage{
+				Type: "heartbeat",
+				Data: map[string]interface{}{"timestamp": time.Now().Unix()},
+			}
+			if respData, err := json.Marshal(heartbeatResp); err == nil {
+				select {
+				case c.send <- respData:
+				default:
+					c.hub.logger.Warn("Heartbeat response buffer full", "userID", c.userID)
+				}
+			}
 
 		case "message":
 			// Chat message - save to database and broadcast
@@ -287,23 +298,32 @@ func (c *Client) readPump() {
 				continue
 			}
 
-		// Validate message length (count characters, not bytes)
-		messageLen := utf8.RuneCountInString(content)
-		if messageLen > c.hub.config.MaxMessageLength {
-			c.hub.logger.Warn("Message too long", "userID", c.userID, "length", messageLen, "max", c.hub.config.MaxMessageLength)
-			continue
-		}
-
-		// Rate limiting: check messages per second
-		c.mu.Lock()
-		now := time.Now()
-		if now.Sub(c.lastMessageTime) < time.Second {
-			c.messageCount++
-			if c.messageCount > c.hub.config.MaxMessagesPerSecond {
-				c.mu.Unlock()
-				c.hub.logger.Warn("Rate limit exceeded", "userID", c.userID, "count", c.messageCount)
+			// Validate message length (count characters, not bytes)
+			messageLen := utf8.RuneCountInString(content)
+			if messageLen > c.hub.config.MaxMessageLength {
+				c.hub.logger.Warn("Message too long (characters)", "userID", c.userID, "length", messageLen, "max", c.hub.config.MaxMessageLength)
 				continue
 			}
+
+			// Additional validation: check byte size to ensure it fits within MaxMessageSize
+			// Note: MaxMessageSize (4096 bytes) includes JSON structure, MaxMessageLength (500 chars) is content only
+			contentBytes := len(content)
+			// Reserve 600 bytes for JSON structure overhead
+			if contentBytes > c.hub.config.MaxMessageSize-600 {
+				c.hub.logger.Warn("Message too long (bytes)", "userID", c.userID, "bytes", contentBytes, "max", c.hub.config.MaxMessageSize-600)
+				continue
+			}
+
+			// Rate limiting: check messages per second
+			c.mu.Lock()
+			now := time.Now()
+			if now.Sub(c.lastMessageTime) < time.Second {
+				c.messageCount++
+				if c.messageCount > c.hub.config.MaxMessagesPerSecond {
+					c.mu.Unlock()
+					c.hub.logger.Warn("Rate limit exceeded", "userID", c.userID, "count", c.messageCount)
+					continue
+				}
 			} else {
 				c.messageCount = 1
 				c.lastMessageTime = now
@@ -450,7 +470,7 @@ func (h *ChatHandler) HandleWebSocket(c *gin.Context) {
 
 	// Start write pump in background
 	go client.writePump()
-	
+
 	// Start read pump as main goroutine (blocks until connection closes)
 	client.readPump()
 }
