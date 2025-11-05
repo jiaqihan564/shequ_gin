@@ -44,35 +44,22 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 	// 从请求上下文获取，避免重复查询
 	ctx := c.Request.Context()
 
-	// 使用缓存获取用户信息（减少数据库查询）
-	user, err := h.userRepo.GetUserByID(ctx, userID)
+	// 使用辅助函数获取用户信息和profile
+	userInfo, err := GetUserWithProfile(ctx, h.userRepo, userID)
 	if err != nil {
-		h.logger.Error("获取用户信息失败", "userID", userID, "error", err.Error())
-		utils.ErrorResponse(c, 500, "获取用户信息失败")
+		handleInternalError(c, ErrGetUserFailed, err, h.logger, "userID", userID)
 		return
-	}
-
-	// 获取用户扩展信息（昵称和头像）
-	profile, _ := h.userRepo.GetUserProfile(ctx, userID)
-	nickname := user.Username // 默认使用username
-	avatar := ""
-	if profile != nil {
-		if profile.Nickname != "" {
-			nickname = profile.Nickname
-		}
-		avatar = profile.AvatarURL
 	}
 
 	// 获取IP地址
 	ipAddress := c.ClientIP()
 
 	// 发送消息
-	message, err := h.chatRepo.SendMessage(userID, user.Username, nickname, avatar, req.Content, ipAddress)
+	message, err := h.chatRepo.SendMessage(userID, userInfo.User.Username, userInfo.Nickname, userInfo.Avatar, req.Content, ipAddress)
 	if err != nil {
-		h.logger.Error("发送消息失败",
+		handleInternalError(c, ErrSendMessageFailed, err, h.logger,
 			"userID", userID,
-			"error", err.Error())
-		utils.ErrorResponse(c, 500, "发送消息失败")
+			"contentLength", len(req.Content))
 		return
 	}
 

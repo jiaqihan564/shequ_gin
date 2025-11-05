@@ -71,9 +71,9 @@ func (h *ArticleHandler) CreateArticle(c *gin.Context) {
 
 	err := h.articleRepo.CreateArticle(ctx, article, req.CodeBlocks, req.CategoryIDs, tagIDs)
 	if err != nil {
-		h.logger.Error("创建文章失败", "userID", userID, "error", err.Error())
-		statusCode := utils.GetHTTPStatusCode(err)
-		utils.ErrorResponse(c, statusCode, "创建文章失败")
+		handleInternalError(c, ErrCreateArticleFailed, err, h.logger,
+			"userID", userID,
+			"title", req.Title)
 		return
 	}
 

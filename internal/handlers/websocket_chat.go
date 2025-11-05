@@ -419,23 +419,12 @@ func (h *ChatHandler) HandleWebSocket(c *gin.Context) {
 		return
 	}
 
-	// Get user info
-	user, err := h.userRepo.GetUserByID(c.Request.Context(), userID)
+	// 使用辅助函数获取用户信息
+	userInfo, err := GetUserWithProfile(c.Request.Context(), h.userRepo, userID)
 	if err != nil {
 		h.logger.Error("Failed to get user info", "userID", userID, "error", err.Error())
 		utils.ErrorResponse(c, 500, "Failed to get user info")
 		return
-	}
-
-	// Get user profile
-	profile, _ := h.userRepo.GetUserProfile(c.Request.Context(), userID)
-	nickname := user.Username
-	avatar := ""
-	if profile != nil {
-		if profile.Nickname != "" {
-			nickname = profile.Nickname
-		}
-		avatar = profile.AvatarURL
 	}
 
 	// Get client IP address before upgrade
@@ -457,9 +446,9 @@ func (h *ChatHandler) HandleWebSocket(c *gin.Context) {
 		conn:            conn,
 		send:            make(chan []byte, globalHub.config.ClientSendBufferSize),
 		userID:          userID,
-		username:        user.Username,
-		nickname:        nickname,
-		avatar:          avatar,
+		username:        userInfo.User.Username,
+		nickname:        userInfo.Nickname,
+		avatar:          userInfo.Avatar,
 		ipAddress:       clientIP,
 		lastMessageTime: time.Now(),
 		messageCount:    0,

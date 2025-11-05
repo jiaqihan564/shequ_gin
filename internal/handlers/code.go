@@ -43,8 +43,10 @@ func (h *CodeHandler) ExecuteCode(c *gin.Context) {
 	// 执行代码
 	result, err := h.executor.Execute(c.Request.Context(), req.Language, req.Code, req.Stdin)
 	if err != nil {
-		utils.GetLogger().Error("执行代码失败", "error", err, "user_id", userID)
-		utils.InternalServerErrorResponse(c, "执行代码失败: "+err.Error())
+		handleInternalError(c, ErrExecutionFailed, err, utils.GetLogger(),
+			"userID", userID,
+			"language", req.Language,
+			"codeLength", len(req.Code))
 		return
 	}
 
@@ -65,13 +67,12 @@ func (h *CodeHandler) ExecuteCode(c *gin.Context) {
 	}
 
 	if err := h.repo.CreateExecution(execution); err != nil {
-		utils.GetLogger().Error("保存执行记录失败",
-			"error", err,
-			"user_id", userID,
+		// 非阻塞错误：保存失败不影响代码执行结果返回
+		logNonBlockingError(utils.GetLogger(), "保存执行记录", err,
+			"userID", userID,
 			"language", req.Language,
-			"code_length", len(req.Code),
-			"execution_status", result.Status)
-		// 不影响返回结果，只记录错误
+			"codeLength", len(req.Code),
+			"executionStatus", result.Status)
 	} else {
 		utils.GetLogger().Info("保存执行记录成功",
 			"execution_id", execution.ID,
