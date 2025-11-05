@@ -204,12 +204,21 @@ func LoggerMiddleware(cfg *config.Config) gin.HandlerFunc {
 			fields["sampled"] = true
 		}
 
-		// 添加用户信息（如果已认证）
+		// 添加用户信息（如果已认证）- 包含IP、用户名、邮箱、地址
 		if userID, exists := c.Get("userID"); exists {
 			fields["user_id"] = userID
 		}
 		if username, exists := c.Get("username"); exists {
 			fields["username"] = username
+		}
+		if email, exists := c.Get("email"); exists {
+			fields["email"] = email
+		}
+		if province, exists := c.Get("province"); exists {
+			fields["province"] = province
+		}
+		if city, exists := c.Get("city"); exists {
+			fields["city"] = city
 		}
 
 		// 添加请求ID（如果存在）

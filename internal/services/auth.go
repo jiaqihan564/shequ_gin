@@ -84,8 +84,8 @@ func (s *AuthService) Login(ctx context.Context, username, password, clientIP, p
 		s.logger.Error("更新登录信息失败", "userID", user.ID, "error", err.Error())
 	}
 
-	// 生成JWT token
-	token, err := s.generateJWT(user.ID, user.Username)
+	// 生成JWT token（包含邮箱和地址信息）
+	token, err := s.generateJWT(user.ID, user.Username, user.Email, province, city)
 	if err != nil {
 		s.logger.Error("生成JWT token失败", "userID", user.ID, "error", err.Error())
 		return nil, utils.ErrInternalServerError
@@ -229,8 +229,8 @@ func (s *AuthService) Register(ctx context.Context, username, password, email, c
 		return nil, utils.ErrDatabaseQuery
 	}
 
-	// 生成JWT token
-	token, err := s.generateJWT(user.ID, user.Username)
+	// 生成JWT token（包含邮箱和地址信息）
+	token, err := s.generateJWT(user.ID, user.Username, user.Email, province, city)
 	if err != nil {
 		s.logger.Error("生成JWT token失败", "userID", user.ID, "error", err.Error())
 		return nil, utils.ErrInternalServerError
@@ -311,9 +311,9 @@ func (s *AuthService) Register(ctx context.Context, username, password, email, c
 	return response, nil
 }
 
-// generateJWT 生成JWT token
-func (s *AuthService) generateJWT(userID uint, username string) (string, error) {
-	claims := models.CreateClaims(userID, username, s.config.JWT.Issuer, s.config.JWT.ExpireHours)
+// generateJWT 生成JWT token（包含用户邮箱和地址信息用于日志记录）
+func (s *AuthService) generateJWT(userID uint, username, email, province, city string) (string, error) {
+	claims := models.CreateClaims(userID, username, email, province, city, s.config.JWT.Issuer, s.config.JWT.ExpireHours)
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	signedToken, err := token.SignedString([]byte(s.config.JWT.SecretKey))
 	if err != nil {

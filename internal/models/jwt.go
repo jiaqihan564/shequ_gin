@@ -11,17 +11,23 @@ import (
 type Claims struct {
 	UserID   uint   `json:"user_id"`
 	Username string `json:"username"`
+	Email    string `json:"email"`
+	Province string `json:"province,omitempty"`
+	City     string `json:"city,omitempty"`
 	jwt.RegisteredClaims
 }
 
 // CreateClaims 创建JWT声明
-func CreateClaims(userID uint, username string, issuer string, expireHours int) *Claims {
+func CreateClaims(userID uint, username, email, province, city, issuer string, expireHours int) *Claims {
 	now := time.Now().UTC()
 	expirationTime := now.Add(time.Duration(expireHours) * time.Hour)
 
 	return &Claims{
 		UserID:   userID,
 		Username: username,
+		Email:    email,
+		Province: province,
+		City:     city,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   strconv.FormatUint(uint64(userID), 10), // 用户ID作为Subject
 			Issuer:    issuer,                                 // 使用配置的Issuer

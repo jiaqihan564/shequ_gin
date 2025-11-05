@@ -87,9 +87,18 @@ func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 
 		// 将用户信息存储到上下文中
 		c.Set("userID", userID)
-		// 从自定义claims中获取用户名
+		// 从自定义claims中获取用户名、邮箱和地址信息
 		if claims.Username != "" {
 			c.Set("username", claims.Username)
+		}
+		if claims.Email != "" {
+			c.Set("email", claims.Email)
+		}
+		if claims.Province != "" {
+			c.Set("province", claims.Province)
+		}
+		if claims.City != "" {
+			c.Set("city", claims.City)
 		}
 
 		// 设置请求ID用于追踪
@@ -97,7 +106,7 @@ func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 			c.Set("requestID", claims.ID)
 		}
 
-		utils.GetLogger().Debug("用户认证成功", "userID", userID, "ip", c.ClientIP(), "path", c.Request.URL.Path)
+		utils.GetLogger().Debug("用户认证成功", "userID", userID, "username", claims.Username, "ip", c.ClientIP(), "path", c.Request.URL.Path)
 		c.Next()
 	}
 }
