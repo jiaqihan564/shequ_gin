@@ -13,7 +13,8 @@ import (
 // 随机字节池（性能优化）
 var randomBytesPool = sync.Pool{
 	New: func() interface{} {
-		return make([]byte, 8)
+		b := make([]byte, 8)
+		return &b
 	},
 }
 
@@ -21,10 +22,11 @@ var randomBytesPool = sync.Pool{
 func genRequestID() string {
 	timestamp := time.Now().UnixNano()
 
-	// 从池中获取字节切片
-	randomBytes := randomBytesPool.Get().([]byte)
-	defer randomBytesPool.Put(randomBytes)
+	// 从池中获取字节切片指针
+	randomBytesPtr := randomBytesPool.Get().(*[]byte)
+	defer randomBytesPool.Put(randomBytesPtr)
 
+	randomBytes := *randomBytesPtr
 	_, _ = rand.Read(randomBytes)
 	randomStr := hex.EncodeToString(randomBytes)
 	return fmt.Sprintf("%d-%s", timestamp, randomStr)
