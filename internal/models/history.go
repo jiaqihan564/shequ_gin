@@ -27,7 +27,6 @@ type LocationStats struct {
 // LocationDistribution 地区分布响应
 type LocationDistribution struct {
 	ProvinceStats  []LocationStats `json:"province_stats"`  // 省份统计
-	CityStats      []LocationStats `json:"city_stats"`      // 城市统计Top 20
 	TotalProvinces int             `json:"total_provinces"` // 覆盖省份数
 	TotalCities    int             `json:"total_cities"`    // 覆盖城市数
 }

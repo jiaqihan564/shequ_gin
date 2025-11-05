@@ -303,7 +303,6 @@ repository_defaults:
 
 # 统计查询配置
 statistics_query:
-  top_cities_limit: 20  # Top城市统计限制
   api_ranking_default: 10  # API排行榜默认数量
   tags_list_limit: 100  # 标签列表限制
   chat_messages_buffer: 100  # 聊天消息缓冲区大小

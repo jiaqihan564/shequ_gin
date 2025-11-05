@@ -3,7 +3,6 @@ package services
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"time"
 
 	"gin/internal/config"
@@ -251,48 +250,33 @@ func (r *HistoryRepository) GetLocationDistribution() (*models.LocationDistribut
 
 	// 初始化为空数组，避免返回null
 	provinceStats := make([]models.LocationStats, 0)
+	uniqueProvinces := make(map[string]bool)
+
 	for provinceRows.Next() {
 		var stat models.LocationStats
 		if err := provinceRows.Scan(&stat.Province, &stat.City, &stat.UserCount, &stat.LoginCount); err != nil {
 			continue
 		}
 		provinceStats = append(provinceStats, stat)
-	}
-
-	// 按城市统计（从配置读取限制）
-	cityQuery := fmt.Sprintf(`SELECT province, city, COUNT(DISTINCT user_id) as user_count, COUNT(*) as login_count
-				  FROM user_login_history
-				  WHERE city IS NOT NULL AND city != ''
-				  GROUP BY province, city
-				  ORDER BY user_count DESC
-				  LIMIT %d`, r.config.StatisticsQuery.TopCitiesLimit)
-
-	cityRows, err := r.db.DB.QueryContext(ctx, cityQuery)
-	if err != nil {
-		r.logger.Error("查询城市统计失败", "error", err.Error())
-		return nil, utils.ErrDatabaseQuery
-	}
-	defer cityRows.Close()
-
-	// 初始化为空数组，避免返回null
-	cityStats := make([]models.LocationStats, 0)
-	uniqueProvinces := make(map[string]bool)
-	uniqueCities := make(map[string]bool)
-
-	for cityRows.Next() {
-		var stat models.LocationStats
-		if err := cityRows.Scan(&stat.Province, &stat.City, &stat.UserCount, &stat.LoginCount); err != nil {
-			continue
-		}
-		cityStats = append(cityStats, stat)
 		uniqueProvinces[stat.Province] = true
-		uniqueCities[stat.Province+stat.City] = true
+	}
+
+	// 统计总城市数
+	cityCountQuery := `SELECT COUNT(DISTINCT city) 
+					   FROM user_login_history 
+					   WHERE city IS NOT NULL AND city != ''`
+
+	var totalCities int
+	err = r.db.DB.QueryRowContext(ctx, cityCountQuery).Scan(&totalCities)
+	if err != nil {
+		r.logger.Error("查询城市总数失败", "error", err.Error())
+		// 不影响主流程，继续返回
+		totalCities = 0
 	}
 
 	return &models.LocationDistribution{
 		ProvinceStats:  provinceStats,
-		CityStats:      cityStats,
 		TotalProvinces: len(uniqueProvinces),
-		TotalCities:    len(uniqueCities),
+		TotalCities:    totalCities,
 	}, nil
 }

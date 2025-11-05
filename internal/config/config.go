@@ -392,7 +392,6 @@ type RepositoryDefaultsConfig struct {
 
 // StatisticsQueryConfig 统计查询配置
 type StatisticsQueryConfig struct {
-	TopCitiesLimit     int `yaml:"top_cities_limit" json:"top_cities_limit"`         // Top城市统计限制
 	ApiRankingDefault  int `yaml:"api_ranking_default" json:"api_ranking_default"`   // API排行榜默认数量
 	TagsListLimit      int `yaml:"tags_list_limit" json:"tags_list_limit"`           // 标签列表限制
 	ChatMessagesBuffer int `yaml:"chat_messages_buffer" json:"chat_messages_buffer"` // 聊天消息缓冲区大小
@@ -840,7 +839,6 @@ func getDefaultConfig() *Config {
 			NormalOperationTimeout: 10,
 		},
 		StatisticsQuery: StatisticsQueryConfig{
-			TopCitiesLimit:     20,
 			ApiRankingDefault:  10,
 			TagsListLimit:      100,
 			ChatMessagesBuffer: 100,
