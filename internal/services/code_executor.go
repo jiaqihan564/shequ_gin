@@ -157,15 +157,6 @@ fn main() {
 echo "Hello, World!\\n";
 ?>`,
 	},
-	"typescript": {
-		ID:         "typescript",
-		Name:       "TypeScript",
-		Version:    "5.0.3",
-		PistonName: "typescript",
-		DefaultCode: `// TypeScript 示例代码
-const greeting: string = "Hello, World!";
-console.log(greeting);`,
-	},
 	"ruby": {
 		ID:         "ruby",
 		Name:       "Ruby",
@@ -181,16 +172,6 @@ puts "Hello, World!"`,
 		PistonName: "swift",
 		DefaultCode: `// Swift 示例代码
 print("Hello, World!")`,
-	},
-	"kotlin": {
-		ID:         "kotlin",
-		Name:       "Kotlin",
-		Version:    "1.8.20",
-		PistonName: "kotlin",
-		DefaultCode: `// Kotlin 示例代码
-fun main() {
-    println("Hello, World!")
-}`,
 	},
 	"bash": {
 		ID:         "bash",
