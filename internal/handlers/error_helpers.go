@@ -64,15 +64,6 @@ func handleInternalError(c *gin.Context, friendlyError UserFriendlyError, actual
 	utils.ErrorResponse(c, friendlyError.statusCode, friendlyError.userMessage)
 }
 
-// handleInternalErrorWithMessage 处理内部错误，可以自定义用户消息
-func handleInternalErrorWithMessage(c *gin.Context, userMessage string, statusCode int, actualErr error, logger utils.Logger, logFields ...interface{}) {
-	friendlyError := UserFriendlyError{
-		userMessage: userMessage,
-		statusCode:  statusCode,
-	}
-	handleInternalError(c, friendlyError, actualErr, logger, logFields...)
-}
-
 // logNonBlockingError 记录非阻塞错误（不影响主流程的错误）
 // 这类错误只记录日志，不返回给用户
 //

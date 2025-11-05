@@ -82,7 +82,9 @@ func (h *CumulativeStatsHandler) GetRealtimeMetrics(c *gin.Context) {
 	// 从实时管理器获取最新数据
 	realtimeMgr := services.GetRealtimeMetricsManager()
 
-	onlineUsers := realtimeMgr.GetOnlineUsers()
+	// 优先使用WebSocket的精确在线人数（基于真实连接）
+	onlineUsers := GetWebSocketOnlineCount()
+
 	currentQPS := realtimeMgr.GetCurrentQPS()
 	lastErrorTime := realtimeMgr.GetLastErrorTime()
 	cpuPercent, memoryPercent := realtimeMgr.GetSystemMetrics()
@@ -97,6 +99,16 @@ func (h *CumulativeStatsHandler) GetRealtimeMetrics(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, 200, "获取成功", data)
+}
+
+// GetWebSocketOnlineCount 获取WebSocket在线人数（精确统计）
+func GetWebSocketOnlineCount() int {
+	// 从websocket_chat.go中定义的全局hub获取在线人数
+	if globalHub != nil {
+		return globalHub.GetOnlineCount()
+	}
+	// 如果WebSocket hub未初始化，返回0
+	return 0
 }
 
 // calculateDailySummary 计算每日指标汇总
