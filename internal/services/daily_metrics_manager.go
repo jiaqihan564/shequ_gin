@@ -64,10 +64,12 @@ func NewDailyMetricsManager(cfg *config.Config) *DailyMetricsManager {
 
 // RecordLogin 记录登录（添加活跃用户）
 func (m *DailyMetricsManager) RecordLogin(userID uint) {
+	// 先检查日期（在加锁前），避免在持有锁的情况下再次尝试加锁导致死锁
+	m.checkDateAndReset()
+
+	// 然后加锁添加用户
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
-	m.checkAndResetIfNewDay()
 	m.activeUserIDs[userID] = true
 }
 
@@ -201,11 +203,6 @@ func (m *DailyMetricsManager) checkDateAndReset() {
 		atomic.StoreInt64(&m.currentConcurrent, 0)
 		m.endpointCallCount = make(map[string]int64, m.endpointCallsCapacity) // 使用保存的容量值
 	}
-}
-
-// checkAndResetIfNewDay 保持向后兼容（内部调用checkDateAndReset）
-func (m *DailyMetricsManager) checkAndResetIfNewDay() {
-	m.checkDateAndReset()
 }
 
 // 全局单例
