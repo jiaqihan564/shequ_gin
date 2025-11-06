@@ -189,11 +189,12 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 			auth.GET("/articles/tags", articleHandler.GetTags)                // 获取标签列表
 
 			// 私信相关接口
-			auth.GET("/conversations", privateMsgHandler.GetConversations)                 // 获取会话列表
-			auth.GET("/conversations/:id/messages", privateMsgHandler.GetMessages)         // 获取会话消息
-			auth.POST("/messages/send", privateMsgHandler.SendMessage)                     // 发送消息
-			auth.GET("/conversations/unread-count", privateMsgHandler.GetUnreadCount)      // 获取未读数
-			auth.POST("/conversations/start/:userId", privateMsgHandler.StartConversation) // 开始会话
+			auth.GET("/conversations", privateMsgHandler.GetConversations)                      // 获取会话列表
+			auth.GET("/conversations/:id/messages", privateMsgHandler.GetMessages)              // 获取会话消息
+			auth.POST("/messages/send", privateMsgHandler.SendMessage)                          // 发送消息
+			auth.GET("/conversations/unread-count", privateMsgHandler.GetUnreadCount)           // 获取未读数
+			auth.POST("/conversations/start/:userId", privateMsgHandler.StartConversation)      // 开始会话
+			auth.POST("/conversations/:id/mark-read", privateMsgHandler.MarkConversationAsRead) // 标记会话为已读
 
 			// 资源相关接口
 			auth.POST("/resources", resourceHandler.CreateResource)                             // 创建资源

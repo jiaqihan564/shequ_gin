@@ -236,7 +236,40 @@ func (h *PrivateMessageHandler) GetMessages(c *gin.Context) {
 	// 使用Worker Pool标记消息为已读（避免goroutine泄漏）
 	taskID := fmt.Sprintf("mark_read_%d_%d", conversationID, userID)
 	_ = utils.SubmitTask(taskID, func(taskCtx context.Context) error {
-		return h.msgRepo.MarkAsRead(taskCtx, uint(conversationID), userID)
+		h.logger.Info("Marking messages as read (async task)",
+			"conversationID", conversationID,
+			"userID", userID)
+
+		hasUpdates, err := h.msgRepo.MarkAsRead(taskCtx, uint(conversationID), userID)
+		if err != nil {
+			h.logger.Error("Failed to mark messages as read",
+				"conversationID", conversationID,
+				"userID", userID,
+				"error", err.Error())
+			return err
+		}
+
+		// 只有实际标记了消息时才通知发送者（避免重复通知）
+		if hasUpdates {
+			// 通知对方用户消息已读
+			otherUserID := conv.User1ID
+			if conv.User1ID == userID {
+				otherUserID = conv.User2ID
+			}
+
+			h.logger.Info("Notifying sender about message read",
+				"senderID", otherUserID,
+				"readerID", userID,
+				"conversationID", conversationID,
+				"updatedMessages", hasUpdates)
+
+			NotifyMessageRead(otherUserID, uint(conversationID), userID)
+		} else {
+			h.logger.Debug("No unread messages to mark, skipping notification",
+				"conversationID", conversationID,
+				"userID", userID)
+		}
+		return nil
 	}, time.Duration(h.config.AsyncTasks.MessageMarkReadTimeout)*time.Second)
 
 	h.logger.Info("获取消息成功", "conversationID", conversationID, "count", len(response))
@@ -282,10 +315,89 @@ func (h *PrivateMessageHandler) SendMessage(c *gin.Context) {
 	}
 
 	h.logger.Info("发送消息成功", "messageID", message.ID, "senderID", userID, "receiverID", req.ReceiverID)
+
+	// 通过WebSocket实时推送消息给接收者
+	sender, _ := h.getUserInfo(ctx, userID)
+	receiverInfo, _ := h.getUserInfo(ctx, req.ReceiverID)
+
+	messageResponse := models.MessageResponse{
+		ID:             message.ID,
+		ConversationID: message.ConversationID,
+		Sender:         sender,
+		Receiver:       receiverInfo,
+		Content:        message.Content,
+		IsRead:         false,
+		IsSelf:         false, // 对接收者来说不是自己发的
+		CreatedAt:      message.CreatedAt,
+	}
+
+	// 发送WebSocket通知给接收者
+	NotifyPrivateMessage(req.ReceiverID, &messageResponse)
+
 	utils.SuccessResponse(c, 201, "发送成功", models.SendPrivateMessageResponse{
 		MessageID:      message.ID,
 		ConversationID: message.ConversationID,
 	})
+}
+
+// MarkConversationAsRead 标记会话消息为已读
+func (h *PrivateMessageHandler) MarkConversationAsRead(c *gin.Context) {
+	userID, isOK := getUserIDOrFail(c)
+	if !isOK {
+		return
+	}
+
+	conversationIDStr := c.Param("id")
+	conversationID, err := strconv.ParseUint(conversationIDStr, 10, 32)
+	if err != nil {
+		utils.BadRequestResponse(c, "无效的会话ID")
+		return
+	}
+
+	ctx := c.Request.Context()
+
+	// 验证用户是否是该会话的参与者
+	conv, err := h.msgRepo.GetConversationByID(ctx, uint(conversationID))
+	if err != nil {
+		utils.NotFoundResponse(c, "会话不存在")
+		return
+	}
+
+	if conv.User1ID != userID && conv.User2ID != userID {
+		utils.ForbiddenResponse(c, "无权访问该会话")
+		return
+	}
+
+	// 标记消息为已读
+	hasUpdates, err := h.msgRepo.MarkAsRead(ctx, uint(conversationID), userID)
+	if err != nil {
+		h.logger.Error("标记已读失败", "conversationID", conversationID, "userID", userID, "error", err.Error())
+		utils.ErrorResponse(c, 500, "标记已读失败")
+		return
+	}
+
+	// 只有实际标记了消息时才通知发送者
+	if hasUpdates {
+		// 通知对方用户消息已读
+		otherUserID := conv.User1ID
+		if conv.User1ID == userID {
+			otherUserID = conv.User2ID
+		}
+
+		h.logger.Info("Messages marked as read",
+			"conversationID", conversationID,
+			"readerID", userID,
+			"senderID", otherUserID,
+			"updatedMessages", hasUpdates)
+
+		NotifyMessageRead(otherUserID, uint(conversationID), userID)
+	} else {
+		h.logger.Debug("No unread messages, skipping notification",
+			"conversationID", conversationID,
+			"userID", userID)
+	}
+
+	utils.SuccessResponse(c, 200, "标记成功", nil)
 }
 
 // GetUnreadCount 获取未读消息数

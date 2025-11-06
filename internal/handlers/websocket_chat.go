@@ -206,6 +206,39 @@ func (h *ConnectionHub) broadcastOnlineCountValue(count int) {
 	h.broadcast <- data
 }
 
+// SendToUser sends a message to a specific user
+func (h *ConnectionHub) SendToUser(userID uint, msgType string, data interface{}) error {
+	msg := WSMessage{
+		Type: msgType,
+		Data: data,
+	}
+
+	msgData, err := json.Marshal(msg)
+	if err != nil {
+		h.logger.Error("Failed to marshal message", "error", err.Error(), "type", msgType)
+		return err
+	}
+
+	h.mu.RLock()
+	client, exists := h.clients[userID]
+	h.mu.RUnlock()
+
+	if !exists {
+		// User is not online, silently ignore
+		h.logger.Debug("User not online, message not sent", "userID", userID, "type", msgType)
+		return nil
+	}
+
+	select {
+	case client.send <- msgData:
+		h.logger.Debug("Message sent to user", "userID", userID, "type", msgType)
+		return nil
+	default:
+		h.logger.Warn("Client send buffer full, message dropped", "userID", userID, "type", msgType)
+		return nil
+	}
+}
+
 // GetOnlineCount returns the current online count (O(1))
 func (h *ConnectionHub) GetOnlineCount() int {
 	h.mu.RLock()
@@ -228,6 +261,57 @@ func (h *ConnectionHub) GetOnlineUsers() []map[string]interface{} {
 		})
 	}
 	return users
+}
+
+// NotifyPrivateMessage sends a private message notification to a specific user
+func NotifyPrivateMessage(receiverID uint, message *models.MessageResponse) {
+	if globalHub == nil {
+		utils.GetLogger().Warn("WebSocket hub not initialized, cannot send private message notification")
+		return
+	}
+
+	data := map[string]interface{}{
+		"message":    message,
+		"sender_id":  message.Sender.ID,
+		"message_id": message.ID,
+	}
+
+	globalHub.logger.Info("Sending private message notification",
+		"receiverID", receiverID,
+		"messageID", message.ID,
+		"senderID", message.Sender.ID)
+
+	err := globalHub.SendToUser(receiverID, "private_message", data)
+	if err != nil {
+		globalHub.logger.Error("Failed to send private message notification",
+			"error", err.Error(),
+			"receiverID", receiverID)
+	}
+}
+
+// NotifyMessageRead sends a message read notification to a specific user
+func NotifyMessageRead(senderID uint, conversationID uint, readerID uint) {
+	if globalHub == nil {
+		utils.GetLogger().Warn("WebSocket hub not initialized, cannot send message read notification")
+		return
+	}
+
+	data := map[string]interface{}{
+		"conversation_id": conversationID,
+		"reader_id":       readerID,
+	}
+
+	globalHub.logger.Info("Sending message read notification",
+		"senderID", senderID,
+		"conversationID", conversationID,
+		"readerID", readerID)
+
+	err := globalHub.SendToUser(senderID, "message_read", data)
+	if err != nil {
+		globalHub.logger.Error("Failed to send message read notification",
+			"error", err.Error(),
+			"senderID", senderID)
+	}
 }
 
 // readPump pumps messages from the WebSocket connection to the hub

@@ -251,22 +251,26 @@ func (r *PrivateMessageRepository) GetConversationMessages(ctx context.Context, 
 }
 
 // MarkAsRead 标记消息为已读
-func (r *PrivateMessageRepository) MarkAsRead(ctx context.Context, conversationID, userID uint) error {
+func (r *PrivateMessageRepository) MarkAsRead(ctx context.Context, conversationID, userID uint) (bool, error) {
 	// 标记该会话中接收给当前用户的所有未读消息为已读
 	updateQuery := `
 		UPDATE private_messages
 		SET is_read = 1
 		WHERE conversation_id = ? AND receiver_id = ? AND is_read = 0
 	`
-	_, err := r.db.DB.ExecContext(ctx, updateQuery, conversationID, userID)
+	result, err := r.db.DB.ExecContext(ctx, updateQuery, conversationID, userID)
 	if err != nil {
-		return fmt.Errorf("标记已读失败: %w", err)
+		return false, fmt.Errorf("标记已读失败: %w", err)
 	}
+
+	// 检查是否有实际更新
+	rowsAffected, _ := result.RowsAffected()
+	hasUpdates := rowsAffected > 0
 
 	// 获取会话信息
 	conv, err := r.GetConversationByID(ctx, conversationID)
 	if err != nil {
-		return err
+		return hasUpdates, err
 	}
 
 	// 清零对应用户的未读数
@@ -276,7 +280,7 @@ func (r *PrivateMessageRepository) MarkAsRead(ctx context.Context, conversationI
 		_, err = r.db.DB.ExecContext(ctx, `UPDATE private_conversations SET user2_unread = 0 WHERE id = ?`, conversationID)
 	}
 
-	return err
+	return hasUpdates, err
 }
 
 // GetUnreadCount 获取用户未读消息总数
