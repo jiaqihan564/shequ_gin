@@ -127,22 +127,6 @@ func StatisticsMiddleware(statsRepo *services.StatisticsRepository, cumulativeRe
 				}
 			}
 
-			// 使用Worker Pool更新每日指标到数据库（避免嵌套goroutine）
-			metricsTaskID := "daily_metrics_" + date + "_" + strconv.FormatInt(time.Now().UnixNano(), 36)
-			_ = utils.SubmitTask(metricsTaskID, func(metricsCtx context.Context) error {
-				activeUsers, newUsers, totalReqs, peakConcurrent, avgLatency, successRate, mostPopular := dailyMgr.GetTodayMetrics()
-				return cumulativeRepo.UpsertDailyMetric(
-					date,
-					activeUsers,
-					newUsers,
-					totalReqs,
-					avgLatency,
-					successRate,
-					peakConcurrent,
-					mostPopular,
-				)
-			}, 10*time.Second)
-
 			// 4. 记录特定操作的累计统计
 			// 文件上传（两个可能的路径）
 			if (path == "/api/upload" || path == "/api/files/upload") && method == "POST" && status == 200 {
@@ -163,6 +147,21 @@ func StatisticsMiddleware(statsRepo *services.StatisticsRepository, cumulativeRe
 				if err := cumulativeRepo.IncrementCumulativeStat("total_password_resets", 1); err != nil {
 					utils.GetLogger().Error("更新累计重置密码统计失败", "error", err.Error())
 				}
+			}
+
+			// 5. 最后：更新每日指标到数据库（在同一个任务中，确保所有内存操作都已完成）
+			activeUsers, newUsers, totalReqs, peakConcurrent, avgLatency, successRate, mostPopular := dailyMgr.GetTodayMetrics()
+			if err := cumulativeRepo.UpsertDailyMetric(
+				date,
+				activeUsers,
+				newUsers,
+				totalReqs,
+				avgLatency,
+				successRate,
+				peakConcurrent,
+				mostPopular,
+			); err != nil {
+				utils.GetLogger().Error("更新每日指标失败", "date", date, "error", err.Error())
 			}
 
 			return nil

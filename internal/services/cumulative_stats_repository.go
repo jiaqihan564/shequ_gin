@@ -115,7 +115,7 @@ func (r *CumulativeStatsRepository) UpsertDailyMetric(date string, activeUsers, 
 			    (date, active_users, avg_response_time, success_rate, peak_concurrent, most_popular_endpoint, new_users, total_requests) 
 			  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 			  ON DUPLICATE KEY UPDATE
-			    active_users = VALUES(active_users),
+			    active_users = GREATEST(active_users, VALUES(active_users)),
 			    avg_response_time = VALUES(avg_response_time),
 			    success_rate = VALUES(success_rate),
 			    peak_concurrent = GREATEST(peak_concurrent, VALUES(peak_concurrent)),
