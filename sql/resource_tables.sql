@@ -35,8 +35,7 @@ CREATE TABLE IF NOT EXISTS `resource_images` (
   `is_cover` tinyint(1) DEFAULT 0 COMMENT '是否封面图：0-否，1-是',
   `created_at` datetime NOT NULL COMMENT '创建时间',
   PRIMARY KEY (`id`),
-  KEY `idx_resource` (`resource_id`) COMMENT '资源索引',
-  CONSTRAINT `fk_resource_images` FOREIGN KEY (`resource_id`) REFERENCES `resources` (`id`) ON DELETE CASCADE
+  KEY `idx_resource` (`resource_id`) COMMENT '资源索引'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='资源预览图片表';
 
 -- 3. 资源分类表
@@ -68,8 +67,7 @@ CREATE TABLE IF NOT EXISTS `resource_tags` (
   `created_at` datetime NOT NULL COMMENT '创建时间',
   PRIMARY KEY (`id`),
   KEY `idx_resource` (`resource_id`) COMMENT '资源索引',
-  KEY `idx_tag` (`tag_name`) COMMENT '标签索引',
-  CONSTRAINT `fk_resource_tags` FOREIGN KEY (`resource_id`) REFERENCES `resources` (`id`) ON DELETE CASCADE
+  KEY `idx_tag` (`tag_name`) COMMENT '标签索引'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='资源标签表';
 
 -- 5. 断点续传记录表

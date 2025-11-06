@@ -14,9 +14,9 @@ USE hub;
 SELECT '正在为articles表创建索引...' AS Status;
 
 -- 删除可能存在的旧索引（忽略错误）
-ALTER TABLE articles DROP INDEX idx_articles_status_created;
-ALTER TABLE articles DROP INDEX idx_articles_likes_views;
-ALTER TABLE articles DROP INDEX idx_articles_user_status;
+ALTER TABLE articles DROP INDEX IF EXISTS idx_articles_status_created;
+ALTER TABLE articles DROP INDEX IF EXISTS idx_articles_likes_views;
+ALTER TABLE articles DROP INDEX IF EXISTS idx_articles_user_status;
 
 -- 创建新索引
 CREATE INDEX idx_articles_status_created 
@@ -35,9 +35,9 @@ SELECT '✓ articles表索引创建完成' AS Result;
 -- =====================================================
 SELECT '正在为article_comments表创建索引...' AS Status;
 
-ALTER TABLE article_comments DROP INDEX idx_comments_article_parent_status;
-ALTER TABLE article_comments DROP INDEX idx_comments_user_status;
-ALTER TABLE article_comments DROP INDEX idx_comments_root_status;
+ALTER TABLE article_comments DROP INDEX IF EXISTS idx_comments_article_parent_status;
+ALTER TABLE article_comments DROP INDEX IF EXISTS idx_comments_user_status;
+ALTER TABLE article_comments DROP INDEX IF EXISTS idx_comments_root_status;
 
 CREATE INDEX idx_comments_article_parent_status 
 ON article_comments(article_id, parent_id, status, created_at);
@@ -55,8 +55,8 @@ SELECT '✓ article_comments表索引创建完成' AS Result;
 -- =====================================================
 SELECT '正在为article_comment_likes表创建索引...' AS Status;
 
-ALTER TABLE article_comment_likes DROP INDEX idx_comment_likes_check;
-ALTER TABLE article_comment_likes DROP INDEX idx_comment_likes_user;
+ALTER TABLE article_comment_likes DROP INDEX IF EXISTS idx_comment_likes_check;
+ALTER TABLE article_comment_likes DROP INDEX IF EXISTS idx_comment_likes_user;
 
 CREATE INDEX idx_comment_likes_check 
 ON article_comment_likes(comment_id, user_id);
@@ -71,8 +71,8 @@ SELECT '✓ article_comment_likes表索引创建完成' AS Result;
 -- =====================================================
 SELECT '正在为article_likes表创建索引...' AS Status;
 
-ALTER TABLE article_likes DROP INDEX idx_article_likes_check;
-ALTER TABLE article_likes DROP INDEX idx_article_likes_user_time;
+ALTER TABLE article_likes DROP INDEX IF EXISTS idx_article_likes_check;
+ALTER TABLE article_likes DROP INDEX IF EXISTS idx_article_likes_user_time;
 
 CREATE INDEX idx_article_likes_check 
 ON article_likes(article_id, user_id);
@@ -87,8 +87,8 @@ SELECT '✓ article_likes表索引创建完成' AS Result;
 -- =====================================================
 SELECT '正在为article_category_relations表创建索引...' AS Status;
 
-ALTER TABLE article_category_relations DROP INDEX idx_article_category_article;
-ALTER TABLE article_category_relations DROP INDEX idx_article_category_category;
+ALTER TABLE article_category_relations DROP INDEX IF EXISTS idx_article_category_article;
+ALTER TABLE article_category_relations DROP INDEX IF EXISTS idx_article_category_category;
 
 CREATE INDEX idx_article_category_article 
 ON article_category_relations(article_id, category_id);
@@ -103,8 +103,8 @@ SELECT '✓ article_category_relations表索引创建完成' AS Result;
 -- =====================================================
 SELECT '正在为article_tag_relations表创建索引...' AS Status;
 
-ALTER TABLE article_tag_relations DROP INDEX idx_article_tag_article;
-ALTER TABLE article_tag_relations DROP INDEX idx_article_tag_tag;
+ALTER TABLE article_tag_relations DROP INDEX IF EXISTS idx_article_tag_article;
+ALTER TABLE article_tag_relations DROP INDEX IF EXISTS idx_article_tag_tag;
 
 CREATE INDEX idx_article_tag_article 
 ON article_tag_relations(article_id, tag_id);
@@ -119,9 +119,9 @@ SELECT '✓ article_tag_relations表索引创建完成' AS Result;
 -- =====================================================
 SELECT '正在为chat_messages表创建索引...' AS Status;
 
-ALTER TABLE chat_messages DROP INDEX idx_chat_status_id_desc;
-ALTER TABLE chat_messages DROP INDEX idx_chat_status_id_asc;
-ALTER TABLE chat_messages DROP INDEX idx_chat_user_id;
+ALTER TABLE chat_messages DROP INDEX IF EXISTS idx_chat_status_id_desc;
+ALTER TABLE chat_messages DROP INDEX IF EXISTS idx_chat_status_id_asc;
+ALTER TABLE chat_messages DROP INDEX IF EXISTS idx_chat_user_id;
 
 CREATE INDEX idx_chat_status_id_desc 
 ON chat_messages(status, id DESC);
@@ -139,7 +139,7 @@ SELECT '✓ chat_messages表索引创建完成' AS Result;
 -- =====================================================
 SELECT '正在为online_users表创建索引...' AS Status;
 
-ALTER TABLE online_users DROP INDEX idx_online_heartbeat;
+ALTER TABLE online_users DROP INDEX IF EXISTS idx_online_heartbeat;
 
 CREATE INDEX idx_online_heartbeat 
 ON online_users(last_heartbeat DESC);
@@ -151,7 +151,7 @@ SELECT '✓ online_users表索引创建完成' AS Result;
 -- =====================================================
 SELECT '正在为user_auth表创建索引...' AS Status;
 
-ALTER TABLE user_auth DROP INDEX idx_user_auth_email;
+ALTER TABLE user_auth DROP INDEX IF EXISTS idx_user_auth_email;
 
 CREATE INDEX idx_user_auth_email 
 ON user_auth(email);

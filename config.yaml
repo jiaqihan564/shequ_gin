@@ -12,8 +12,8 @@ server:
   port: "3001"
   mode: "release"  # debug, release, test
   max_header_bytes: 1048576  # 1MB - 最大请求头大小
-  read_timeout: 30  # 读取超时（秒）
-  write_timeout: 30  # 写入超时（秒）
+  read_timeout: 30000  # 读取超时（秒） - 增加以支持大文件上传
+  write_timeout: 30000  # 写入超时（秒） - 增加以支持大文件上传
   idle_timeout: 120  # 空闲超时（秒）
   read_header_timeout: 10  # 读取请求头超时（秒，防止慢速攻击）
   shutdown_timeout: 30  # 优雅关闭超时（秒）
@@ -22,10 +22,11 @@ server:
 
 # 数据库配置
 database:
-  host: "127.0.0.1"
-  port: "3306"
+  host: "43.138.113.105"        # 公网ip
+  # host: "10.2.0.11"        # 内网ip
+  port: "13306"
   username: "root"
-  password: "root"
+  password: "tKnrfzLkDe5nKbYP"
   database: "hub"
   charset: "utf8mb4"
   max_open_conns: 150      # 优化: 从100增加到150，提升并发能力
@@ -80,24 +81,27 @@ cors:
 assets:
   # 指向桶根目录的可访问 URL（不要带尾部斜杠）
   # 例如针对 MinIO： http://127.0.0.1:9000/community-assets
-  public_base_url: "http://127.0.0.1:9000/community-assets"
+  public_base_url: "http://43.138.113.105:19000/community-assets" # 公网ip
+  # public_base_url: "http://10.2.0.11:19000/community-assets" # 内网ip
   max_avatar_size_mb: 5
   # 历史头像最大保留数量（含归档，不含当前 avatar.png）
   max_avatar_history: 9
 
 # MinIO 对象存储配置
 minio:
-  endpoint: "127.0.0.1:9000"
-  access_key_id: "minioadmin"
-  secret_access_key: "minioadmin"
+  endpoint: "43.138.113.105:19000"        # 公网ip
+  # endpoint: "10.2.0.11:19000"        # 内网ip
+  access_key_id: "minio"
+  secret_access_key: "pmZMGPzY4ANyB6nn"
   use_ssl: false
   bucket: "community-assets"
-  operation_timeout: 10  # MinIO操作超时（秒）
+  operation_timeout: 30000  # MinIO操作超时（秒） - 增加以支持大文件上传和合并
 
 # 资源存储配置（独立桶）
 resources_storage:
   bucket: "community-resources"
-  public_base_url: "http://127.0.0.1:9000/community-resources"
+  public_base_url: "http://43.138.113.105:19000/community-resources" # 公网ip
+  # public_base_url: "http://10.2.0.11:19000/community-resources" # 内网ip
 
 # 代码执行器配置
 code_executor:
@@ -218,7 +222,7 @@ async_tasks:
   # 上传相关
   upload_history_timeout: 5  # 上传历史记录任务超时（秒）
   avatar_cleanup_timeout: 30  # 头像清理任务超时（秒）
-  avatar_operation_timeout: 60  # 头像操作任务超时（秒）
+  avatar_operation_timeout: 30000  # 头像操作任务超时（秒） - 增加以支持大文件
   # 用户相关
   user_update_history_timeout: 5  # 用户更新历史任务超时（秒）
   # 消息相关

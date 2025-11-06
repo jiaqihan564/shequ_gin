@@ -33,9 +33,23 @@ CREATE TABLE IF NOT EXISTS `resource_comment_likes` (
   KEY `idx_user_id` (`user_id`) COMMENT '用户索引'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='资源评论点赞表';
 
--- 3. 为 resources 表添加评论数字段（如果不存在）
-ALTER TABLE `resources` 
-ADD COLUMN IF NOT EXISTS `comment_count` INT(11) DEFAULT 0 COMMENT '评论数' AFTER `like_count`;
+-- 3. 为 resources 表添加评论数字段
+-- 注意: 如果字段已存在会报错，可以忽略该错误
+SET @query = (
+  SELECT IF(
+    COUNT(*) = 0,
+    'ALTER TABLE `resources` ADD COLUMN `comment_count` INT(11) DEFAULT 0 COMMENT ''评论数'' AFTER `like_count`;',
+    'SELECT ''comment_count 列已存在，跳过添加'' AS message;'
+  )
+  FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = 'hub'
+    AND TABLE_NAME = 'resources'
+    AND COLUMN_NAME = 'comment_count'
+);
+
+PREPARE stmt FROM @query;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 -- 验证表创建
 SHOW TABLES LIKE '%resource_comment%';

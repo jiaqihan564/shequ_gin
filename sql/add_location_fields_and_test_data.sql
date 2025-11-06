@@ -37,9 +37,41 @@ EXECUTE alterIfNotExists_city;
 DEALLOCATE PREPARE alterIfNotExists_city;
 
 -- 添加索引（如果不存在）
-ALTER TABLE user_login_history 
-ADD INDEX IF NOT EXISTS idx_province (province),
-ADD INDEX IF NOT EXISTS idx_city (city);
+-- 检查并添加 province 索引
+SET @index_exists_province = (
+  SELECT COUNT(*) 
+  FROM information_schema.statistics 
+  WHERE table_schema = DATABASE() 
+    AND table_name = 'user_login_history' 
+    AND index_name = 'idx_province'
+);
+
+SET @add_index_province = IF(@index_exists_province = 0,
+  'ALTER TABLE user_login_history ADD INDEX idx_province (province);',
+  'SELECT ''索引 idx_province 已存在'' AS message;'
+);
+
+PREPARE stmt_province FROM @add_index_province;
+EXECUTE stmt_province;
+DEALLOCATE PREPARE stmt_province;
+
+-- 检查并添加 city 索引
+SET @index_exists_city = (
+  SELECT COUNT(*) 
+  FROM information_schema.statistics 
+  WHERE table_schema = DATABASE() 
+    AND table_name = 'user_login_history' 
+    AND index_name = 'idx_city'
+);
+
+SET @add_index_city = IF(@index_exists_city = 0,
+  'ALTER TABLE user_login_history ADD INDEX idx_city (city);',
+  'SELECT ''索引 idx_city 已存在'' AS message;'
+);
+
+PREPARE stmt_city FROM @add_index_city;
+EXECUTE stmt_city;
+DEALLOCATE PREPARE stmt_city;
 
 -- 插入测试地区数据（更新现有记录）
 -- 为现有的登录记录随机分配地区信息

@@ -38,8 +38,7 @@ CREATE TABLE IF NOT EXISTS code_executions (
     INDEX idx_snippet_id (snippet_id),
     INDEX idx_language (language),
     INDEX idx_status (status),
-    INDEX idx_created_at (created_at),
-    FOREIGN KEY (snippet_id) REFERENCES code_snippets(id) ON DELETE SET NULL
+    INDEX idx_created_at (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='代码执行记录表';
 
 -- 3. 协作会话表
@@ -52,8 +51,7 @@ CREATE TABLE IF NOT EXISTS code_collaborations (
     expires_at TIMESTAMP NOT NULL COMMENT '过期时间',
     INDEX idx_snippet_id (snippet_id),
     INDEX idx_session_token (session_token),
-    INDEX idx_expires_at (expires_at),
-    FOREIGN KEY (snippet_id) REFERENCES code_snippets(id) ON DELETE CASCADE
+    INDEX idx_expires_at (expires_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='代码协作会话表';
 
 -- 插入初始测试数据（可选）
