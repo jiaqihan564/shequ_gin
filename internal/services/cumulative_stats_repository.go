@@ -244,10 +244,6 @@ func (r *CumulativeStatsRepository) GetAllRealtimeMetrics() (*models.RealtimeMet
 			if v, err := strconv.ParseFloat(value, 64); err == nil {
 				response.SystemMemory = v
 			}
-		case "service_status":
-			response.ServiceStatus = value
-		case "last_error_time":
-			response.LastErrorTime = value
 		}
 	}
 

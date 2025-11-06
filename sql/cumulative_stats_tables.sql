@@ -106,9 +106,7 @@ INSERT INTO `realtime_metrics` (`metric_key`, `metric_value`, `metric_desc`) VAL
 ('online_users', '0', '当前在线用户数'),
 ('current_qps', '0', '当前QPS（每秒查询数）'),
 ('system_cpu', '0.0', '系统CPU使用率（百分比）'),
-('system_memory', '0.0', '系统内存使用率（百分比）'),
-('service_status', 'running', '服务状态'),
-('last_error_time', '', '最后错误时间')
+('system_memory', '0.0', '系统内存使用率（百分比）')
 ON DUPLICATE KEY UPDATE `metric_value` = VALUES(`metric_value`);
 
 -- ============================

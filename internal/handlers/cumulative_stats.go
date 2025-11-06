@@ -86,16 +86,13 @@ func (h *CumulativeStatsHandler) GetRealtimeMetrics(c *gin.Context) {
 	onlineUsers := GetWebSocketOnlineCount()
 
 	currentQPS := realtimeMgr.GetCurrentQPS()
-	lastErrorTime := realtimeMgr.GetLastErrorTime()
 	cpuPercent, memoryPercent := realtimeMgr.GetSystemMetrics()
 
 	data := gin.H{
-		"online_users":    onlineUsers,
-		"current_qps":     currentQPS,
-		"system_cpu":      cpuPercent,
-		"system_memory":   memoryPercent,
-		"service_status":  "running",
-		"last_error_time": lastErrorTime,
+		"online_users":  onlineUsers,
+		"current_qps":   currentQPS,
+		"system_cpu":    cpuPercent,
+		"system_memory": memoryPercent,
 	}
 
 	utils.SuccessResponse(c, 200, "获取成功", data)

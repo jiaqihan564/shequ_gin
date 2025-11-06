@@ -200,7 +200,10 @@ func (m *DailyMetricsManager) checkDateAndReset() {
 		atomic.StoreInt64(&m.totalLatency, 0)
 		atomic.StoreInt64(&m.newUsers, 0)
 		atomic.StoreInt64(&m.peakConcurrent, 0)
-		atomic.StoreInt64(&m.currentConcurrent, 0)
+		// 注意：不重置 currentConcurrent
+		// 原因：在日期切换时可能还有跨日请求在处理中（从昨天开始但还未完成）
+		// 如果重置为 0，这些请求完成时调用 DecrementConcurrent() 会导致计数变为负数
+		// currentConcurrent 会随着请求自然完成而归零
 		m.endpointCallCount = make(map[string]int64, m.endpointCallsCapacity) // 使用保存的容量值
 	}
 }

@@ -22,15 +22,15 @@ func StatisticsMiddleware(statsRepo *services.StatisticsRepository, cumulativeRe
 		dailyMgr := services.GetDailyMetricsManager()
 		dailyMgr.IncrementConcurrent()
 
+		// 使用 defer 确保并发计数一定会减少（即使发生 panic）
+		defer dailyMgr.DecrementConcurrent()
+
 		// 实时指标：记录请求（QPS统计）
 		realtimeMgr := services.GetRealtimeMetricsManager()
 		realtimeMgr.RecordRequest()
 
 		// 处理请求
 		c.Next()
-
-		// 并发计数-1（请求结束）
-		dailyMgr.DecrementConcurrent()
 
 		// 计算延迟
 		latency := time.Since(start)
@@ -66,11 +66,6 @@ func StatisticsMiddleware(statsRepo *services.StatisticsRepository, cumulativeRe
 			if userIDForActive > 0 {
 				dailyMgr.RecordLogin(userIDForActive)
 				realtimeMgr.RecordUserActivity(userIDForActive) // 实时在线用户
-			}
-
-			// 记录错误
-			if isError {
-				realtimeMgr.RecordError()
 			}
 
 			// 1. 记录登录统计

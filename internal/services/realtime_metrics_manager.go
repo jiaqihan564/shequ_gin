@@ -21,9 +21,6 @@ type RealtimeMetricsManager struct {
 	lastSecond   int64 // 上一秒的时间戳
 	currentQPS   int32 // 当前QPS
 
-	// 最后错误时间
-	lastErrorTime string
-
 	// 启动时间
 	startTime time.Time
 
@@ -97,15 +94,6 @@ func (m *RealtimeMetricsManager) RecordRequest() {
 	}
 }
 
-// RecordError 记录错误
-func (m *RealtimeMetricsManager) RecordError() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	// 使用标准的日期时间格式（与config.yaml中的datetime_full格式一致）
-	m.lastErrorTime = time.Now().UTC().Format("2006-01-02 15:04:05")
-}
-
 // GetOnlineUsers 获取在线用户数
 func (m *RealtimeMetricsManager) GetOnlineUsers() int {
 	m.mu.RLock()
@@ -117,14 +105,6 @@ func (m *RealtimeMetricsManager) GetOnlineUsers() int {
 // GetCurrentQPS 获取当前QPS
 func (m *RealtimeMetricsManager) GetCurrentQPS() int {
 	return int(atomic.LoadInt32(&m.currentQPS))
-}
-
-// GetLastErrorTime 获取最后错误时间
-func (m *RealtimeMetricsManager) GetLastErrorTime() string {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	return m.lastErrorTime
 }
 
 // GetSystemMetrics 获取系统指标（CPU和内存）

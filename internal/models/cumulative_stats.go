@@ -61,10 +61,8 @@ type DailyMetricsStats struct {
 
 // RealtimeMetricsResponse 实时指标响应
 type RealtimeMetricsResponse struct {
-	OnlineUsers   int     `json:"online_users"`
-	CurrentQPS    int     `json:"current_qps"`
-	SystemCPU     float64 `json:"system_cpu"`
-	SystemMemory  float64 `json:"system_memory"`
-	ServiceStatus string  `json:"service_status"`
-	LastErrorTime string  `json:"last_error_time"`
+	OnlineUsers  int     `json:"online_users"`
+	CurrentQPS   int     `json:"current_qps"`
+	SystemCPU    float64 `json:"system_cpu"`
+	SystemMemory float64 `json:"system_memory"`
 }
