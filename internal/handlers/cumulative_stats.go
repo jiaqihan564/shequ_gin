@@ -82,7 +82,7 @@ func (h *CumulativeStatsHandler) GetRealtimeMetrics(c *gin.Context) {
 	// 从实时管理器获取最新数据
 	realtimeMgr := services.GetRealtimeMetricsManager()
 
-	// 优先使用WebSocket的精确在线人数（基于真实连接）
+	// 使用WebSocket连接数统计在线用户（每个登录用户都会建立全局WS连接）
 	onlineUsers := GetWebSocketOnlineCount()
 
 	currentQPS := realtimeMgr.GetCurrentQPS()
