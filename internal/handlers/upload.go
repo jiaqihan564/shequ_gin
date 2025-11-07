@@ -137,8 +137,8 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 			_ = utils.SubmitTask(taskID, func(taskCtx context.Context) error {
 				h.historyRepo.RecordProfileChange(userID, "avatar", oldAvatarURL, url, reqCtx.ClientIP)
 				h.historyRepo.RecordOperationHistory(userID, username, "修改头像",
-					fmt.Sprintf("上传新头像: %s (大小: %d字节)", 
-						fileHeader.Filename, 
+					fmt.Sprintf("上传新头像: %s (大小: %d字节)",
+						fileHeader.Filename,
 						fileHeader.Size), reqCtx.ClientIP)
 				return nil
 			}, time.Duration(h.config.AsyncTasks.UploadHistoryTimeout)*time.Second)
@@ -420,6 +420,15 @@ func (h *UploadHandler) ListAvatarHistory(c *gin.Context) {
 	utils.SuccessResponse(c, 200, "OK", gin.H{"items": items})
 }
 
+// validateImageFile 验证图片文件（通用方法）
+func (h *UploadHandler) validateImageFile(header *multipart.FileHeader) error {
+	maxSize := int64(h.config.ImageUpload.MaxSizeMB * 1024 * 1024)
+	validator := utils.NewFileValidator(maxSize, []string{
+		"image/png", "image/jpeg", "image/gif", "image/webp",
+	})
+	return validator.Validate(header)
+}
+
 // UploadResourceImage 上传资源预览图
 func (h *UploadHandler) UploadResourceImage(c *gin.Context) {
 	_, err := utils.GetUserIDFromContext(c)
@@ -441,13 +450,8 @@ func (h *UploadHandler) UploadResourceImage(c *gin.Context) {
 	}
 	defer file.Close()
 
-	// 使用FileValidator进行完整验证（包括magic number）
-	maxSize := int64(h.config.ImageUpload.MaxSizeMB * 1024 * 1024)
-	validator := utils.NewFileValidator(maxSize, []string{
-		"image/png", "image/jpeg", "image/gif", "image/webp",
-	})
-
-	if err := validator.Validate(header); err != nil {
+	// 验证图片文件
+	if err := h.validateImageFile(header); err != nil {
 		h.logger.Warn("文件验证失败", "filename", header.Filename, "error", err.Error())
 		statusCode := utils.GetHTTPStatusCode(err)
 		if statusCode == 413 {
@@ -493,13 +497,8 @@ func (h *UploadHandler) UploadDocumentImage(c *gin.Context) {
 	}
 	defer file.Close()
 
-	// 使用FileValidator进行完整验证（包括magic number）
-	maxSize := int64(h.config.ImageUpload.MaxSizeMB * 1024 * 1024)
-	validator := utils.NewFileValidator(maxSize, []string{
-		"image/png", "image/jpeg", "image/gif", "image/webp",
-	})
-
-	if err := validator.Validate(header); err != nil {
+	// 验证图片文件
+	if err := h.validateImageFile(header); err != nil {
 		h.logger.Warn("文件验证失败", "filename", header.Filename, "error", err.Error())
 		statusCode := utils.GetHTTPStatusCode(err)
 		if statusCode == 413 {
