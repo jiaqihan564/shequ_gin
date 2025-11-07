@@ -23,16 +23,18 @@ type ResourceHandler struct {
 	resourceRepo        *services.ResourceRepository
 	resourceCommentRepo *services.ResourceCommentRepository
 	resourceStorage     *services.ResourceStorageService
+	userRepo            *services.UserRepository
 	logger              utils.Logger
 	config              *config.Config
 }
 
 // NewResourceHandler 创建资源处理器
-func NewResourceHandler(resourceRepo *services.ResourceRepository, resourceCommentRepo *services.ResourceCommentRepository, resourceStorage *services.ResourceStorageService, cfg *config.Config) *ResourceHandler {
+func NewResourceHandler(resourceRepo *services.ResourceRepository, resourceCommentRepo *services.ResourceCommentRepository, resourceStorage *services.ResourceStorageService, userRepo *services.UserRepository, cfg *config.Config) *ResourceHandler {
 	return &ResourceHandler{
 		resourceRepo:        resourceRepo,
 		resourceCommentRepo: resourceCommentRepo,
 		resourceStorage:     resourceStorage,
+		userRepo:            userRepo,
 		logger:              utils.GetLogger(),
 		config:              cfg,
 	}
@@ -466,6 +468,37 @@ func (h *ResourceHandler) CreateResourceComment(c *gin.Context) {
 	}
 
 	h.logger.Info("创建评论成功", "commentID", comment.ID, "userID", userID)
+
+	// 获取用户信息用于 WebSocket 通知
+	userInfo, err := GetUserWithProfile(ctx, h.userRepo, userID)
+	if err != nil {
+		h.logger.Warn("获取用户信息失败，无法发送 WebSocket 通知", "userID", userID, "error", err.Error())
+	} else {
+		commentUser := &models.CommentUser{
+			ID:       userInfo.User.ID,
+			Username: userInfo.User.Username,
+			Nickname: userInfo.Nickname,
+			Avatar:   userInfo.Avatar,
+		}
+
+		var replyToUser *models.CommentUser
+		if req.ReplyToUserID != nil && *req.ReplyToUserID > 0 {
+			replyInfo, err := GetUserWithProfile(ctx, h.userRepo, *req.ReplyToUserID)
+			if err != nil {
+				h.logger.Warn("获取回复用户信息失败", "replyToUserID", *req.ReplyToUserID, "error", err.Error())
+			} else if replyInfo != nil {
+				replyToUser = &models.CommentUser{
+					ID:       replyInfo.User.ID,
+					Username: replyInfo.User.Username,
+					Nickname: replyInfo.Nickname,
+					Avatar:   replyInfo.Avatar,
+				}
+			}
+		}
+
+		NotifyResourceComment(comment, commentUser, replyToUser)
+	}
+
 	utils.SuccessResponse(c, 201, "评论成功", gin.H{
 		"comment_id": comment.ID,
 	})

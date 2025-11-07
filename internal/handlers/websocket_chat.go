@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -263,6 +264,29 @@ func (h *ConnectionHub) GetOnlineUsers() []map[string]interface{} {
 	return users
 }
 
+// BroadcastToAll sends a message to all connected clients
+func (h *ConnectionHub) BroadcastToAll(msgType string, data interface{}) error {
+	msg := WSMessage{
+		Type: msgType,
+		Data: data,
+	}
+
+	msgData, err := json.Marshal(msg)
+	if err != nil {
+		h.logger.Error("Failed to marshal broadcast message", "error", err.Error(), "type", msgType)
+		return err
+	}
+
+	select {
+	case h.broadcast <- msgData:
+		h.logger.Debug("Broadcast message queued", "type", msgType)
+		return nil
+	default:
+		h.logger.Warn("Broadcast channel full, message dropped", "type", msgType)
+		return fmt.Errorf("broadcast channel full")
+	}
+}
+
 // NotifyPrivateMessage sends a private message notification to a specific user
 func NotifyPrivateMessage(receiverID uint, message *models.MessageResponse) {
 	if globalHub == nil {
@@ -311,6 +335,177 @@ func NotifyMessageRead(senderID uint, conversationID uint, readerID uint) {
 		globalHub.logger.Error("Failed to send message read notification",
 			"error", err.Error(),
 			"senderID", senderID)
+	}
+}
+
+// NotifyArticleComment broadcasts a new comment notification to all users
+func NotifyArticleComment(comment *models.ArticleComment, author *models.CommentAuthor, replyTo *models.CommentAuthor) {
+	if globalHub == nil {
+		utils.GetLogger().Warn("WebSocket hub not initialized, cannot send comment notification")
+		return
+	}
+
+	// Determine notification type and message type
+	notifType := "new_comment"
+	msgType := "article_comment"
+	if comment.ParentID > 0 {
+		notifType = "new_reply"
+		msgType = "article_reply"
+	}
+
+	var replyToUserID interface{}
+	if comment.ReplyToUserID != nil {
+		replyToUserID = *comment.ReplyToUserID
+	}
+
+	replyToPayload := interface{}(nil)
+	if replyTo != nil {
+		replyToPayload = map[string]interface{}{
+			"id":       replyTo.ID,
+			"username": replyTo.Username,
+			"nickname": replyTo.Nickname,
+			"avatar":   replyTo.Avatar,
+		}
+	}
+
+	authorPayload := map[string]interface{}{
+		"id":       author.ID,
+		"username": author.Username,
+		"nickname": author.Nickname,
+		"avatar":   author.Avatar,
+	}
+
+	commentPayload := map[string]interface{}{
+		"id":               comment.ID,
+		"article_id":       comment.ArticleID,
+		"user_id":          comment.UserID,
+		"parent_id":        comment.ParentID,
+		"root_id":          comment.RootID,
+		"reply_to_user_id": replyToUserID,
+		"content":          comment.Content,
+		"like_count":       comment.LikeCount,
+		"reply_count":      comment.ReplyCount,
+		"status":           comment.Status,
+		"created_at":       comment.CreatedAt.Format(time.RFC3339),
+		"updated_at":       comment.UpdatedAt.Format(time.RFC3339),
+		"author":           authorPayload,
+		"user":             authorPayload,
+		"reply_to_user":    replyToPayload,
+		"replies":          make([]interface{}, 0),
+		"is_liked":         false,
+	}
+
+	data := map[string]interface{}{
+		"entity":        "article",
+		"type":          notifType,
+		"article_id":    comment.ArticleID,
+		"comment_id":    comment.ID,
+		"parent_id":     comment.ParentID,
+		"user_id":       comment.UserID,
+		"username":      author.Username,
+		"nickname":      author.Nickname,
+		"avatar":        author.Avatar,
+		"content":       comment.Content,
+		"created_at":    comment.CreatedAt.Format(time.RFC3339),
+		"comment":       commentPayload,
+		"reply_to_user": replyToPayload,
+	}
+
+	globalHub.logger.Info("Broadcasting article comment notification",
+		"articleID", comment.ArticleID,
+		"commentID", comment.ID,
+		"userID", comment.UserID,
+		"type", notifType)
+
+	err := globalHub.BroadcastToAll(msgType, data)
+	if err != nil {
+		globalHub.logger.Error("Failed to broadcast comment notification",
+			"error", err.Error(),
+			"articleID", comment.ArticleID,
+			"commentID", comment.ID)
+	}
+}
+
+// NotifyResourceComment broadcasts a new resource comment notification to all users
+func NotifyResourceComment(comment *models.ResourceComment, author *models.CommentUser, replyTo *models.CommentUser) {
+	if globalHub == nil {
+		utils.GetLogger().Warn("WebSocket hub not initialized, cannot send resource comment notification")
+		return
+	}
+
+	notifType := "new_comment"
+	msgType := "resource_comment"
+	if comment.ParentID > 0 {
+		notifType = "new_reply"
+		msgType = "resource_reply"
+	}
+
+	var replyToUserID interface{}
+	if comment.ReplyToUserID != nil {
+		replyToUserID = *comment.ReplyToUserID
+	}
+
+	replyToPayload := interface{}(nil)
+	if replyTo != nil {
+		replyToPayload = map[string]interface{}{
+			"id":       replyTo.ID,
+			"username": replyTo.Username,
+			"nickname": replyTo.Nickname,
+			"avatar":   replyTo.Avatar,
+		}
+	}
+
+	authorPayload := map[string]interface{}{
+		"id":       author.ID,
+		"username": author.Username,
+		"nickname": author.Nickname,
+		"avatar":   author.Avatar,
+	}
+
+	commentPayload := map[string]interface{}{
+		"id":               comment.ID,
+		"resource_id":      comment.ResourceID,
+		"user_id":          comment.UserID,
+		"parent_id":        comment.ParentID,
+		"root_id":          comment.RootID,
+		"reply_to_user_id": replyToUserID,
+		"content":          comment.Content,
+		"like_count":       comment.LikeCount,
+		"reply_count":      comment.ReplyCount,
+		"is_liked":         false,
+		"created_at":       comment.CreatedAt.Format(time.RFC3339),
+		"user":             authorPayload,
+		"reply_to_user":    replyToPayload,
+		"replies":          make([]interface{}, 0),
+	}
+
+	data := map[string]interface{}{
+		"entity":        "resource",
+		"type":          notifType,
+		"resource_id":   comment.ResourceID,
+		"comment_id":    comment.ID,
+		"parent_id":     comment.ParentID,
+		"user_id":       comment.UserID,
+		"username":      author.Username,
+		"nickname":      author.Nickname,
+		"avatar":        author.Avatar,
+		"content":       comment.Content,
+		"created_at":    comment.CreatedAt.Format(time.RFC3339),
+		"comment":       commentPayload,
+		"reply_to_user": replyToPayload,
+	}
+
+	globalHub.logger.Info("Broadcasting resource comment notification",
+		"resourceID", comment.ResourceID,
+		"commentID", comment.ID,
+		"userID", comment.UserID,
+		"type", notifType)
+
+	if err := globalHub.BroadcastToAll(msgType, data); err != nil {
+		globalHub.logger.Error("Failed to broadcast resource comment notification",
+			"error", err.Error(),
+			"resourceID", comment.ResourceID,
+			"commentID", comment.ID)
 	}
 }
 

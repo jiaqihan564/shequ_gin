@@ -17,15 +17,17 @@ import (
 // ArticleHandler 文章处理器
 type ArticleHandler struct {
 	articleRepo *services.ArticleRepository
+	userRepo    *services.UserRepository
 	cacheSvc    *services.CacheService
 	logger      utils.Logger
 	config      *config.Config
 }
 
 // NewArticleHandler 创建文章处理器
-func NewArticleHandler(articleRepo *services.ArticleRepository, cacheSvc *services.CacheService, cfg *config.Config) *ArticleHandler {
+func NewArticleHandler(articleRepo *services.ArticleRepository, userRepo *services.UserRepository, cacheSvc *services.CacheService, cfg *config.Config) *ArticleHandler {
 	return &ArticleHandler{
 		articleRepo: articleRepo,
+		userRepo:    userRepo,
 		cacheSvc:    cacheSvc,
 		logger:      utils.GetLogger(),
 		config:      cfg,
@@ -308,6 +310,37 @@ func (h *ArticleHandler) CreateComment(c *gin.Context) {
 
 	// 失效文章详情缓存（评论数已变化）
 	h.cacheSvc.InvalidateArticleDetail(uint(articleID))
+
+	// 获取用户信息用于 WebSocket 通知
+	userInfo, err := GetUserWithProfile(ctx, h.userRepo, userID)
+	if err != nil {
+		h.logger.Warn("获取用户信息失败，无法发送 WebSocket 通知", "userID", userID, "error", err.Error())
+	} else {
+		author := &models.CommentAuthor{
+			ID:       userInfo.User.ID,
+			Username: userInfo.User.Username,
+			Nickname: userInfo.Nickname,
+			Avatar:   userInfo.Avatar,
+		}
+
+		var replyToAuthor *models.CommentAuthor
+		if req.ReplyToUserID != nil && *req.ReplyToUserID > 0 {
+			replyToUserInfo, err := GetUserWithProfile(ctx, h.userRepo, *req.ReplyToUserID)
+			if err != nil {
+				h.logger.Warn("获取回复用户信息失败", "replyToUserID", *req.ReplyToUserID, "error", err.Error())
+			} else if replyToUserInfo != nil {
+				replyToAuthor = &models.CommentAuthor{
+					ID:       replyToUserInfo.User.ID,
+					Username: replyToUserInfo.User.Username,
+					Nickname: replyToUserInfo.Nickname,
+					Avatar:   replyToUserInfo.Avatar,
+				}
+			}
+		}
+
+		// 广播评论通知
+		NotifyArticleComment(comment, author, replyToAuthor)
+	}
 
 	utils.SuccessResponse(c, 201, "评论成功", gin.H{
 		"comment_id": comment.ID,

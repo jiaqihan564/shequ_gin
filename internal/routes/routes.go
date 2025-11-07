@@ -40,9 +40,9 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 	historyHandler := handlers.NewHistoryHandler(ctn.HistoryRepo, cfg)
 	cumulativeHandler := handlers.NewCumulativeStatsHandler(ctn.CumulativeRepo)
 	chatHandler := handlers.NewChatHandler(ctn.ChatRepo, ctn.UserRepo, cfg)
-	articleHandler := handlers.NewArticleHandler(ctn.ArticleRepo, ctn.CacheSvc, cfg)
+	articleHandler := handlers.NewArticleHandler(ctn.ArticleRepo, ctn.UserRepo, ctn.CacheSvc, cfg)
 	privateMsgHandler := handlers.NewPrivateMessageHandler(ctn.PrivateMsgRepo, ctn.UserRepo, cfg)
-	resourceHandler := handlers.NewResourceHandler(ctn.ResourceRepo, ctn.ResourceCommentRepo, ctn.ResourceStorage, cfg)
+	resourceHandler := handlers.NewResourceHandler(ctn.ResourceRepo, ctn.ResourceCommentRepo, ctn.ResourceStorage, ctn.UserRepo, cfg)
 	chunkUploadHandler := handlers.NewChunkUploadHandler(ctn.UploadMgr)
 	codeHandler := handlers.NewCodeHandler(ctn.CodeRepo, ctn.CodeExecutor, cfg)
 
