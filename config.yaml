@@ -296,13 +296,8 @@ pagination:
 image_upload:
   max_size_mb: 5  # 文档和资源图片最大大小（MB）
 
-# 头像处理配置
-avatar_processing:
-  max_width: 384         # 头像最大宽度（像素，降低到384px）
-  max_height: 384        # 头像最大高度（像素，降低到384px）
-  jpeg_quality: 60       # JPEG压缩质量（降低到60）
-  output_format: "jpeg"  # 输出格式：jpeg（前端使用JPEG压缩）
-  enable_auto_resize: true # 启用自动缩放（双保险）
+# 头像上传配置（前端已裁剪和压缩）
+avatar_upload:
   upload_rate_limit: 10  # 每分钟最大上传次数
 
 # 数据库查询配置

@@ -42,7 +42,7 @@ type Config struct {
 	Compression             CompressionConfig             `yaml:"compression" json:"compression"`
 	Pagination              PaginationConfig              `yaml:"pagination" json:"pagination"`
 	ImageUpload             ImageUploadConfig             `yaml:"image_upload" json:"image_upload"`
-	AvatarProcessing        AvatarProcessingConfig        `yaml:"avatar_processing" json:"avatar_processing"`
+	AvatarUpload            AvatarUploadConfig            `yaml:"avatar_upload" json:"avatar_upload"`
 	DatabaseQuery           DatabaseQueryConfig           `yaml:"database_query" json:"database_query"`
 	RepositoryDefaults      RepositoryDefaultsConfig      `yaml:"repository_defaults" json:"repository_defaults"`
 	StatisticsQuery         StatisticsQueryConfig         `yaml:"statistics_query" json:"statistics_query"`
@@ -377,14 +377,9 @@ type ImageUploadConfig struct {
 	MaxSizeMB int `yaml:"max_size_mb" json:"max_size_mb"` // 文档和资源图片最大大小（MB）
 }
 
-// AvatarProcessingConfig 头像处理配置
-type AvatarProcessingConfig struct {
-	MaxWidth         int    `yaml:"max_width" json:"max_width"`                   // 头像最大宽度（像素）
-	MaxHeight        int    `yaml:"max_height" json:"max_height"`                 // 头像最大高度（像素）
-	JpegQuality      int    `yaml:"jpeg_quality" json:"jpeg_quality"`             // JPEG压缩质量（1-100）
-	OutputFormat     string `yaml:"output_format" json:"output_format"`           // 输出格式：png 或 jpeg
-	EnableAutoResize bool   `yaml:"enable_auto_resize" json:"enable_auto_resize"` // 启用自动缩放
-	UploadRateLimit  int    `yaml:"upload_rate_limit" json:"upload_rate_limit"`   // 每分钟最大上传次数
+// AvatarUploadConfig 头像上传配置（前端已裁剪和压缩）
+type AvatarUploadConfig struct {
+	UploadRateLimit int `yaml:"upload_rate_limit" json:"upload_rate_limit"` // 每分钟最大上传次数
 }
 
 // DatabaseQueryConfig 数据库查询配置

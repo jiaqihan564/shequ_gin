@@ -265,7 +265,7 @@ func InitRateLimiter(cfg *config.Config) {
 			"maxSize", regMaxSize)
 
 		// 4. 头像上传限流器
-		uploadRPM := cfg.AvatarProcessing.UploadRateLimit
+		uploadRPM := cfg.AvatarUpload.UploadRateLimit
 		if uploadRPM <= 0 {
 			uploadRPM = 10 // 默认每分钟10次
 		}

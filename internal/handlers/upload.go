@@ -68,24 +68,23 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 		return // 错误已在函数内处理
 	}
 
-	// 处理图片（自动缩放+压缩）
-	processedResult, err := h.processAvatarImage(c, fileHeader, userID)
+	// 打开文件准备上传（前端已经裁剪和压缩好了）
+	file, err := fileHeader.Open()
 	if err != nil {
-		return // 错误已在函数内处理
+		h.logger.Error("打开上传文件失败", "userID", userID, "error", err.Error())
+		utils.CodeErrorResponse(c, http.StatusInternalServerError, utils.ErrCodeUploadFailed, "无法读取文件")
+		return
 	}
+	defer file.Close()
 
 	// 归档旧头像（不阻塞上传流程）
 	timestamp := time.Now().Unix()
 	objectKey := fmt.Sprintf("%s/avatar.png", username)
 	h.archiveOldAvatar(c.Request.Context(), userID, username, objectKey, timestamp)
 
-	// 上传处理后的头像
-	contentType := "image/png"
-	if processedResult.Format == "jpeg" {
-		contentType = "image/jpeg"
-	}
-	url, err := h.storage.PutObject(c.Request.Context(), objectKey, contentType,
-		processedResult.Data, processedResult.Size)
+	// 直接上传（前端已处理好，统一为JPEG格式）
+	contentType := "image/jpeg"
+	url, err := h.storage.PutObject(c.Request.Context(), objectKey, contentType, file, fileHeader.Size)
 	if err != nil {
 		h.logger.Error("上传到对象存储失败",
 			"userID", userID,
@@ -138,10 +137,9 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 			_ = utils.SubmitTask(taskID, func(taskCtx context.Context) error {
 				h.historyRepo.RecordProfileChange(userID, "avatar", oldAvatarURL, url, reqCtx.ClientIP)
 				h.historyRepo.RecordOperationHistory(userID, username, "修改头像",
-					fmt.Sprintf("上传新头像: %s (处理后: %dx%d)",
-						fileHeader.Filename,
-						processedResult.Width,
-						processedResult.Height), reqCtx.ClientIP)
+					fmt.Sprintf("上传新头像: %s (大小: %d字节)", 
+						fileHeader.Filename, 
+						fileHeader.Size), reqCtx.ClientIP)
 				return nil
 			}, time.Duration(h.config.AsyncTasks.UploadHistoryTimeout)*time.Second)
 		}
@@ -166,15 +164,9 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 		"duration", time.Since(reqCtx.StartTime))
 
 	utils.SuccessResponse(c, 200, "上传成功", gin.H{
-		"url":             urlWithTS,
-		"width":           processedResult.Width,
-		"height":          processedResult.Height,
-		"mime":            contentType,
-		"size":            processedResult.Size,
-		"original_size":   fileHeader.Size,
-		"resized":         processedResult.Resized,
-		"original_width":  processedResult.OriginalWidth,
-		"original_height": processedResult.OriginalHeight,
+		"url":  urlWithTS,
+		"mime": contentType,
+		"size": fileHeader.Size,
 	})
 
 	// 使用Worker Pool异步清理历史头像（避免goroutine泄漏）
@@ -263,56 +255,6 @@ func (h *UploadHandler) receiveAndValidateFile(c *gin.Context, userID uint) (*mu
 		"maxAllowedKB", maxSize/1024)
 
 	return fileHeader, nil
-}
-
-// processAvatarImage 处理头像图片（缩放+压缩）
-func (h *UploadHandler) processAvatarImage(c *gin.Context, fileHeader *multipart.FileHeader, userID uint) (*utils.ImageProcessResult, error) {
-	// 获取配置
-	maxWidth := uint(h.config.AvatarProcessing.MaxWidth)
-	maxHeight := uint(h.config.AvatarProcessing.MaxHeight)
-	quality := h.config.AvatarProcessing.JpegQuality
-	format := h.config.AvatarProcessing.OutputFormat
-	enableResize := h.config.AvatarProcessing.EnableAutoResize
-
-	// 设置默认值
-	if maxWidth == 0 {
-		maxWidth = 1024
-	}
-	if maxHeight == 0 {
-		maxHeight = 1024
-	}
-	if quality <= 0 || quality > 100 {
-		quality = 85
-	}
-	if format != "png" && format != "jpeg" {
-		format = "png"
-	}
-
-	// 创建图片处理器
-	processor := utils.NewImageProcessor(maxWidth, maxHeight, quality, format)
-	processor.EnableAutoSize = enableResize
-
-	// 处理图片
-	result, err := processor.ProcessAvatar(fileHeader)
-	if err != nil {
-		h.logger.Error("图片处理失败", "userID", userID, "error", err.Error())
-		utils.CodeErrorResponse(c, http.StatusBadRequest,
-			utils.ErrCodeUploadFailed, "图片处理失败: "+err.Error())
-		return nil, err
-	}
-
-	// 记录处理信息
-	if result.Resized {
-		h.logger.Info("图片已自动缩放",
-			"userID", userID,
-			"original", fmt.Sprintf("%dx%d", result.OriginalWidth, result.OriginalHeight),
-			"resized", fmt.Sprintf("%dx%d", result.Width, result.Height),
-			"originalSize", fileHeader.Size,
-			"processedSize", result.Size,
-			"compression", fmt.Sprintf("%.1f%%", float64(fileHeader.Size-result.Size)/float64(fileHeader.Size)*100))
-	}
-
-	return result, nil
 }
 
 // archiveOldAvatar 归档旧头像为历史版本
