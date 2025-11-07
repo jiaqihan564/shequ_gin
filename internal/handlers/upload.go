@@ -84,7 +84,7 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 	if processedResult.Format == "jpeg" {
 		contentType = "image/jpeg"
 	}
-	url, err := h.storage.PutObject(c.Request.Context(), objectKey, contentType, 
+	url, err := h.storage.PutObject(c.Request.Context(), objectKey, contentType,
 		processedResult.Data, processedResult.Size)
 	if err != nil {
 		h.logger.Error("上传到对象存储失败",
@@ -111,46 +111,46 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 		err := h.userService.UpdateUserAvatar(c.Request.Context(), prof)
 		if err != nil {
 			// 数据库更新失败，需要回滚（删除已上传的文件）
-			h.logger.Error("更新数据库头像URL失败，开始回滚", 
-				"userID", userID, 
+			h.logger.Error("更新数据库头像URL失败，开始回滚",
+				"userID", userID,
 				"error", err.Error())
-			
+
 			// 尝试删除刚上传的文件
 			if deleteErr := h.storage.RemoveObject(c.Request.Context(), objectKey); deleteErr != nil {
-				h.logger.Error("回滚失败：无法删除已上传的头像", 
+				h.logger.Error("回滚失败：无法删除已上传的头像",
 					"userID", userID,
 					"objectKey", objectKey,
 					"error", deleteErr.Error())
 			} else {
 				h.logger.Info("回滚成功：已删除上传的头像", "userID", userID)
 			}
-			
-			utils.CodeErrorResponse(c, http.StatusInternalServerError, 
+
+			utils.CodeErrorResponse(c, http.StatusInternalServerError,
 				utils.ErrCodeUploadFailed, "头像上传失败，请重试")
 			return
 		}
-		
+
 		dbUpdateSuccess = true
-		
+
 		// 使用Worker Pool记录头像修改历史（避免goroutine泄漏）
 		if h.historyRepo != nil {
 			taskID := fmt.Sprintf("avatar_history_%d_%d", userID, time.Now().Unix())
 			_ = utils.SubmitTask(taskID, func(taskCtx context.Context) error {
 				h.historyRepo.RecordProfileChange(userID, "avatar", oldAvatarURL, url, reqCtx.ClientIP)
 				h.historyRepo.RecordOperationHistory(userID, username, "修改头像",
-					fmt.Sprintf("上传新头像: %s (处理后: %dx%d)", 
-						fileHeader.Filename, 
-						processedResult.Width, 
+					fmt.Sprintf("上传新头像: %s (处理后: %dx%d)",
+						fileHeader.Filename,
+						processedResult.Width,
 						processedResult.Height), reqCtx.ClientIP)
 				return nil
 			}, time.Duration(h.config.AsyncTasks.UploadHistoryTimeout)*time.Second)
 		}
 	}
-	
+
 	// 如果数据库更新失败，这里已经返回了，不会执行下面的代码
 	if !dbUpdateSuccess {
 		h.logger.Error("用户服务未初始化", "userID", userID)
-		utils.CodeErrorResponse(c, http.StatusInternalServerError, 
+		utils.CodeErrorResponse(c, http.StatusInternalServerError,
 			utils.ErrCodeUploadFailed, "服务暂时不可用")
 		return
 	}
@@ -166,14 +166,14 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 		"duration", time.Since(reqCtx.StartTime))
 
 	utils.SuccessResponse(c, 200, "上传成功", gin.H{
-		"url":            urlWithTS,
-		"width":          processedResult.Width,
-		"height":         processedResult.Height,
-		"mime":           contentType,
-		"size":           processedResult.Size,
-		"original_size":  fileHeader.Size,
-		"resized":        processedResult.Resized,
-		"original_width": processedResult.OriginalWidth,
+		"url":             urlWithTS,
+		"width":           processedResult.Width,
+		"height":          processedResult.Height,
+		"mime":            contentType,
+		"size":            processedResult.Size,
+		"original_size":   fileHeader.Size,
+		"resized":         processedResult.Resized,
+		"original_width":  processedResult.OriginalWidth,
 		"original_height": processedResult.OriginalHeight,
 	})
 
@@ -214,24 +214,53 @@ func (h *UploadHandler) receiveAndValidateFile(c *gin.Context, userID uint) (*mu
 		return nil, err
 	}
 
-	maxSize := h.maxAvatarSizeBytes
-	if maxSize <= 0 {
-		maxSize = int64(h.config.ImageUpload.MaxSizeMB) * 1024 * 1024 // 从配置读取
+	// 强制使用5KB限制（极限压缩）
+	maxSize := int64(5 * 1024) // 固定5KB
+
+	// 先检查文件大小（在验证器之前，这样可以给出更友好的提示）
+	if fileHeader.Size > maxSize {
+		actualKB := float64(fileHeader.Size) / 1024
+		h.logger.Warn("❌ 文件过大",
+			"userID", userID,
+			"filename", fileHeader.Filename,
+			"fileSize", fileHeader.Size,
+			"fileSizeKB", actualKB,
+			"maxAllowed", maxSize,
+			"maxAllowedKB", 5)
+
+		// 友好的错误提示（不暴露具体数据）
+		utils.CodeErrorResponse(c, 413, utils.ErrCodeUploadTooLarge,
+			"图片过大，请选择更小的图片或裁剪后重试")
+		return nil, fmt.Errorf("file too large: %d bytes", fileHeader.Size)
 	}
 
-	validator := utils.NewFileValidator(maxSize, []string{"image/png"})
+	validator := utils.NewFileValidator(maxSize, []string{"image/png", "image/jpeg"})
 	if err := validator.Validate(fileHeader); err != nil {
-		h.logger.Warn("文件验证失败", "userID", userID, "filename", fileHeader.Filename, "error", err.Error())
+		h.logger.Warn("❌ 文件验证失败",
+			"userID", userID,
+			"filename", fileHeader.Filename,
+			"fileSize", fileHeader.Size,
+			"maxAllowed", maxSize,
+			"error", err.Error())
 		statusCode := utils.GetHTTPStatusCode(err)
 		if statusCode == 413 {
 			c.Header("Connection", "close")
+			// 不暴露具体大小，给出友好提示
 			utils.CodeErrorResponse(c, statusCode, utils.ErrCodeUploadTooLarge,
-				fmt.Sprintf("文件过大，最大允许%dMB", maxSize/(1024*1024)))
+				"图片过大，请选择更小的图片或裁剪后重试")
 		} else {
-			utils.CodeErrorResponse(c, statusCode, utils.ErrCodeUploadInvalidType, "仅支持PNG格式图片")
+			utils.CodeErrorResponse(c, statusCode, utils.ErrCodeUploadInvalidType, "仅支持PNG或JPEG格式图片")
 		}
 		return nil, err
 	}
+
+	// 记录验证成功
+	h.logger.Info("✅ 文件验证通过",
+		"userID", userID,
+		"filename", fileHeader.Filename,
+		"fileSize", fileHeader.Size,
+		"fileSizeKB", fileHeader.Size/1024,
+		"maxAllowedKB", maxSize/1024)
 
 	return fileHeader, nil
 }
@@ -267,7 +296,7 @@ func (h *UploadHandler) processAvatarImage(c *gin.Context, fileHeader *multipart
 	result, err := processor.ProcessAvatar(fileHeader)
 	if err != nil {
 		h.logger.Error("图片处理失败", "userID", userID, "error", err.Error())
-		utils.CodeErrorResponse(c, http.StatusBadRequest, 
+		utils.CodeErrorResponse(c, http.StatusBadRequest,
 			utils.ErrCodeUploadFailed, "图片处理失败: "+err.Error())
 		return nil, err
 	}

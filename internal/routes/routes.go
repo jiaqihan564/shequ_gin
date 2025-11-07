@@ -35,7 +35,11 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 	r.Use(middleware.StatisticsMiddleware(ctn.StatsRepo, ctn.CumulativeRepo))                        // 11. 统计中间件（自动收集数据）
 
 	// 初始化处理器
-	uploadMaxBytes := int64(cfg.Assets.MaxAvatarSizeMB) * 1024 * 1024
+	// 头像大小限制：从配置读取（5KB = 0.005MB）
+	uploadMaxBytes := int64(cfg.Assets.MaxAvatarSizeMB * 1024 * 1024)
+	if uploadMaxBytes <= 0 {
+		uploadMaxBytes = 5 * 1024 // 默认5KB
+	}
 	authHandler := handlers.NewAuthHandler(ctn.Auth, cfg)
 	userHandler := handlers.NewUserHandler(ctn.UserSvc, ctn.HistoryRepo, cfg)
 	healthHandler := handlers.NewHealthHandler(ctn.DB)
@@ -143,19 +147,19 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 			auth.PUT("/auth/me", userHandler.UpdateMe)                     // 更新当前用户信息
 			auth.POST("/auth/change-password", authHandler.ChangePassword) // 修改密码
 
-		// 文件上传接口（添加专用限流）
-		auth.POST("/upload", middleware.UploadRateLimitMiddleware(), uploadHandler.UploadAvatar)
-		auth.POST("/resources/images/upload", uploadHandler.UploadResourceImage)    // 上传资源预览图
-		auth.POST("/resources/documents/upload", uploadHandler.UploadDocumentImage) // 上传文档图片
+			// 文件上传接口（添加专用限流）
+			auth.POST("/upload", middleware.UploadRateLimitMiddleware(), uploadHandler.UploadAvatar)
+			auth.POST("/resources/images/upload", uploadHandler.UploadResourceImage)    // 上传资源预览图
+			auth.POST("/resources/documents/upload", uploadHandler.UploadDocumentImage) // 上传文档图片
 
 			// 退出登录（JWT无状态，主要用于客户端清除token）
 			auth.POST("/auth/logout", authHandler.Logout)
 
-		// 保留的原有接口（向后兼容）
-		auth.GET("/user/profile", userHandler.GetProfile)
-		auth.PUT("/user/profile", userHandler.UpdateProfile)
-		auth.GET("/user/:id", userHandler.GetUserByID)
-		auth.POST("/files/upload", middleware.UploadRateLimitMiddleware(), uploadHandler.UploadAvatar)
+			// 保留的原有接口（向后兼容）
+			auth.GET("/user/profile", userHandler.GetProfile)
+			auth.PUT("/user/profile", userHandler.UpdateProfile)
+			auth.GET("/user/:id", userHandler.GetUserByID)
+			auth.POST("/files/upload", middleware.UploadRateLimitMiddleware(), uploadHandler.UploadAvatar)
 			auth.GET("/user/avatar/history", uploadHandler.ListAvatarHistory)
 			auth.GET("/avatar/history", uploadHandler.ListAvatarHistory)
 

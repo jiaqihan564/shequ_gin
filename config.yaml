@@ -86,7 +86,7 @@ assets:
   # 例如针对 MinIO： http://127.0.0.1:9000/community-assets
   public_base_url: "http://43.138.113.105:19000/community-assets" # 公网ip
   # public_base_url: "http://10.2.0.11:19000/community-assets" # 内网ip
-  max_avatar_size_mb: 0.01  # 10KB = 0.01MB（前端已压缩到10KB，后端严格限制）
+  max_avatar_size_mb: 0.005  # 5KB = 0.005MB（前端已压缩到5KB，后端严格限制）
   # 历史头像最大保留数量（含归档，不含当前 avatar.png）
   max_avatar_history: 9
 
@@ -298,10 +298,10 @@ image_upload:
 
 # 头像处理配置
 avatar_processing:
-  max_width: 512         # 头像最大宽度（像素，前端已压缩到512）
-  max_height: 512        # 头像最大高度（像素，前端已压缩到512）
-  jpeg_quality: 85       # JPEG压缩质量（1-100）
-  output_format: "png"   # 输出格式：png（前端统一转为PNG）
+  max_width: 384         # 头像最大宽度（像素，降低到384px）
+  max_height: 384        # 头像最大高度（像素，降低到384px）
+  jpeg_quality: 60       # JPEG压缩质量（降低到60）
+  output_format: "jpeg"  # 输出格式：jpeg（前端使用JPEG压缩）
   enable_auto_resize: true # 启用自动缩放（双保险）
   upload_rate_limit: 10  # 每分钟最大上传次数
 
