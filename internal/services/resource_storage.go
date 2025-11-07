@@ -92,10 +92,11 @@ func (s *ResourceStorageService) UploadResourceImage(ctx context.Context, file i
 	// 生成UUID作为临时目录名
 	tempID := uuid.New().String()
 
-	// 获取文件扩展名
+	// 确保文件名有扩展名（如果没有，添加默认扩展名）
 	ext := filepath.Ext(filename)
 	if ext == "" {
-		ext = ".jpg" // 默认扩展名
+		// 没有扩展名，添加默认的.jpg扩展名
+		filename = filename + ".jpg"
 	}
 
 	// 构建临时路径: images/temp/{uuid}/{filename}
@@ -108,6 +109,13 @@ func (s *ResourceStorageService) UploadResourceImage(ctx context.Context, file i
 func (s *ResourceStorageService) UploadDocumentImage(ctx context.Context, file io.Reader, filename string, size int64) (string, error) {
 	if s.client == nil {
 		return "", fmt.Errorf("资源存储客户端未初始化")
+	}
+
+	// 确保文件名有扩展名（如果没有，添加默认扩展名）
+	ext := filepath.Ext(filename)
+	if ext == "" {
+		// 没有扩展名，添加默认的.jpg扩展名
+		filename = filename + ".jpg"
 	}
 
 	// 构建路径: documents/{year}/{month}/{uuid}_{filename}

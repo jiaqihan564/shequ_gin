@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"path/filepath"
 	"time"
 
 	"gin/internal/config"
@@ -17,10 +18,10 @@ import (
 
 // UploadManager 上传管理器（处理断点续传）
 type UploadManager struct {
-	db        *Database
-	storage   StorageClient
-	logger    utils.Logger
-	chunkSize int
+	db         *Database
+	storage    StorageClient
+	logger     utils.Logger
+	chunkSize  int
 	expireTime time.Duration
 }
 
@@ -165,9 +166,17 @@ func (m *UploadManager) MergeChunks(ctx context.Context, uploadID string) (*mode
 		return nil, fmt.Errorf("分片未全部上传，进度：%d/%d", len(uploadedChunks), chunk.TotalChunks)
 	}
 
+	// 确保文件名有扩展名（如果没有，添加默认扩展名）
+	filename := chunk.FileName
+	ext := filepath.Ext(filename)
+	if ext == "" {
+		// 没有扩展名，添加默认的.bin扩展名
+		filename = filename + ".bin"
+	}
+
 	// 生成最终存储路径
 	now := time.Now().UTC()
-	storagePath := fmt.Sprintf("resources/%d/%02d/%s_%s", now.Year(), now.Month(), uploadID[:8], chunk.FileName)
+	storagePath := fmt.Sprintf("resources/%d/%02d/%s_%s", now.Year(), now.Month(), uploadID[:8], filename)
 
 	m.logger.Info("开始合并分片", "uploadID", uploadID, "totalChunks", chunk.TotalChunks, "storagePath", storagePath)
 
