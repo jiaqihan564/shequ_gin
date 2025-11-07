@@ -17,6 +17,10 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 
 	r := gin.New() // 使用 gin.New() 而不是 gin.Default()，手动控制中间件
 
+	// 设置上传文件的内存限制（超过此大小将写入临时文件）
+	// 设置为8MB，对于头像上传足够了（配置的max是5MB）
+	r.MaxMultipartMemory = 8 << 20 // 8 MB
+
 	// 添加中间件（顺序很重要）
 	r.Use(middleware.PanicRecoveryMiddleware())                                                      // 1. Panic恢复（最先执行）
 	r.Use(middleware.RequestIDMiddleware())                                                          // 2. 请求ID中间件
@@ -139,19 +143,19 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 			auth.PUT("/auth/me", userHandler.UpdateMe)                     // 更新当前用户信息
 			auth.POST("/auth/change-password", authHandler.ChangePassword) // 修改密码
 
-			// 文件上传接口
-			auth.POST("/upload", uploadHandler.UploadAvatar)
-			auth.POST("/resources/images/upload", uploadHandler.UploadResourceImage)    // 上传资源预览图
-			auth.POST("/resources/documents/upload", uploadHandler.UploadDocumentImage) // 上传文档图片
+		// 文件上传接口（添加专用限流）
+		auth.POST("/upload", middleware.UploadRateLimitMiddleware(), uploadHandler.UploadAvatar)
+		auth.POST("/resources/images/upload", uploadHandler.UploadResourceImage)    // 上传资源预览图
+		auth.POST("/resources/documents/upload", uploadHandler.UploadDocumentImage) // 上传文档图片
 
 			// 退出登录（JWT无状态，主要用于客户端清除token）
 			auth.POST("/auth/logout", authHandler.Logout)
 
-			// 保留的原有接口（向后兼容）
-			auth.GET("/user/profile", userHandler.GetProfile)
-			auth.PUT("/user/profile", userHandler.UpdateProfile)
-			auth.GET("/user/:id", userHandler.GetUserByID)
-			auth.POST("/files/upload", uploadHandler.UploadAvatar)
+		// 保留的原有接口（向后兼容）
+		auth.GET("/user/profile", userHandler.GetProfile)
+		auth.PUT("/user/profile", userHandler.UpdateProfile)
+		auth.GET("/user/:id", userHandler.GetUserByID)
+		auth.POST("/files/upload", middleware.UploadRateLimitMiddleware(), uploadHandler.UploadAvatar)
 			auth.GET("/user/avatar/history", uploadHandler.ListAvatarHistory)
 			auth.GET("/avatar/history", uploadHandler.ListAvatarHistory)
 

@@ -217,6 +217,7 @@ var (
 	globalIPRateLimiter       *LRURateLimiter
 	globalLoginRateLimiter    *LRURateLimiter
 	globalRegisterRateLimiter *LRURateLimiter
+	globalUploadRateLimiter   *LRURateLimiter // 头像上传限流器
 	rateLimiterOnce           sync.Once
 )
 
@@ -263,6 +264,21 @@ func InitRateLimiter(cfg *config.Config) {
 			"requestsPerMinute", regRPM,
 			"maxSize", regMaxSize)
 
+		// 4. 头像上传限流器
+		uploadRPM := cfg.AvatarProcessing.UploadRateLimit
+		if uploadRPM <= 0 {
+			uploadRPM = 10 // 默认每分钟10次
+		}
+		uploadCapacity := uploadRPM
+		uploadMaxSize := 1000 // 最多缓存1000个IP
+		uploadRefillRate := time.Minute / time.Duration(uploadRPM)
+
+		globalUploadRateLimiter = NewLRURateLimiter(uploadCapacity, uploadRefillRate, uploadMaxSize, cleanupInterval, expireTime)
+		logger.Info("上传限流器初始化完成",
+			"capacity", uploadCapacity,
+			"requestsPerMinute", uploadRPM,
+			"maxSize", uploadMaxSize)
+
 		logger.Info("所有限流器初始化完成（LRU）")
 	})
 }
@@ -283,6 +299,10 @@ func ShutdownRateLimiters() {
 	if globalRegisterRateLimiter != nil {
 		globalRegisterRateLimiter.Stop()
 		logger.Info("注册限流器已关闭")
+	}
+	if globalUploadRateLimiter != nil {
+		globalUploadRateLimiter.Stop()
+		logger.Info("上传限流器已关闭")
 	}
 
 	logger.Info("所有限流器已关闭")
@@ -346,6 +366,28 @@ func RegisterRateLimitMiddleware() gin.HandlerFunc {
 
 		if !globalRegisterRateLimiter.Allow(clientIP) {
 			utils.TooManyRequestsResponse(c, "注册尝试次数过多，请稍后再试")
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	}
+}
+
+// UploadRateLimitMiddleware 头像上传限流中间件（防止频繁上传）
+func UploadRateLimitMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if globalUploadRateLimiter == nil {
+			utils.GetLogger().Error("上传限流器未初始化")
+			// 限流器未初始化时不阻止请求，但记录错误
+			c.Next()
+			return
+		}
+
+		clientIP := c.ClientIP()
+
+		if !globalUploadRateLimiter.Allow(clientIP) {
+			utils.CodeErrorResponse(c, 429, utils.ErrCodeRateLimitExceeded, "上传过于频繁，请稍后再试")
 			c.Abort()
 			return
 		}

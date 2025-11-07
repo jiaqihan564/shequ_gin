@@ -72,7 +72,10 @@ admin:
 
 # CORS配置
 cors:
-  allow_origins: ["*"]
+  # 生产环境必须改为实际域名！["*"] 配合 allow_credentials 是严重安全风险
+  # 示例：allow_origins: ["https://yourdomain.com", "https://www.yourdomain.com"]
+  # 可通过环境变量 CORS_ORIGINS 覆盖（逗号分隔）
+  allow_origins: ["*"]  # ⚠️ 部署前务必修改为实际域名
   allow_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
   allow_headers: ["Origin", "Content-Type", "Content-Length", "Accept-Encoding", "X-CSRF-Token", "Authorization", "X-Request-ID"]
   allow_credentials: true
@@ -83,7 +86,7 @@ assets:
   # 例如针对 MinIO： http://127.0.0.1:9000/community-assets
   public_base_url: "http://43.138.113.105:19000/community-assets" # 公网ip
   # public_base_url: "http://10.2.0.11:19000/community-assets" # 内网ip
-  max_avatar_size_mb: 5
+  max_avatar_size_mb: 0.01  # 10KB = 0.01MB（前端已压缩到10KB，后端严格限制）
   # 历史头像最大保留数量（含归档，不含当前 avatar.png）
   max_avatar_history: 9
 
@@ -292,6 +295,15 @@ pagination:
 # 图片上传配置
 image_upload:
   max_size_mb: 5  # 文档和资源图片最大大小（MB）
+
+# 头像处理配置
+avatar_processing:
+  max_width: 512         # 头像最大宽度（像素，前端已压缩到512）
+  max_height: 512        # 头像最大高度（像素，前端已压缩到512）
+  jpeg_quality: 85       # JPEG压缩质量（1-100）
+  output_format: "png"   # 输出格式：png（前端统一转为PNG）
+  enable_auto_resize: true # 启用自动缩放（双保险）
+  upload_rate_limit: 10  # 每分钟最大上传次数
 
 # 数据库查询配置
 database_query:
