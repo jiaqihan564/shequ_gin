@@ -3,6 +3,7 @@ package services
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -36,59 +37,123 @@ func NewUploadManager(db *Database, multiBucket *MultiBucketStorage, cfg *config
 
 // InitUpload 初始化上传
 func (m *UploadManager) InitUpload(ctx context.Context, userID uint, req models.InitUploadRequest) (*models.InitUploadResponse, error) {
-	// 检查是否有未完成的上传
+	now := time.Now().UTC()
+	expiresAt := now.Add(m.expireTime)
+	chunkSize := m.chunkSize
+
 	var existing models.UploadChunk
-	query := `SELECT id, upload_id, uploaded_chunks, chunk_size, status FROM upload_chunks WHERE upload_id = ? AND user_id = ?`
-	err := m.db.DB.QueryRowContext(ctx, query, req.UploadID, userID).Scan(
-		&existing.ID, &existing.UploadID, &existing.UploadedChunks, &existing.ChunkSize, &existing.Status,
+	var chunksJSON sql.NullString
+	query := `SELECT id, upload_id, user_id, file_name, file_size, chunk_size, total_chunks, uploaded_chunks, status, storage_path, expires_at
+	          FROM upload_chunks WHERE upload_id = ?`
+
+	err := m.db.DB.QueryRowContext(ctx, query, req.UploadID).Scan(
+		&existing.ID, &existing.UploadID, &existing.UserID, &existing.FileName, &existing.FileSize,
+		&existing.ChunkSize, &existing.TotalChunks, &chunksJSON, &existing.Status, &existing.StoragePath, &existing.ExpiresAt,
 	)
 
-	chunkSize := m.chunkSize // 从配置读取
-
-	if err == nil && existing.Status == 0 {
-		// 有未完成的上传，返回进度
-		var uploadedChunks []int
-		if existing.UploadedChunks != "" {
-			_ = json.Unmarshal([]byte(existing.UploadedChunks), &uploadedChunks)
+	if err != nil {
+		if err != sql.ErrNoRows {
+			m.logger.Error("查询上传记录失败", "uploadID", req.UploadID, "error", err.Error())
+			return nil, fmt.Errorf("初始化上传失败，请稍后重试")
 		}
 
-		m.logger.Info("恢复上传任务", "uploadID", req.UploadID, "uploadedChunks", len(uploadedChunks))
+		// 创建新的上传记录
+		insertQuery := `INSERT INTO upload_chunks (upload_id, user_id, file_name, file_size, chunk_size, 
+		                total_chunks, uploaded_chunks, status, expires_at, created_at, updated_at)
+		                VALUES (?, ?, ?, ?, ?, ?, '[]', 0, ?, ?, ?)`
+
+		_, err = m.db.DB.ExecContext(ctx, insertQuery,
+			req.UploadID, userID, req.FileName, req.FileSize, chunkSize,
+			req.TotalChunks, expiresAt, now, now)
+
+		if err != nil {
+			m.logger.Error("创建上传记录失败", "uploadID", req.UploadID, "error", err.Error())
+			return nil, fmt.Errorf("初始化上传失败，请稍后重试")
+		}
+
+		m.logger.Info("初始化上传", "uploadID", req.UploadID, "fileName", req.FileName, "totalChunks", req.TotalChunks)
 		return &models.InitUploadResponse{
 			UploadID:       req.UploadID,
-			UploadedChunks: uploadedChunks,
+			UploadedChunks: []int{},
+			ChunkSize:      chunkSize,
+		}, nil
+	}
+
+	// 已存在上传记录
+	if existing.ChunkSize <= 0 {
+		existing.ChunkSize = chunkSize
+	}
+
+	var uploadedChunks []int
+	if chunksJSON.Valid && chunksJSON.String != "" {
+		if err := json.Unmarshal([]byte(chunksJSON.String), &uploadedChunks); err != nil {
+			m.logger.Warn("解析已上传分片列表失败，将重置为重新上传", "uploadID", req.UploadID, "error", err.Error())
+			uploadedChunks = []int{}
+		}
+	}
+
+	// 如果已完成并且存储路径存在，则直接复用（哈希去重）
+	if existing.Status == 1 && existing.StoragePath != "" {
+		totalChunks := existing.TotalChunks
+		if totalChunks == 0 {
+			totalChunks = req.TotalChunks
+		}
+		allChunks := make([]int, 0, totalChunks)
+		for i := 0; i < totalChunks; i++ {
+			allChunks = append(allChunks, i)
+		}
+
+		_, err = m.db.DB.ExecContext(ctx, `UPDATE upload_chunks 
+			SET user_id = ?, file_name = ?, file_size = ?, total_chunks = ?, chunk_size = ?, expires_at = ?, updated_at = ?
+			WHERE upload_id = ?`,
+			userID, req.FileName, req.FileSize, req.TotalChunks, existing.ChunkSize, expiresAt, now, req.UploadID)
+		if err != nil {
+			m.logger.Error("更新已有上传记录失败", "uploadID", req.UploadID, "error", err.Error())
+			return nil, fmt.Errorf("初始化上传失败，请稍后重试")
+		}
+
+		m.logger.Info("复用已存在的完整上传记录", "uploadID", req.UploadID, "totalChunks", totalChunks)
+		return &models.InitUploadResponse{
+			UploadID:       req.UploadID,
+			UploadedChunks: allChunks,
 			ChunkSize:      existing.ChunkSize,
 		}, nil
 	}
 
-	// 创建新的上传记录（如果重复则更新）
-	now := time.Now().UTC()
-	expiresAt := now.Add(m.expireTime) // 从配置读取过期时间
+	// 判断是否需要重置上传状态
+	shouldReset := existing.Status != 0 ||
+		existing.TotalChunks != req.TotalChunks ||
+		existing.ChunkSize != chunkSize ||
+		existing.ExpiresAt.Before(now)
 
-	insertQuery := `INSERT INTO upload_chunks (upload_id, user_id, file_name, file_size, chunk_size, 
-	                total_chunks, uploaded_chunks, status, expires_at, created_at, updated_at)
-	                VALUES (?, ?, ?, ?, ?, ?, '[]', 0, ?, ?, ?)
-	                ON DUPLICATE KEY UPDATE 
-	                file_name = VALUES(file_name),
-	                file_size = VALUES(file_size),
-	                total_chunks = VALUES(total_chunks),
-	                uploaded_chunks = '[]',
-	                status = 0,
-	                expires_at = VALUES(expires_at),
-	                updated_at = VALUES(updated_at)`
+	if shouldReset {
+		uploadedChunks = []int{}
+		_, err = m.db.DB.ExecContext(ctx, `UPDATE upload_chunks 
+			SET user_id = ?, file_name = ?, file_size = ?, chunk_size = ?, total_chunks = ?, uploaded_chunks = '[]',
+			    status = 0, storage_path = NULL, expires_at = ?, updated_at = ?
+			WHERE upload_id = ?`,
+			userID, req.FileName, req.FileSize, chunkSize, req.TotalChunks, expiresAt, now, req.UploadID)
+		if err != nil {
+			m.logger.Error("重置上传记录失败", "uploadID", req.UploadID, "error", err.Error())
+			return nil, fmt.Errorf("初始化上传失败，请稍后重试")
+		}
+		m.logger.Info("重置已有上传任务", "uploadID", req.UploadID)
+	} else {
+		_, err = m.db.DB.ExecContext(ctx, `UPDATE upload_chunks 
+			SET user_id = ?, file_name = ?, file_size = ?, expires_at = ?, updated_at = ?
+			WHERE upload_id = ?`,
+			userID, req.FileName, req.FileSize, expiresAt, now, req.UploadID)
+		if err != nil {
+			m.logger.Error("更新上传记录失败", "uploadID", req.UploadID, "error", err.Error())
+			return nil, fmt.Errorf("初始化上传失败，请稍后重试")
+		}
 
-	_, err = m.db.DB.ExecContext(ctx, insertQuery,
-		req.UploadID, userID, req.FileName, req.FileSize, chunkSize,
-		req.TotalChunks, expiresAt, now, now)
-
-	if err != nil {
-		m.logger.Error("创建上传记录失败", "error", err.Error())
-		return nil, fmt.Errorf("初始化上传失败，请稍后重试")
+		m.logger.Info("恢复上传任务", "uploadID", req.UploadID, "uploadedChunks", len(uploadedChunks))
 	}
 
-	m.logger.Info("初始化上传", "uploadID", req.UploadID, "fileName", req.FileName, "totalChunks", req.TotalChunks)
 	return &models.InitUploadResponse{
 		UploadID:       req.UploadID,
-		UploadedChunks: []int{},
+		UploadedChunks: uploadedChunks,
 		ChunkSize:      chunkSize,
 	}, nil
 }

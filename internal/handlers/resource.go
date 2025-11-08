@@ -95,6 +95,7 @@ func (h *ResourceHandler) CreateResource(c *gin.Context) {
 		FileSize:      req.FileSize,
 		FileType:      req.FileType,
 		FileExtension: fileExt,
+		FileHash:      req.FileHash,
 		StoragePath:   req.StoragePath,
 		TotalChunks:   req.TotalChunks, // 保存分片总数
 		Status:        1,
@@ -306,10 +307,17 @@ func (h *ResourceHandler) DownloadResource(c *gin.Context) {
 
 	// Return download URL for client to download directly from MinIO
 	// 直接返回下载链接比代理更高效
+	downloadURL := resource.StoragePath
+	if resource.TotalChunks > 0 {
+		downloadURL = fmt.Sprintf("%s/%s", h.config.BucketResourceChunks.PublicBaseURL, resource.StoragePath)
+	}
+
 	utils.SuccessResponse(c, 200, "获取下载链接成功", gin.H{
-		"download_url": resource.StoragePath,
+		"download_url": downloadURL,
+		"total_chunks": resource.TotalChunks,
 		"file_name":    resource.FileName,
 		"file_size":    resource.FileSize,
+		"file_hash":    resource.FileHash,
 	})
 }
 
@@ -339,6 +347,7 @@ func (h *ResourceHandler) ProxyDownloadResource(c *gin.Context) {
 	for i := 0; i < resource.TotalChunks; i++ {
 		chunkURLs[i] = fmt.Sprintf("%s/%s/chunk_%d", baseURL, uploadID, i)
 	}
+	chunkBaseURL := fmt.Sprintf("%s/%s", baseURL, uploadID)
 
 	// 异步增加下载次数
 	taskID := fmt.Sprintf("incr_download_%d", resourceID)
@@ -349,10 +358,12 @@ func (h *ResourceHandler) ProxyDownloadResource(c *gin.Context) {
 	h.logger.Info("代理下载信息已返回", "resourceID", resourceID, "totalChunks", resource.TotalChunks)
 
 	utils.SuccessResponse(c, 200, "获取成功", gin.H{
-		"chunk_urls":   chunkURLs,
-		"total_chunks": resource.TotalChunks,
-		"file_name":    resource.FileName,
-		"file_size":    resource.FileSize,
+		"chunk_base_url": chunkBaseURL,
+		"chunk_urls":     chunkURLs,
+		"total_chunks":   resource.TotalChunks,
+		"file_name":      resource.FileName,
+		"file_size":      resource.FileSize,
+		"file_hash":      resource.FileHash,
 	})
 }
 

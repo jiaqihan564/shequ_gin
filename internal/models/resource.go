@@ -14,6 +14,7 @@ type Resource struct {
 	FileSize      int64     `json:"file_size" db:"file_size"`
 	FileType      string    `json:"file_type" db:"file_type"`
 	FileExtension string    `json:"file_extension" db:"file_extension"`
+	FileHash      string    `json:"file_hash" db:"file_hash"`
 	StoragePath   string    `json:"storage_path" db:"storage_path"`
 	TotalChunks   int       `json:"total_chunks" db:"total_chunks"` // 分片总数（新方案：用于前端下载合并）
 	DownloadCount int       `json:"download_count" db:"download_count"`
@@ -88,6 +89,7 @@ type CreateResourceRequest struct {
 	FileName    string   `json:"file_name" binding:"required"`
 	FileSize    int64    `json:"file_size" binding:"required"`
 	FileType    string   `json:"file_type"`
+	FileHash    string   `json:"file_hash" binding:"required"`
 	StoragePath string   `json:"storage_path" binding:"required"`
 	TotalChunks int      `json:"total_chunks"` // 分片总数（新方案）
 	ImageURLs   []string `json:"image_urls"`   // 预览图URL列表
@@ -125,6 +127,7 @@ type ResourceListItem struct {
 	FileName      string            `json:"file_name"`
 	FileSize      int64             `json:"file_size"`
 	FileExtension string            `json:"file_extension"`
+	FileHash      string            `json:"file_hash"`
 	DownloadCount int               `json:"download_count"`
 	ViewCount     int               `json:"view_count"`
 	LikeCount     int               `json:"like_count"`

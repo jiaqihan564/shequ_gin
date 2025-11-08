@@ -38,13 +38,14 @@ func (r *ResourceRepository) CreateResource(ctx context.Context, resource *model
 
 	// 插入资源主记录
 	query := `INSERT INTO resources (user_id, title, description, document, category_id, file_name, 
-	          file_size, file_type, file_extension, storage_path, created_at, updated_at)
-	          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	          file_size, file_type, file_extension, file_hash, storage_path, total_chunks, created_at, updated_at)
+	          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	result, err := tx.ExecContext(ctx, query,
 		resource.UserID, resource.Title, resource.Description, resource.Document,
 		resource.CategoryID, resource.FileName, resource.FileSize, resource.FileType,
-		resource.FileExtension, resource.StoragePath, resource.CreatedAt, resource.UpdatedAt)
+		resource.FileExtension, resource.FileHash, resource.StoragePath, resource.TotalChunks,
+		resource.CreatedAt, resource.UpdatedAt)
 
 	if err != nil {
 		r.logger.Error("插入资源失败", "error", err.Error())
@@ -131,7 +132,7 @@ func (r *ResourceRepository) CreateResource(ctx context.Context, resource *model
 func (r *ResourceRepository) GetResourceByID(ctx context.Context, resourceID, userID uint) (*models.ResourceDetailResponse, error) {
 	// 查询资源基本信息
 	query := `SELECT id, user_id, title, description, document, category_id, file_name, file_size,
-	          file_type, file_extension, storage_path, download_count, view_count, like_count,
+	          file_type, file_extension, file_hash, storage_path, total_chunks, download_count, view_count, like_count,
 	          status, created_at, updated_at FROM resources WHERE id = ? AND status != 0`
 
 	var resource models.Resource
@@ -140,8 +141,8 @@ func (r *ResourceRepository) GetResourceByID(ctx context.Context, resourceID, us
 	err := r.db.DB.QueryRowContext(ctx, query, resourceID).Scan(
 		&resource.ID, &resource.UserID, &resource.Title, &resource.Description,
 		&resource.Document, &categoryID, &resource.FileName, &resource.FileSize,
-		&resource.FileType, &resource.FileExtension, &resource.StoragePath,
-		&resource.DownloadCount, &resource.ViewCount, &resource.LikeCount,
+		&resource.FileType, &resource.FileExtension, &resource.FileHash, &resource.StoragePath,
+		&resource.TotalChunks, &resource.DownloadCount, &resource.ViewCount, &resource.LikeCount,
 		&resource.Status, &resource.CreatedAt, &resource.UpdatedAt,
 	)
 
@@ -276,7 +277,7 @@ func (r *ResourceRepository) ListResources(ctx context.Context, query models.Res
 	// 并行执行COUNT和列表查询（优化性能）
 	countQuery := "SELECT COUNT(*) FROM resources r " + whereClause
 	listQueryOptimized := `SELECT r.id, r.user_id, r.title, r.description, r.category_id, r.file_name,
-	              r.file_size, r.file_extension, r.download_count, r.view_count, r.like_count, r.created_at,
+	              r.file_size, r.file_extension, r.file_hash, r.download_count, r.view_count, r.like_count, r.created_at,
 	              ua.username, COALESCE(up.nickname, ua.username) as nickname, COALESCE(up.avatar_url, '') as avatar,
 	              COALESCE(ri.image_url, '') as cover_image,
 	              rc.id as cat_id, rc.name as cat_name, rc.slug as cat_slug
@@ -347,7 +348,7 @@ func (r *ResourceRepository) ListResources(ctx context.Context, query models.Res
 
 		err := rows.Scan(
 			&item.ID, &item.Author.ID, &item.Title, &item.Description, &categoryID,
-			&item.FileName, &item.FileSize, &item.FileExtension,
+			&item.FileName, &item.FileSize, &item.FileExtension, &item.FileHash,
 			&item.DownloadCount, &item.ViewCount, &item.LikeCount, &item.CreatedAt,
 			&item.Author.Username, &item.Author.Nickname, &item.Author.Avatar,
 			&item.CoverImage,

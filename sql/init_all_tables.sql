@@ -332,6 +332,7 @@ CREATE TABLE IF NOT EXISTS `resources` (
   `file_size` bigint(20) NOT NULL COMMENT '文件大小（字节）',
   `file_type` varchar(100) DEFAULT NULL COMMENT '文件类型(MIME)',
   `file_extension` varchar(20) DEFAULT NULL COMMENT '文件扩展名',
+  `file_hash` varchar(64) NOT NULL DEFAULT '' COMMENT '文件内容哈希（用于去重）',
   `storage_path` varchar(500) NOT NULL COMMENT 'MinIO存储路径',
   `total_chunks` int(11) NOT NULL DEFAULT 0 COMMENT '分片总数（用于前端下载合并，0表示非分片文件）',
   `download_count` int(11) DEFAULT 0 COMMENT '下载次数',
@@ -344,6 +345,7 @@ CREATE TABLE IF NOT EXISTS `resources` (
   PRIMARY KEY (`id`),
   KEY `idx_user_id` (`user_id`) COMMENT '上传者索引',
   KEY `idx_category` (`category_id`) COMMENT '分类索引',
+  KEY `idx_file_hash` (`file_hash`) COMMENT '文件哈希索引',
   KEY `idx_status` (`status`) COMMENT '状态索引',
   KEY `idx_created_at` (`created_at`) COMMENT '创建时间索引'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='资源文件表';
