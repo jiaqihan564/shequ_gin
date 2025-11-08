@@ -15,6 +15,7 @@ type CodeRepository interface {
 	// 代码片段相关
 	CreateSnippet(snippet *models.CodeSnippet) error
 	GetSnippetByID(id uint) (*models.CodeSnippet, error)
+	GetSnippetWithUserByID(id uint) (*models.CodeSnippetWithUser, error)
 	GetSnippetsByUserID(userID uint, limit, offset int) ([]models.CodeSnippetListItem, int, error)
 	GetPublicSnippets(language string, limit, offset int) ([]models.CodeSnippetWithUser, int, error)
 	UpdateSnippet(snippet *models.CodeSnippet) error
@@ -98,6 +99,41 @@ func (r *CodeRepositoryImpl) GetSnippetByID(id uint) (*models.CodeSnippet, error
 		}
 		return nil, fmt.Errorf("查询代码片段失败: %w", err)
 	}
+	return &snippet, nil
+}
+
+// GetSnippetWithUserByID 根据ID获取代码片段（包含用户信息）
+func (r *CodeRepositoryImpl) GetSnippetWithUserByID(id uint) (*models.CodeSnippetWithUser, error) {
+	query := `
+		SELECT cs.id, cs.user_id, u.username, cs.title, cs.language, cs.code, cs.description, cs.share_token, cs.created_at, cs.updated_at
+		FROM code_snippets cs
+		LEFT JOIN user_auth u ON cs.user_id = u.id
+		WHERE cs.id = ?
+	`
+
+	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetUpdateTimeout())
+	defer cancel()
+
+	row := r.db.QueryRowWithCache(ctx, query, id)
+	
+	var snippet models.CodeSnippetWithUser
+	var username sql.NullString
+	err := row.Scan(&snippet.ID, &snippet.UserID, &username, &snippet.Title, &snippet.Language,
+		&snippet.Code, &snippet.Description, &snippet.ShareToken, &snippet.CreatedAt, &snippet.UpdatedAt)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("代码片段不存在")
+		}
+		return nil, fmt.Errorf("查询代码片段失败: %w", err)
+	}
+	
+	if username.Valid {
+		snippet.Username = username.String
+	} else {
+		snippet.Username = "未知用户"
+	}
+
 	return &snippet, nil
 }
 

@@ -128,6 +128,19 @@ func (h *CodeHandler) CreateSnippet(c *gin.Context) {
 		return
 	}
 
+	// 如果是公开的代码片段，广播新代码通知（WebSocket实时推送）
+	if snippet.IsPublic {
+		go func() {
+			// 获取完整的代码片段信息用于广播（包含用户信息）
+			fullSnippet, err := h.repo.GetSnippetWithUserByID(snippet.ID)
+			if err != nil {
+				utils.GetLogger().Warn("获取完整代码片段信息失败，无法发送WebSocket通知", "snippetID", snippet.ID, "error", err.Error())
+				return
+			}
+			NotifyNewCodeSnippet(fullSnippet)
+		}()
+	}
+
 	utils.SuccessResponse(c, http.StatusCreated, "创建成功", snippet)
 }
 

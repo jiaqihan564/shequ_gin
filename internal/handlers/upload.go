@@ -80,6 +80,17 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 	// 归档旧头像（不阻塞上传流程）
 	timestamp := time.Now().Unix()
 	objectKey := fmt.Sprintf("%s/avatar.png", username)
+
+	// 获取旧头像URL（在归档之前）
+	oldProfile, _ := h.userService.GetUserProfile(c.Request.Context(), userID)
+	oldAvatarURL := ""
+	archivedAvatarURL := ""
+	if oldProfile != nil && oldProfile.AvatarURL != "" {
+		oldAvatarURL = oldProfile.AvatarURL
+		// 生成归档文件的URL
+		archivedAvatarURL = h.getArchivedAvatarURL(username, timestamp)
+	}
+
 	h.archiveOldAvatar(c.Request.Context(), userID, username, objectKey, timestamp)
 
 	// 直接上传（前端已处理好，统一为JPEG格式）
@@ -97,11 +108,6 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 	// 更新数据库中的头像URL（带回滚机制）
 	dbUpdateSuccess := false
 	if h.userService != nil {
-		oldProfile, _ := h.userService.GetUserProfile(c.Request.Context(), userID)
-		oldAvatarURL := ""
-		if oldProfile != nil {
-			oldAvatarURL = oldProfile.AvatarURL
-		}
 
 		prof := &models.UserExtraProfile{
 			UserID:    userID,
@@ -134,8 +140,13 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 		// 使用Worker Pool记录头像修改历史（避免goroutine泄漏）
 		if h.historyRepo != nil {
 			taskID := fmt.Sprintf("avatar_history_%d_%d", userID, time.Now().Unix())
+			// 使用归档后的URL作为旧值，这样历史记录中可以看到真正的旧头像
+			historyOldURL := archivedAvatarURL
+			if historyOldURL == "" {
+				historyOldURL = oldAvatarURL
+			}
 			_ = utils.SubmitTask(taskID, func(taskCtx context.Context) error {
-				h.historyRepo.RecordProfileChange(userID, "avatar", oldAvatarURL, url, reqCtx.ClientIP)
+				h.historyRepo.RecordProfileChange(userID, "avatar", historyOldURL, url, reqCtx.ClientIP)
 				h.historyRepo.RecordOperationHistory(userID, username, "修改头像",
 					fmt.Sprintf("上传新头像: %s (大小: %d字节)",
 						fileHeader.Filename,
@@ -281,6 +292,16 @@ func (h *UploadHandler) archiveOldAvatar(ctx context.Context, userID uint, usern
 	if err != nil {
 		h.logger.Warn("删除旧头像失败（不影响上传）", "userID", userID, "error", err.Error())
 	}
+}
+
+// getArchivedAvatarURL 生成归档头像的URL
+func (h *UploadHandler) getArchivedAvatarURL(username string, timestamp int64) string {
+	if h.storage == nil {
+		return ""
+	}
+	archiveKey := fmt.Sprintf("%s/%d.png", username, timestamp)
+	publicBase := h.config.Assets.PublicBaseURL
+	return fmt.Sprintf("%s/%s", publicBase, archiveKey)
 }
 
 // cleanupAvatarHistory 清理超出限制的历史头像

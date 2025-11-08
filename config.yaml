@@ -12,8 +12,8 @@ server:
   port: "3001"
   mode: "release"  # debug, release, test
   max_header_bytes: 1048576  # 1MB - 最大请求头大小
-  read_timeout: 30000  # 读取超时（秒） - 增加以支持大文件上传
-  write_timeout: 30000  # 写入超时（秒） - 增加以支持大文件上传
+  read_timeout: 300  # 读取超时（秒） - 5分钟，支持大文件上传
+  write_timeout: 300  # 写入超时（秒） - 5分钟，支持大文件上传
   idle_timeout: 120  # 空闲超时（秒）
   read_header_timeout: 10  # 读取请求头超时（秒，防止慢速攻击）
   shutdown_timeout: 30  # 优雅关闭超时（秒）
@@ -98,7 +98,7 @@ minio:
   secret_access_key: "pmZMGPzY4ANyB6nn"
   use_ssl: false
   bucket: "community-assets"
-  operation_timeout: 30000  # MinIO操作超时（秒） - 增加以支持大文件上传和合并
+  operation_timeout: 300  # MinIO操作超时（秒） - 5分钟，支持大文件上传和合并
 
 # 资源存储配置（独立桶）
 resources_storage:
@@ -225,7 +225,7 @@ async_tasks:
   # 上传相关
   upload_history_timeout: 5  # 上传历史记录任务超时（秒）
   avatar_cleanup_timeout: 30  # 头像清理任务超时（秒）
-  avatar_operation_timeout: 30000  # 头像操作任务超时（秒） - 增加以支持大文件
+  avatar_operation_timeout: 300  # 头像操作任务超时（秒） - 5分钟，支持大文件
   # 用户相关
   user_update_history_timeout: 5  # 用户更新历史任务超时（秒）
   # 消息相关

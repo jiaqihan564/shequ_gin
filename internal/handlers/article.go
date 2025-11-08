@@ -85,6 +85,17 @@ func (h *ArticleHandler) CreateArticle(c *gin.Context) {
 	h.cacheSvc.InvalidateArticleCategories()
 	h.cacheSvc.InvalidateArticleTags()
 
+	// 广播新文章通知（WebSocket实时推送）
+	go func() {
+		// 获取完整的文章信息用于广播
+		fullArticle, err := h.articleRepo.GetArticleByID(context.Background(), article.ID, 0)
+		if err != nil {
+			h.logger.Warn("获取完整文章信息失败，无法发送WebSocket通知", "articleID", article.ID, "error", err.Error())
+			return
+		}
+		NotifyNewArticle(fullArticle)
+	}()
+
 	utils.SuccessResponse(c, 201, "创建成功", gin.H{
 		"article_id": article.ID,
 	})

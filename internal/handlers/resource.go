@@ -120,6 +120,18 @@ func (h *ResourceHandler) CreateResource(c *gin.Context) {
 	}
 
 	h.logger.Info("创建资源成功", "resourceID", resource.ID, "userID", userID)
+
+	// 广播新资源通知（WebSocket实时推送）
+	go func() {
+		// 获取完整的资源信息用于广播
+		fullResource, err := h.resourceRepo.GetResourceByID(context.Background(), resource.ID, 0)
+		if err != nil {
+			h.logger.Warn("获取完整资源信息失败，无法发送WebSocket通知", "resourceID", resource.ID, "error", err.Error())
+			return
+		}
+		NotifyNewResource(fullResource)
+	}()
+
 	utils.SuccessResponse(c, 201, "创建成功", gin.H{
 		"resource_id": resource.ID,
 	})
@@ -222,11 +234,66 @@ func (h *ResourceHandler) DeleteResource(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
+
+	// 先获取资源信息（用于删除存储文件）
+	resource, err := h.resourceRepo.GetResourceByID(ctx, uint(resourceID), userID)
+	if err != nil {
+		h.logger.Error("获取资源信息失败", "resourceID", resourceID, "error", err.Error())
+		utils.ErrorResponse(c, 404, "资源不存在")
+		return
+	}
+
+	// 检查所有权
+	if resource.UserID != userID {
+		utils.ErrorResponse(c, 403, "无权删除该资源")
+		return
+	}
+
+	// 软删除数据库记录
 	err = h.resourceRepo.DeleteResource(ctx, uint(resourceID), userID)
 	if err != nil {
 		h.logger.Error("删除资源失败", "resourceID", resourceID, "error", err.Error())
 		utils.ErrorResponse(c, 500, "删除资源失败")
 		return
+	}
+
+	// 异步删除存储文件（不阻塞响应）
+	if h.resourceStorage != nil && resource.StoragePath != "" {
+		go func() {
+			bgCtx := context.Background()
+
+			// 解析存储路径，提取对象路径
+			objectPath := resource.StoragePath
+			if strings.HasPrefix(objectPath, "http://") || strings.HasPrefix(objectPath, "https://") {
+				if parsedURL, err := url.Parse(objectPath); err == nil && parsedURL.Path != "" {
+					// 提取路径部分: /bucket-name/object/path -> object/path
+					pathParts := strings.SplitN(strings.TrimPrefix(parsedURL.Path, "/"), "/", 2)
+					if len(pathParts) >= 2 {
+						objectPath = pathParts[1]
+					}
+				}
+			}
+
+			// 删除主文件
+			if err := h.resourceStorage.RemoveObject(bgCtx, objectPath); err != nil {
+				h.logger.Warn("删除资源文件失败", "resourceID", resourceID, "path", objectPath, "error", err.Error())
+			} else {
+				h.logger.Info("成功删除资源文件", "resourceID", resourceID, "path", objectPath)
+			}
+
+			// 删除资源的预览图（images/{resourceID}/ 目录下的所有文件）
+			imagePrefix := fmt.Sprintf("images/%d/", resourceID)
+			if images, err := h.resourceStorage.ListObjectsRecursive(bgCtx, imagePrefix); err == nil {
+				for _, imgPath := range images {
+					if err := h.resourceStorage.RemoveObject(bgCtx, imgPath); err != nil {
+						h.logger.Warn("删除预览图失败", "resourceID", resourceID, "path", imgPath, "error", err.Error())
+					} else {
+						h.logger.Debug("删除预览图", "path", imgPath)
+					}
+				}
+				h.logger.Info("清理资源预览图完成", "resourceID", resourceID, "count", len(images))
+			}
+		}()
 	}
 
 	h.logger.Info("删除资源成功", "resourceID", resourceID)

@@ -509,6 +509,72 @@ func NotifyResourceComment(comment *models.ResourceComment, author *models.Comme
 	}
 }
 
+// NotifyNewResource broadcasts a new resource notification to all users
+func NotifyNewResource(resource interface{}) {
+	if globalHub == nil {
+		utils.GetLogger().Warn("WebSocket hub not initialized, cannot send new resource notification")
+		return
+	}
+
+	data := map[string]interface{}{
+		"entity":   "resource",
+		"type":     "new_resource",
+		"resource": resource,
+	}
+
+	globalHub.logger.Info("Broadcasting new resource notification",
+		"resourceData", resource)
+
+	if err := globalHub.BroadcastToAll("new_resource", data); err != nil {
+		globalHub.logger.Error("Failed to broadcast new resource notification",
+			"error", err.Error())
+	}
+}
+
+// NotifyNewArticle broadcasts a new article notification to all users
+func NotifyNewArticle(article interface{}) {
+	if globalHub == nil {
+		utils.GetLogger().Warn("WebSocket hub not initialized, cannot send new article notification")
+		return
+	}
+
+	data := map[string]interface{}{
+		"entity":  "article",
+		"type":    "new_article",
+		"article": article,
+	}
+
+	globalHub.logger.Info("Broadcasting new article notification",
+		"articleData", article)
+
+	if err := globalHub.BroadcastToAll("new_article", data); err != nil {
+		globalHub.logger.Error("Failed to broadcast new article notification",
+			"error", err.Error())
+	}
+}
+
+// NotifyNewCodeSnippet broadcasts a new code snippet notification to all users
+func NotifyNewCodeSnippet(snippet interface{}) {
+	if globalHub == nil {
+		utils.GetLogger().Warn("WebSocket hub not initialized, cannot send new code snippet notification")
+		return
+	}
+
+	data := map[string]interface{}{
+		"entity":  "code",
+		"type":    "new_code",
+		"snippet": snippet,
+	}
+
+	globalHub.logger.Info("Broadcasting new code snippet notification",
+		"snippetData", snippet)
+
+	if err := globalHub.BroadcastToAll("new_code", data); err != nil {
+		globalHub.logger.Error("Failed to broadcast new code snippet notification",
+			"error", err.Error())
+	}
+}
+
 // readPump pumps messages from the WebSocket connection to the hub
 func (c *Client) readPump() {
 	defer func() {
