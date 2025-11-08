@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 
 	"gin/internal/config"
@@ -331,10 +330,8 @@ func (h *ResourceHandler) ProxyDownloadResource(c *gin.Context) {
 	}
 
 	// 7桶架构：返回分片信息供前端下载合并
+	// storage_path现在直接存储upload_id
 	uploadID := resource.StoragePath
-	if strings.HasPrefix(uploadID, "chunks/") {
-		uploadID = strings.TrimPrefix(uploadID, "chunks/")
-	}
 
 	// 构建分片下载URLs
 	baseURL := h.config.BucketResourceChunks.PublicBaseURL

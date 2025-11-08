@@ -93,10 +93,10 @@ func (m *UploadManager) InitUpload(ctx context.Context, userID uint, req models.
 	}, nil
 }
 
-// UploadChunk 上传分片
+// UploadChunk 上传分片（7桶架构）
 func (m *UploadManager) UploadChunk(ctx context.Context, uploadID string, chunkIndex int, chunkData []byte) error {
-	// 保存分片到MinIO
-	objectKey := fmt.Sprintf("chunks/%s/chunk_%d", uploadID, chunkIndex)
+	// 7桶架构：上传到resource-chunks桶，路径：{upload_id}/chunk_{index}
+	objectKey := fmt.Sprintf("%s/chunk_%d", uploadID, chunkIndex)
 
 	// 将[]byte转换为io.Reader并上传到resource-chunks桶
 	reader := bytes.NewReader(chunkData)
@@ -196,9 +196,9 @@ func (m *UploadManager) MergeChunks(ctx context.Context, uploadID string) (*mode
 
 	m.logger.Info("所有分片验证通过", "uploadID", uploadID, "totalChunks", chunk.TotalChunks)
 
-	// 新方案：不合并分片，直接保存分片信息，由前端下载时合并
-	// 生成分片存储路径前缀
-	storagePath := fmt.Sprintf("chunks/%s", uploadID)
+	// 7桶架构：不合并分片，直接保存分片信息，由前端下载时合并
+	// 存储路径就是upload_id（在resource-chunks桶中）
+	storagePath := uploadID
 
 	m.logger.Info("分片上传完成，保存分片信息", "uploadID", uploadID, "totalChunks", chunk.TotalChunks, "storagePath", storagePath)
 
