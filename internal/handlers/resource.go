@@ -22,18 +22,20 @@ import (
 type ResourceHandler struct {
 	resourceRepo        *services.ResourceRepository
 	resourceCommentRepo *services.ResourceCommentRepository
-	resourceStorage     *services.ResourceStorageService
+	resourceStorage     *services.ResourceStorageService // 废弃，向后兼容
+	resourceImageSvc    *services.ResourceImageService   // 资源图片服务（7桶架构）
 	userRepo            *services.UserRepository
 	logger              utils.Logger
 	config              *config.Config
 }
 
 // NewResourceHandler 创建资源处理器
-func NewResourceHandler(resourceRepo *services.ResourceRepository, resourceCommentRepo *services.ResourceCommentRepository, resourceStorage *services.ResourceStorageService, userRepo *services.UserRepository, cfg *config.Config) *ResourceHandler {
+func NewResourceHandler(resourceRepo *services.ResourceRepository, resourceCommentRepo *services.ResourceCommentRepository, resourceStorage *services.ResourceStorageService, resourceImageSvc *services.ResourceImageService, userRepo *services.UserRepository, cfg *config.Config) *ResourceHandler {
 	return &ResourceHandler{
 		resourceRepo:        resourceRepo,
 		resourceCommentRepo: resourceCommentRepo,
 		resourceStorage:     resourceStorage,
+		resourceImageSvc:    resourceImageSvc,
 		userRepo:            userRepo,
 		logger:              utils.GetLogger(),
 		config:              cfg,
@@ -56,9 +58,25 @@ func (h *ResourceHandler) CreateResource(c *gin.Context) {
 	h.logger.Info("接收创建资源请求",
 		"userID", userID,
 		"title", req.Title,
+		"fileSize", req.FileSize,
 		"imageCount", len(req.ImageURLs),
 		"imageURLs", req.ImageURLs,
 	)
+
+	// 验证文件大小（最大200MB）
+	maxSizeBytes := int64(h.config.FileUpload.MaxResourceSizeMB) * 1024 * 1024
+	if maxSizeBytes > 0 && req.FileSize > maxSizeBytes {
+		maxSizeMB := h.config.FileUpload.MaxResourceSizeMB
+		fileSizeMB := float64(req.FileSize) / (1024 * 1024)
+		h.logger.Warn("文件过大",
+			"userID", userID,
+			"fileSize", req.FileSize,
+			"fileSizeMB", fileSizeMB,
+			"maxSizeMB", maxSizeMB,
+		)
+		utils.BadRequestResponse(c, fmt.Sprintf("文件过大！当前文件 %.2fMB，最大支持 %dMB", fileSizeMB, maxSizeMB))
+		return
+	}
 
 	// 提取文件扩展名
 	fileExt := ""
@@ -84,6 +102,7 @@ func (h *ResourceHandler) CreateResource(c *gin.Context) {
 		FileType:      req.FileType,
 		FileExtension: fileExt,
 		StoragePath:   req.StoragePath,
+		TotalChunks:   req.TotalChunks, // 保存分片总数
 		Status:        1,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
@@ -99,10 +118,20 @@ func (h *ResourceHandler) CreateResource(c *gin.Context) {
 		return
 	}
 
-	// 如果有临时图片URL，移动到正式目录
+	// 如果有临时图片URL，移动到正式目录（使用7桶架构）
 	finalImageURLs := req.ImageURLs
-	if len(req.ImageURLs) > 0 && h.resourceStorage != nil {
-		movedURLs, err := h.resourceStorage.MoveResourceImages(ctx, req.ImageURLs, resource.ID)
+	if len(req.ImageURLs) > 0 {
+		var movedURLs []string
+		var err error
+
+		// 优先使用多桶架构
+		if h.resourceImageSvc != nil {
+			movedURLs, err = h.resourceImageSvc.MovePreviewImagesToFormal(ctx, req.ImageURLs, resource.ID)
+		} else if h.resourceStorage != nil {
+			// 回退到旧的资源存储服务
+			movedURLs, err = h.resourceStorage.MoveResourceImages(ctx, req.ImageURLs, resource.ID)
+		}
+
 		if err != nil {
 			h.logger.Warn("移动资源图片失败", "resourceID", resource.ID, "error", err.Error())
 			// 不中断创建流程，使用原始URL
@@ -113,8 +142,6 @@ func (h *ResourceHandler) CreateResource(c *gin.Context) {
 
 		// 更新资源的图片记录
 		if len(finalImageURLs) > 0 {
-			// 这里需要调用repository更新图片URLs
-			// 暂时通过重新保存实现
 			_ = h.resourceRepo.UpdateResourceImages(ctx, resource.ID, finalImageURLs)
 		}
 	}
@@ -281,17 +308,22 @@ func (h *ResourceHandler) DeleteResource(c *gin.Context) {
 				h.logger.Info("成功删除资源文件", "resourceID", resourceID, "path", objectPath)
 			}
 
-			// 删除资源的预览图（images/{resourceID}/ 目录下的所有文件）
-			imagePrefix := fmt.Sprintf("images/%d/", resourceID)
-			if images, err := h.resourceStorage.ListObjectsRecursive(bgCtx, imagePrefix); err == nil {
-				for _, imgPath := range images {
-					if err := h.resourceStorage.RemoveObject(bgCtx, imgPath); err != nil {
-						h.logger.Warn("删除预览图失败", "resourceID", resourceID, "path", imgPath, "error", err.Error())
-					} else {
-						h.logger.Debug("删除预览图", "path", imgPath)
+			// 删除资源的预览图（使用7桶架构）
+			if h.resourceImageSvc != nil {
+				_ = h.resourceImageSvc.DeleteResourceImages(bgCtx, uint(resourceID))
+			} else if h.resourceStorage != nil {
+				// 回退到旧的资源存储服务
+				imagePrefix := fmt.Sprintf("images/%d/", resourceID)
+				if images, err := h.resourceStorage.ListObjectsRecursive(bgCtx, imagePrefix); err == nil {
+					for _, imgPath := range images {
+						if err := h.resourceStorage.RemoveObject(bgCtx, imgPath); err != nil {
+							h.logger.Warn("删除预览图失败", "resourceID", resourceID, "path", imgPath, "error", err.Error())
+						} else {
+							h.logger.Debug("删除预览图", "path", imgPath)
+						}
 					}
+					h.logger.Info("清理资源预览图完成", "resourceID", resourceID, "count", len(images))
 				}
-				h.logger.Info("清理资源预览图完成", "resourceID", resourceID, "count", len(images))
 			}
 		}()
 	}

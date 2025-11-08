@@ -333,6 +333,7 @@ CREATE TABLE IF NOT EXISTS `resources` (
   `file_type` varchar(100) DEFAULT NULL COMMENT '文件类型(MIME)',
   `file_extension` varchar(20) DEFAULT NULL COMMENT '文件扩展名',
   `storage_path` varchar(500) NOT NULL COMMENT 'MinIO存储路径',
+  `total_chunks` int(11) NOT NULL DEFAULT 0 COMMENT '分片总数（用于前端下载合并，0表示非分片文件）',
   `download_count` int(11) DEFAULT 0 COMMENT '下载次数',
   `view_count` int(11) DEFAULT 0 COMMENT '浏览次数',
   `like_count` int(11) DEFAULT 0 COMMENT '点赞数',
@@ -500,11 +501,15 @@ CREATE TABLE IF NOT EXISTS `user_login_history` (
   `login_ip` varchar(50) DEFAULT NULL COMMENT '登录IP地址',
   `user_agent` varchar(500) DEFAULT NULL COMMENT '浏览器UA信息',
   `login_status` tinyint(1) NOT NULL DEFAULT 1 COMMENT '登录状态：0-失败，1-成功',
+  `province` varchar(50) DEFAULT NULL COMMENT '登录省份',
+  `city` varchar(50) DEFAULT NULL COMMENT '登录城市',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '记录创建时间',
   PRIMARY KEY (`id`),
   KEY `idx_user_id` (`user_id`) COMMENT '按用户查询优化',
   KEY `idx_login_time` (`login_time`) COMMENT '按时间查询优化',
-  KEY `idx_username` (`username`) COMMENT '按用户名查询优化'
+  KEY `idx_username` (`username`) COMMENT '按用户名查询优化',
+  KEY `idx_province` (`province`) COMMENT '省份索引',
+  KEY `idx_city` (`city`) COMMENT '城市索引'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户登录历史记录表';
 
 -- 30. 用户操作历史
@@ -620,45 +625,149 @@ CREATE TABLE IF NOT EXISTS `api_statistics` (
 -- =====================================================
 -- 第九部分：性能优化索引
 -- =====================================================
--- 说明：兼容所有 MySQL 版本的索引创建方式
--- 如果索引已存在会报错，但不影响其他语句执行
 
--- 文章表性能索引
-CREATE INDEX idx_articles_status_created ON articles(status, created_at DESC);
-CREATE INDEX idx_articles_likes_views ON articles(like_count DESC, view_count DESC, created_at DESC);
-CREATE INDEX idx_articles_user_status_created ON articles(user_id, status, created_at DESC);
+DELIMITER $$
 
--- 评论表性能索引
-CREATE INDEX idx_comments_article_parent_status ON article_comments(article_id, parent_id, status, created_at);
-CREATE INDEX idx_comment_likes_user ON article_comment_likes(user_id, comment_id);
-CREATE INDEX idx_comment_likes_comment ON article_comment_likes(comment_id, user_id);
+DROP PROCEDURE IF EXISTS CreateIndexIfNotExists$$
+CREATE PROCEDURE CreateIndexIfNotExists(
+    IN tableName VARCHAR(128),
+    IN indexName VARCHAR(128),
+    IN indexColumns VARCHAR(512)
+)
+BEGIN
+    DECLARE index_exists INT DEFAULT 0;
+    SELECT COUNT(1) INTO index_exists
+    FROM information_schema.statistics
+    WHERE table_schema = DATABASE()
+    AND table_name = tableName
+    AND index_name = indexName;
+    
+    IF index_exists = 0 THEN
+        SET @sql = CONCAT('CREATE INDEX ', indexName, ' ON ', tableName, ' (', indexColumns, ')');
+        PREPARE stmt FROM @sql;
+        EXECUTE stmt;
+        DEALLOCATE PREPARE stmt;
+    END IF;
+END$$
 
--- 聊天消息表性能索引
-CREATE INDEX idx_chat_status_id ON chat_messages(status, id DESC);
-CREATE INDEX idx_chat_status_id_asc ON chat_messages(status, id ASC);
-CREATE INDEX idx_chat_user_id ON chat_messages(user_id, id DESC);
+DELIMITER ;
 
--- 在线用户表性能索引
-CREATE INDEX idx_online_heartbeat ON online_users(last_heartbeat);
+CALL CreateIndexIfNotExists('articles', 'idx_articles_status_created', 'status, created_at DESC');
+CALL CreateIndexIfNotExists('articles', 'idx_articles_likes_views', 'like_count DESC, view_count DESC, created_at DESC');
+CALL CreateIndexIfNotExists('articles', 'idx_articles_user_status_created', 'user_id, status, created_at DESC');
 
--- 文章分类关系表性能索引
-CREATE INDEX idx_article_category_article ON article_category_relations(article_id, category_id);
-CREATE INDEX idx_article_category_category ON article_category_relations(category_id, article_id);
+CALL CreateIndexIfNotExists('article_comments', 'idx_comments_article_parent_status', 'article_id, parent_id, status, created_at');
+CALL CreateIndexIfNotExists('article_comment_likes', 'idx_comment_likes_user', 'user_id, comment_id');
+CALL CreateIndexIfNotExists('article_comment_likes', 'idx_comment_likes_comment', 'comment_id, user_id');
 
--- 文章标签关系表性能索引
-CREATE INDEX idx_article_tag_article ON article_tag_relations(article_id, tag_id);
-CREATE INDEX idx_article_tag_tag ON article_tag_relations(tag_id, article_id);
+CALL CreateIndexIfNotExists('chat_messages', 'idx_chat_status_id', 'status, id DESC');
+CALL CreateIndexIfNotExists('chat_messages', 'idx_chat_status_id_asc', 'status, id ASC');
+CALL CreateIndexIfNotExists('chat_messages', 'idx_chat_user_id', 'user_id, id DESC');
 
--- 文章点赞表性能索引
-CREATE INDEX idx_article_likes_user ON article_likes(user_id, article_id);
-CREATE INDEX idx_article_likes_article ON article_likes(article_id, user_id);
+CALL CreateIndexIfNotExists('online_users', 'idx_online_heartbeat', 'last_heartbeat');
 
--- 私信表性能索引
-CREATE INDEX idx_private_messages_conversation ON private_messages(conversation_id, created_at DESC);
-CREATE INDEX idx_private_messages_receiver ON private_messages(receiver_id, is_read, created_at DESC);
+CALL CreateIndexIfNotExists('article_category_relations', 'idx_article_category_article', 'article_id, category_id');
+CALL CreateIndexIfNotExists('article_category_relations', 'idx_article_category_category', 'category_id, article_id');
 
--- 注意：user_auth表已有uk_email唯一索引，无需再创建普通索引
--- 如果以上索引已存在，会报错但不影响数据库使用
+CALL CreateIndexIfNotExists('article_tag_relations', 'idx_article_tag_article', 'article_id, tag_id');
+CALL CreateIndexIfNotExists('article_tag_relations', 'idx_article_tag_tag', 'tag_id, article_id');
+
+CALL CreateIndexIfNotExists('article_likes', 'idx_article_likes_user', 'user_id, article_id');
+CALL CreateIndexIfNotExists('article_likes', 'idx_article_likes_article', 'article_id, user_id');
+
+CALL CreateIndexIfNotExists('private_messages', 'idx_private_messages_conversation', 'conversation_id, created_at DESC');
+CALL CreateIndexIfNotExists('private_messages', 'idx_private_messages_receiver', 'receiver_id, is_read, created_at DESC');
+
+-- 资源系统优化索引
+CALL CreateIndexIfNotExists('resources', 'idx_resources_status_created', 'status, created_at DESC');
+CALL CreateIndexIfNotExists('resources', 'idx_resources_user_status_created', 'user_id, status, created_at DESC');
+CALL CreateIndexIfNotExists('resources', 'idx_resources_category_status', 'category_id, status, created_at DESC');
+CALL CreateIndexIfNotExists('resources', 'idx_resources_hot', 'status, like_count DESC, download_count DESC, view_count DESC');
+CALL CreateIndexIfNotExists('resources', 'idx_resources_popular', 'status, view_count DESC, like_count DESC');
+CALL CreateIndexIfNotExists('resources', 'idx_resources_downloads', 'status, download_count DESC');
+
+CALL CreateIndexIfNotExists('resource_images', 'idx_resource_images_order', 'resource_id, image_order ASC');
+CALL CreateIndexIfNotExists('resource_images', 'idx_resource_images_cover', 'resource_id, is_cover');
+
+CALL CreateIndexIfNotExists('resource_comments', 'idx_resource_comments_tree', 'resource_id, parent_id, status, created_at');
+CALL CreateIndexIfNotExists('resource_comments', 'idx_resource_comments_root', 'resource_id, root_id, status');
+
+CALL CreateIndexIfNotExists('resource_comment_likes', 'idx_resource_comment_likes_user', 'user_id, comment_id');
+CALL CreateIndexIfNotExists('resource_comment_likes', 'idx_resource_comment_likes_comment', 'comment_id, user_id');
+
+CALL CreateIndexIfNotExists('resource_likes', 'idx_resource_likes_user', 'user_id, resource_id');
+CALL CreateIndexIfNotExists('resource_likes', 'idx_resource_likes_resource', 'resource_id, user_id');
+
+-- 代码系统优化索引
+CALL CreateIndexIfNotExists('code_snippets', 'idx_code_snippets_user_created', 'user_id, created_at DESC');
+CALL CreateIndexIfNotExists('code_snippets', 'idx_code_snippets_public', 'is_public, created_at DESC');
+CALL CreateIndexIfNotExists('code_snippets', 'idx_code_snippets_language_public', 'language, is_public, created_at DESC');
+
+CALL CreateIndexIfNotExists('code_executions', 'idx_code_executions_user_created', 'user_id, created_at DESC');
+CALL CreateIndexIfNotExists('code_executions', 'idx_code_executions_snippet', 'snippet_id, created_at DESC');
+
+-- 上传系统优化索引
+CALL CreateIndexIfNotExists('upload_chunks', 'idx_upload_chunks_expires', 'expires_at, status');
+CALL CreateIndexIfNotExists('upload_chunks', 'idx_upload_chunks_user_status', 'user_id, status, created_at DESC');
+
+-- 地区统计优化索引（user_login_history）
+CALL CreateIndexIfNotExists('user_login_history', 'idx_login_history_province_city', 'province, city, login_time DESC');
+CALL CreateIndexIfNotExists('user_login_history', 'idx_login_history_time_status', 'login_time DESC, login_status');
+
+-- 密码重置token优化索引
+CALL CreateIndexIfNotExists('password_reset_tokens', 'idx_password_reset_token_used', 'token, used, expires_at');
+
+-- 统计系统优化索引
+CALL CreateIndexIfNotExists('user_statistics', 'idx_user_statistics_date', 'date DESC');
+CALL CreateIndexIfNotExists('api_statistics', 'idx_api_statistics_date_count', 'date DESC, total_count DESC');
+
+-- 历史记录优化索引（复合索引，包含ORDER BY字段）
+CALL CreateIndexIfNotExists('user_login_history', 'idx_login_user_time', 'user_id, login_time DESC');
+CALL CreateIndexIfNotExists('user_operation_history', 'idx_operation_user_time', 'user_id, operation_time DESC');
+CALL CreateIndexIfNotExists('profile_change_history', 'idx_profile_change_user_time', 'user_id, change_time DESC');
+
+-- 私信会话优化索引（OR查询优化）
+CALL CreateIndexIfNotExists('private_conversations', 'idx_conversations_user1_time', 'user1_id, last_message_time DESC');
+CALL CreateIndexIfNotExists('private_conversations', 'idx_conversations_user2_time', 'user2_id, last_message_time DESC');
+
+-- 资源分类计数优化
+CALL CreateIndexIfNotExists('resource_categories', 'idx_resource_categories_count', 'resource_count DESC');
+
+-- 文章分类计数优化  
+CALL CreateIndexIfNotExists('article_categories', 'idx_article_categories_count', 'article_count DESC');
+CALL CreateIndexIfNotExists('article_tags', 'idx_article_tags_count_name', 'article_count DESC, name ASC');
+
+-- 累计统计优化索引
+CALL CreateIndexIfNotExists('cumulative_statistics', 'idx_cumulative_stats_category', 'category, stat_key');
+
+-- 每日指标优化索引
+CALL CreateIndexIfNotExists('daily_metrics', 'idx_daily_metrics_date_range', 'date DESC, active_users DESC');
+
+-- 聊天消息时间索引
+CALL CreateIndexIfNotExists('chat_messages', 'idx_chat_send_time', 'send_time DESC, status');
+
+-- 资源标签聚合查询优化
+CALL CreateIndexIfNotExists('resource_tags', 'idx_resource_tags_name_resource', 'tag_name, resource_id');
+
+-- 评论用户查询优化（批量获取评论时的子查询）
+CALL CreateIndexIfNotExists('article_comments', 'idx_article_comments_user', 'user_id, article_id, status');
+CALL CreateIndexIfNotExists('resource_comments', 'idx_resource_comments_user', 'user_id, resource_id, status');
+
+-- 私信未读消息优化
+CALL CreateIndexIfNotExists('private_messages', 'idx_private_messages_read', 'conversation_id, is_read, receiver_id');
+
+DROP PROCEDURE IF EXISTS CreateIndexIfNotExists;
+
+-- =====================================================
+-- 全文搜索索引（优化LIKE查询）
+-- =====================================================
+
+-- 文章全文搜索索引（title, description支持中文搜索）
+-- 注意：content字段过大，不建议建立全文索引
+ALTER TABLE `articles` ADD FULLTEXT INDEX `ft_articles_search` (`title`, `description`) WITH PARSER ngram;
+
+-- 资源全文搜索索引
+ALTER TABLE `resources` ADD FULLTEXT INDEX `ft_resources_search` (`title`, `description`) WITH PARSER ngram;
 
 -- =====================================================
 -- 第十部分：初始化数据

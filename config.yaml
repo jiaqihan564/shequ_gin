@@ -12,8 +12,8 @@ server:
   port: "3001"
   mode: "release"  # debug, release, test
   max_header_bytes: 1048576  # 1MB - 最大请求头大小
-  read_timeout: 300  # 读取超时（秒） - 5分钟，支持大文件上传
-  write_timeout: 300  # 写入超时（秒） - 5分钟，支持大文件上传
+  read_timeout: 600  # 读取超时（秒） - 10分钟，支持大文件上传和合并
+  write_timeout: 600  # 写入超时（秒） - 10分钟，支持大文件上传和合并
   idle_timeout: 120  # 空闲超时（秒）
   read_header_timeout: 10  # 读取请求头超时（秒，防止慢速攻击）
   shutdown_timeout: 30  # 优雅关闭超时（秒）
@@ -56,7 +56,7 @@ log:
 # 安全配置
 security:
   max_login_attempts: 5
-  max_request_size_mb: 10  # 最大请求体大小（MB）
+  max_request_size_mb: 50  # 最大请求体大小（MB）- 增加到50MB以支持大文件分片上传
   enable_security_headers: true  # 启用安全响应头
   enable_rate_limit: true  # 启用限流
   bcrypt_cost: 10  # bcrypt 加密成本（4-31，建议10-12）
@@ -80,31 +80,83 @@ cors:
   allow_headers: ["Origin", "Content-Type", "Content-Length", "Accept-Encoding", "X-CSRF-Token", "Authorization", "X-Request-ID"]
   allow_credentials: true
 
-# 静态资源/对象存储配置（用于头像等）
-assets:
-  # 指向桶根目录的可访问 URL（不要带尾部斜杠）
-  # 例如针对 MinIO： http://127.0.0.1:9000/community-assets
-  public_base_url: "http://43.138.113.105:19000/community-assets" # 公网ip
-  # public_base_url: "http://10.2.0.11:19000/community-assets" # 内网ip
-  max_avatar_size_mb: 0.005  # 5KB = 0.005MB（前端已压缩到5KB，后端严格限制）
-  # 历史头像最大保留数量（含归档，不含当前 avatar.png）
-  max_avatar_history: 9
-
-# MinIO 对象存储配置
+# MinIO 对象存储配置（基础配置）
 minio:
   endpoint: "43.138.113.105:19000"        # 公网ip
   # endpoint: "10.2.0.11:19000"        # 内网ip
   access_key_id: "minio"
   secret_access_key: "pmZMGPzY4ANyB6nn"
   use_ssl: false
-  bucket: "community-assets"
-  operation_timeout: 300  # MinIO操作超时（秒） - 5分钟，支持大文件上传和合并
+  operation_timeout: 600  # MinIO操作超时（秒） - 10分钟，支持大文件上传和合并
 
-# 资源存储配置（独立桶）
+# =====================================================
+# 7桶架构配置（优化性能和管理）
+# =====================================================
+
+# 1. 用户头像桶（极高频访问）
+bucket_user_avatars:
+  name: "user-avatars"
+  public_base_url: "http://43.138.113.105:19000/user-avatars"
+  max_avatar_size_mb: 0.005  # 5KB
+  max_history: 9  # 最多保留9个历史版本
+  auto_cleanup: true
+  cache_control: "public, max-age=86400"  # 1天CDN缓存
+
+# 2. 资源文件分片桶（低频访问，大文件）
+bucket_resource_chunks:
+  name: "resource-chunks"
+  public_base_url: "http://43.138.113.105:19000/resource-chunks"
+  chunk_size_mb: 5
+  auto_cleanup: false  # 不自动清理（关联到资源）
+  cache_control: "public, max-age=31536000"  # 1年缓存（不可变）
+
+# 3. 资源预览图桶（高频访问）
+bucket_resource_previews:
+  name: "resource-previews"
+  public_base_url: "http://43.138.113.105:19000/resource-previews"
+  max_image_size_kb: 150
+  max_images_per_resource: 5
+  cache_control: "public, max-age=604800"  # 7天缓存
+
+# 4. 文档图片桶（中频访问）
+bucket_document_images:
+  name: "document-images"
+  public_base_url: "http://43.138.113.105:19000/document-images"
+  max_image_size_kb: 150
+  archive_after_days: 365  # 1年后可转冷存储
+  cache_control: "public, max-age=2592000"  # 30天缓存
+
+# 5. 文章图片桶（中频访问）
+bucket_article_images:
+  name: "article-images"
+  public_base_url: "http://43.138.113.105:19000/article-images"
+  max_image_size_kb: 200
+  archive_after_days: 180  # 半年后可转冷存储
+  cache_control: "public, max-age=1209600"  # 14天缓存
+
+# 6. 临时文件桶（内部使用）
+bucket_temp_files:
+  name: "temp-files"
+  public_base_url: "http://43.138.113.105:19000/temp-files"
+  auto_expire_hours: 48  # 48小时后自动清理
+  public_read: false  # 私有桶（不公开）
+  cache_control: "no-cache, no-store"
+
+# 7. 系统静态资源桶（极高频访问）
+bucket_system_assets:
+  name: "system-assets"
+  public_base_url: "http://43.138.113.105:19000/system-assets"
+  cache_control: "public, max-age=31536000, immutable"  # 永久缓存（不可变）
+  
+# 向后兼容配置（废弃，将在v2.0移除）
+assets:
+  public_base_url: "http://43.138.113.105:19000/user-avatars"  # 映射到新的user-avatars桶
+  max_avatar_size_mb: 0.005
+  max_avatar_history: 9
+
 resources_storage:
-  bucket: "community-resources"
-  public_base_url: "http://43.138.113.105:19000/community-resources" # 公网ip
-  # public_base_url: "http://10.2.0.11:19000/community-resources" # 内网ip
+  bucket: "resource-chunks"  # 映射到新的resource-chunks桶
+  public_base_url: "http://43.138.113.105:19000/resource-chunks"
 
 # 代码执行器配置
 code_executor:
@@ -275,8 +327,9 @@ repository_timeouts:
 
 # 文件上传配置
 file_upload:
-  chunk_size_mb: 2  # 分片大小（MB）
-  upload_expire_hours: 24  # 上传任务过期时间（小时）
+  chunk_size_mb: 5  # 分片大小（MB）- 增加到5MB以减少大文件的分片数量
+  upload_expire_hours: 48  # 上传任务过期时间（小时）- 增加到48小时
+  max_resource_size_mb: 100  # 资源文件最大大小（MB）- 限制为100MB
 
 # 压缩配置
 compression:

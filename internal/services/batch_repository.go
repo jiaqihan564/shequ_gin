@@ -41,7 +41,7 @@ func (r *BatchRepository) BatchGetUsers(ctx context.Context, userIDs []uint) (ma
 	placeholders = placeholders[:len(placeholders)-1]
 
 	query := fmt.Sprintf(`
-		SELECT id, username, email, avatar, role, created_at
+		SELECT id, username, email, role, created_at
 		FROM users
 		WHERE id IN (%s)
 	`, placeholders)
@@ -64,7 +64,6 @@ func (r *BatchRepository) BatchGetUsers(ctx context.Context, userIDs []uint) (ma
 			&user.ID,
 			&user.Username,
 			&user.Email,
-			&user.Avatar,
 			&user.Role,
 			&user.CreatedAt,
 		)

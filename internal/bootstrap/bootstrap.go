@@ -14,6 +14,7 @@ type Container struct {
 	UserSvc             services.UserServiceInterface
 	UserRepo            *services.UserRepository
 	Storage             services.StorageClient
+	MultiBucket         *services.MultiBucketStorage // 多桶存储服务（7桶架构）
 	StatsRepo           *services.StatisticsRepository
 	HistoryRepo         *services.HistoryRepository
 	CumulativeRepo      *services.CumulativeStatsRepository
@@ -22,7 +23,8 @@ type Container struct {
 	PrivateMsgRepo      *services.PrivateMessageRepository
 	ResourceRepo        *services.ResourceRepository
 	ResourceCommentRepo *services.ResourceCommentRepository
-	ResourceStorage     *services.ResourceStorageService
+	ResourceStorage     *services.ResourceStorageService // 废弃，使用MultiBucket替代
+	ResourceImageSvc    *services.ResourceImageService   // 资源图片服务（7桶架构）
 	UploadMgr           *services.UploadManager
 	CacheSvc            *services.CacheService // 缓存服务
 	CodeRepo            services.CodeRepository
@@ -52,7 +54,7 @@ func New(cfg *config.Config, db *services.Database) (*Container, error) {
 		storageService = nil
 	}
 
-	// 初始化资源存储服务（独立桶）
+	// 初始化资源存储服务（独立桶，废弃）
 	resourceStorage, err := services.NewResourceStorageService(cfg)
 	if err != nil {
 		logger := utils.GetLogger()
@@ -60,7 +62,26 @@ func New(cfg *config.Config, db *services.Database) (*Container, error) {
 		resourceStorage = nil
 	}
 
+	// 初始化多桶存储服务（7桶架构）
+	multiBucketStorage, err := services.NewMultiBucketStorage(cfg)
+	if err != nil {
+		logger := utils.GetLogger()
+		logger.Error("多桶存储服务初始化失败", "error", err.Error())
+		multiBucketStorage = nil
+	}
+
 	uploadMgr := services.NewUploadManager(db, storageService, cfg)
+	
+	// 关联多桶存储到UploadManager
+	if multiBucketStorage != nil {
+		uploadMgr.SetMultiBucketStorage(multiBucketStorage)
+	}
+
+	// 初始化资源图片服务（7桶架构）
+	var resourceImageSvc *services.ResourceImageService
+	if multiBucketStorage != nil {
+		resourceImageSvc = services.NewResourceImageService(multiBucketStorage)
+	}
 
 	// 初始化缓存服务
 	cacheService := services.NewCacheService(articleRepo, cfg)
@@ -81,6 +102,7 @@ func New(cfg *config.Config, db *services.Database) (*Container, error) {
 		UserSvc:             userService,
 		UserRepo:            userRepo,
 		Storage:             storageService,
+		MultiBucket:         multiBucketStorage,  // 多桶存储服务
 		StatsRepo:           statsRepo,
 		HistoryRepo:         historyRepo,
 		CumulativeRepo:      cumulativeRepo,
@@ -89,7 +111,8 @@ func New(cfg *config.Config, db *services.Database) (*Container, error) {
 		PrivateMsgRepo:      privateMsgRepo,
 		ResourceRepo:        resourceRepo,
 		ResourceCommentRepo: resourceCommentRepo,
-		ResourceStorage:     resourceStorage,
+		ResourceStorage:     resourceStorage,     // 保留向后兼容
+		ResourceImageSvc:    resourceImageSvc,    // 资源图片服务
 		UploadMgr:           uploadMgr,
 		CacheSvc:            cacheService,
 		CodeRepo:            codeRepo,

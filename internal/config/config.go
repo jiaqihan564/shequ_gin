@@ -11,17 +11,25 @@ import (
 
 // Config 应用配置结构体
 type Config struct {
-	App                     AppConfig                     `yaml:"app" json:"app"`
-	Server                  ServerConfig                  `yaml:"server" json:"server"`
-	JWT                     JWTConfig                     `yaml:"jwt" json:"jwt"`
-	Database                DatabaseConfig                `yaml:"database" json:"database"`
-	Log                     LogConfig                     `yaml:"log" json:"log"`
-	Security                SecurityConfig                `yaml:"security" json:"security"`
-	Admin                   AdminConfig                   `yaml:"admin" json:"admin"`
-	CORS                    CORSConfig                    `yaml:"cors" json:"cors"`
-	Assets                  AssetsConfig                  `yaml:"assets" json:"assets"`
-	MinIO                   MinIOConfig                   `yaml:"minio" json:"minio"`
-	ResourcesStorage        ResourcesStorageConfig        `yaml:"resources_storage" json:"resources_storage"`
+	App              AppConfig              `yaml:"app" json:"app"`
+	Server           ServerConfig           `yaml:"server" json:"server"`
+	JWT              JWTConfig              `yaml:"jwt" json:"jwt"`
+	Database         DatabaseConfig         `yaml:"database" json:"database"`
+	Log              LogConfig              `yaml:"log" json:"log"`
+	Security         SecurityConfig         `yaml:"security" json:"security"`
+	Admin            AdminConfig            `yaml:"admin" json:"admin"`
+	CORS             CORSConfig             `yaml:"cors" json:"cors"`
+	Assets           AssetsConfig           `yaml:"assets" json:"assets"`
+	MinIO            MinIOConfig            `yaml:"minio" json:"minio"`
+	ResourcesStorage ResourcesStorageConfig `yaml:"resources_storage" json:"resources_storage"`
+	// 7桶架构配置
+	BucketUserAvatars       BucketConfig                  `yaml:"bucket_user_avatars" json:"bucket_user_avatars"`
+	BucketResourceChunks    BucketConfig                  `yaml:"bucket_resource_chunks" json:"bucket_resource_chunks"`
+	BucketResourcePreviews  BucketConfig                  `yaml:"bucket_resource_previews" json:"bucket_resource_previews"`
+	BucketDocumentImages    BucketConfig                  `yaml:"bucket_document_images" json:"bucket_document_images"`
+	BucketArticleImages     BucketConfig                  `yaml:"bucket_article_images" json:"bucket_article_images"`
+	BucketTempFiles         BucketConfig                  `yaml:"bucket_temp_files" json:"bucket_temp_files"`
+	BucketSystemAssets      BucketConfig                  `yaml:"bucket_system_assets" json:"bucket_system_assets"`
 	CodeExecutor            CodeExecutorConfig            `yaml:"code_executor" json:"code_executor"`
 	WebSocket               WebSocketConfig               `yaml:"websocket" json:"websocket"`
 	RateLimiter             RateLimiterConfig             `yaml:"rate_limiter" json:"rate_limiter"`
@@ -158,10 +166,26 @@ type MinIOConfig struct {
 	OperationTimeout int    `yaml:"operation_timeout" json:"operation_timeout"` // 操作超时（秒）
 }
 
-// ResourcesStorageConfig 资源存储配置
+// ResourcesStorageConfig 资源存储配置（向后兼容，已废弃）
 type ResourcesStorageConfig struct {
 	Bucket        string `yaml:"bucket" json:"bucket"`
 	PublicBaseURL string `yaml:"public_base_url" json:"public_base_url"`
+}
+
+// BucketConfig 通用桶配置（7桶架构）
+type BucketConfig struct {
+	Name                 string  `yaml:"name" json:"name"`                                       // 桶名称
+	PublicBaseURL        string  `yaml:"public_base_url" json:"public_base_url"`                 // 公共访问基础URL
+	MaxAvatarSizeMB      float64 `yaml:"max_avatar_size_mb" json:"max_avatar_size_mb"`           // 头像最大大小（仅user-avatars）
+	MaxHistory           int     `yaml:"max_history" json:"max_history"`                         // 历史版本数（仅user-avatars）
+	AutoCleanup          bool    `yaml:"auto_cleanup" json:"auto_cleanup"`                       // 是否自动清理
+	ChunkSizeMB          int     `yaml:"chunk_size_mb" json:"chunk_size_mb"`                     // 分片大小（仅resource-chunks）
+	MaxImageSizeKB       int     `yaml:"max_image_size_kb" json:"max_image_size_kb"`             // 图片最大大小
+	MaxImagesPerResource int     `yaml:"max_images_per_resource" json:"max_images_per_resource"` // 每个资源最大图片数
+	ArchiveAfterDays     int     `yaml:"archive_after_days" json:"archive_after_days"`           // 多少天后归档
+	AutoExpireHours      int     `yaml:"auto_expire_hours" json:"auto_expire_hours"`             // 自动过期时间（仅temp-files）
+	PublicRead           *bool   `yaml:"public_read" json:"public_read"`                         // 是否公开读取（nil=默认true）
+	CacheControl         string  `yaml:"cache_control" json:"cache_control"`                     // 缓存控制头
 }
 
 // CodeExecutorConfig 代码执行器配置
@@ -352,8 +376,9 @@ type RepositoryTimeoutsConfig struct {
 
 // FileUploadConfig 文件上传配置
 type FileUploadConfig struct {
-	ChunkSizeMB       int `yaml:"chunk_size_mb" json:"chunk_size_mb"`             // 分片大小（MB）
-	UploadExpireHours int `yaml:"upload_expire_hours" json:"upload_expire_hours"` // 上传任务过期时间（小时）
+	ChunkSizeMB       int `yaml:"chunk_size_mb" json:"chunk_size_mb"`               // 分片大小（MB）
+	UploadExpireHours int `yaml:"upload_expire_hours" json:"upload_expire_hours"`   // 上传任务过期时间（小时）
+	MaxResourceSizeMB int `yaml:"max_resource_size_mb" json:"max_resource_size_mb"` // 资源文件最大大小（MB）
 }
 
 // CompressionConfig 压缩配置

@@ -18,8 +18,8 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 	r := gin.New() // 使用 gin.New() 而不是 gin.Default()，手动控制中间件
 
 	// 设置上传文件的内存限制（超过此大小将写入临时文件）
-	// 设置为8MB，对于头像上传足够了（配置的max是5MB）
-	r.MaxMultipartMemory = 8 << 20 // 8 MB
+	// 设置为32MB，支持大文件分片上传
+	r.MaxMultipartMemory = 32 << 20 // 32 MB
 
 	// 添加中间件（顺序很重要）
 	r.Use(middleware.PanicRecoveryMiddleware())                                                      // 1. Panic恢复（最先执行）
@@ -43,14 +43,14 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 	authHandler := handlers.NewAuthHandler(ctn.Auth, cfg)
 	userHandler := handlers.NewUserHandler(ctn.UserSvc, ctn.HistoryRepo, cfg)
 	healthHandler := handlers.NewHealthHandler(ctn.DB)
-	uploadHandler := handlers.NewUploadHandler(ctn.Storage, ctn.ResourceStorage, ctn.UserSvc, uploadMaxBytes, cfg.Assets.MaxAvatarHistory, ctn.HistoryRepo, cfg)
+	uploadHandler := handlers.NewUploadHandler(ctn.Storage, ctn.MultiBucket, ctn.ResourceStorage, ctn.UserSvc, uploadMaxBytes, cfg.Assets.MaxAvatarHistory, ctn.HistoryRepo, cfg)
 	statsHandler := handlers.NewStatisticsHandler(ctn.StatsRepo, cfg)
 	historyHandler := handlers.NewHistoryHandler(ctn.HistoryRepo, cfg)
 	cumulativeHandler := handlers.NewCumulativeStatsHandler(ctn.CumulativeRepo)
 	chatHandler := handlers.NewChatHandler(ctn.ChatRepo, ctn.UserRepo, cfg)
 	articleHandler := handlers.NewArticleHandler(ctn.ArticleRepo, ctn.UserRepo, ctn.CacheSvc, cfg)
 	privateMsgHandler := handlers.NewPrivateMessageHandler(ctn.PrivateMsgRepo, ctn.UserRepo, cfg)
-	resourceHandler := handlers.NewResourceHandler(ctn.ResourceRepo, ctn.ResourceCommentRepo, ctn.ResourceStorage, ctn.UserRepo, cfg)
+	resourceHandler := handlers.NewResourceHandler(ctn.ResourceRepo, ctn.ResourceCommentRepo, ctn.ResourceStorage, ctn.ResourceImageSvc, ctn.UserRepo, cfg)
 	chunkUploadHandler := handlers.NewChunkUploadHandler(ctn.UploadMgr)
 	codeHandler := handlers.NewCodeHandler(ctn.CodeRepo, ctn.CodeExecutor, cfg)
 

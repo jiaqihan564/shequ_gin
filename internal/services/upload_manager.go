@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"path/filepath"
 	"time"
 
 	"gin/internal/config"
@@ -18,11 +17,12 @@ import (
 
 // UploadManager 上传管理器（处理断点续传）
 type UploadManager struct {
-	db         *Database
-	storage    StorageClient
-	logger     utils.Logger
-	chunkSize  int
-	expireTime time.Duration
+	db          *Database
+	storage     StorageClient      // 旧的存储接口（向后兼容）
+	multiBucket *MultiBucketStorage // 多桶存储（7桶架构）
+	logger      utils.Logger
+	chunkSize   int
+	expireTime  time.Duration
 }
 
 // NewUploadManager 创建上传管理器
@@ -32,10 +32,17 @@ func NewUploadManager(db *Database, storage StorageClient, cfg *config.Config) *
 	return &UploadManager{
 		db:         db,
 		storage:    storage,
+		multiBucket: nil, // 稍后由bootstrap注入
 		logger:     utils.GetLogger(),
 		chunkSize:  chunkSize,
 		expireTime: expireTime,
 	}
+}
+
+// SetMultiBucketStorage 设置多桶存储服务（依赖注入）
+func (m *UploadManager) SetMultiBucketStorage(multiBucket *MultiBucketStorage) {
+	m.multiBucket = multiBucket
+	m.logger.Info("UploadManager 已关联多桶存储服务")
 }
 
 // InitUpload 初始化上传
@@ -86,7 +93,7 @@ func (m *UploadManager) InitUpload(ctx context.Context, userID uint, req models.
 
 	if err != nil {
 		m.logger.Error("创建上传记录失败", "error", err.Error())
-		return nil, fmt.Errorf("创建上传记录失败")
+		return nil, fmt.Errorf("初始化上传失败，请稍后重试")
 	}
 
 	m.logger.Info("初始化上传", "uploadID", req.UploadID, "fileName", req.FileName, "totalChunks", req.TotalChunks)
@@ -104,26 +111,44 @@ func (m *UploadManager) UploadChunk(ctx context.Context, uploadID string, chunkI
 
 	// 将[]byte转换为io.Reader
 	reader := bytes.NewReader(chunkData)
-	_, err := m.storage.PutObject(ctx, objectKey, "application/octet-stream", reader, int64(len(chunkData)))
+	
+	// 使用多桶存储（新架构）
+	var err error
+	if m.multiBucket != nil {
+		_, err = m.multiBucket.PutObject(ctx, BucketTypeResourceChunks, objectKey, "application/octet-stream", reader, int64(len(chunkData)))
+	} else {
+		// 回退到旧的存储接口
+		_, err = m.storage.PutObject(ctx, objectKey, "application/octet-stream", reader, int64(len(chunkData)))
+	}
+	
 	if err != nil {
 		m.logger.Error("保存分片失败", "uploadID", uploadID, "chunkIndex", chunkIndex, "error", err.Error())
-		return fmt.Errorf("保存分片失败")
+		return fmt.Errorf("上传失败，请检查网络连接")
 	}
 
-	// 更新上传记录
-	var uploadedChunks []int
-	query := `SELECT uploaded_chunks FROM upload_chunks WHERE upload_id = ?`
-	var chunksJSON string
-	err = m.db.DB.QueryRowContext(ctx, query, uploadID).Scan(&chunksJSON)
+	// 使用事务和行锁更新上传记录，避免并发问题
+	tx, err := m.db.DB.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("查询上传记录失败")
+		m.logger.Error("开启事务失败", "uploadID", uploadID, "error", err.Error())
+		return fmt.Errorf("上传失败，请稍后重试")
+	}
+	defer tx.Rollback()
+
+	// 使用 FOR UPDATE 行锁防止并发更新冲突
+	var uploadedChunks []int
+	query := `SELECT uploaded_chunks FROM upload_chunks WHERE upload_id = ? FOR UPDATE`
+	var chunksJSON string
+	err = tx.QueryRowContext(ctx, query, uploadID).Scan(&chunksJSON)
+	if err != nil {
+		m.logger.Error("查询上传记录失败", "uploadID", uploadID, "error", err.Error())
+		return fmt.Errorf("上传失败，请稍后重试")
 	}
 
 	if chunksJSON != "" {
 		_ = json.Unmarshal([]byte(chunksJSON), &uploadedChunks)
 	}
 
-	// 添加当前分片索引
+	// 添加当前分片索引（去重）
 	found := false
 	for _, idx := range uploadedChunks {
 		if idx == chunkIndex {
@@ -137,10 +162,20 @@ func (m *UploadManager) UploadChunk(ctx context.Context, uploadID string, chunkI
 
 	newChunksJSON, _ := json.Marshal(uploadedChunks)
 	updateQuery := `UPDATE upload_chunks SET uploaded_chunks = ?, updated_at = ? WHERE upload_id = ?`
-	_, err = m.db.DB.ExecContext(ctx, updateQuery, string(newChunksJSON), time.Now().UTC(), uploadID)
+	_, err = tx.ExecContext(ctx, updateQuery, string(newChunksJSON), time.Now().UTC(), uploadID)
+	if err != nil {
+		m.logger.Error("更新上传记录失败", "uploadID", uploadID, "error", err.Error())
+		return fmt.Errorf("上传失败，请稍后重试")
+	}
+
+	// 提交事务
+	if err = tx.Commit(); err != nil {
+		m.logger.Error("提交事务失败", "uploadID", uploadID, "error", err.Error())
+		return fmt.Errorf("上传失败，请稍后重试")
+	}
 
 	m.logger.Info("分片上传成功", "uploadID", uploadID, "chunkIndex", chunkIndex, "progress", fmt.Sprintf("%d chunks", len(uploadedChunks)))
-	return err
+	return nil
 }
 
 // MergeChunks 合并分片（真正实现文件合并）
@@ -153,64 +188,85 @@ func (m *UploadManager) MergeChunks(ctx context.Context, uploadID string) (*mode
 		&chunk.UserID, &chunk.FileName, &chunk.FileSize, &chunk.TotalChunks, &chunksJSON,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("查询上传记录失败")
+		m.logger.Error("查询上传记录失败", "uploadID", uploadID, "error", err.Error())
+		return nil, fmt.Errorf("文件信息查询失败，请稍后重试")
 	}
 
-	// 检查是否所有分片都已上传
-	var uploadedChunks []int
-	if chunksJSON != "" {
-		_ = json.Unmarshal([]byte(chunksJSON), &uploadedChunks)
+	// 检查是否所有分片都已上传（通过检查MinIO中的实际文件）
+	// 这样可以避免并发更新导致的数据库记录不准确问题
+	missingChunks := []int{}
+	for i := 0; i < chunk.TotalChunks; i++ {
+		chunkPath := fmt.Sprintf("%s/chunk_%d", uploadID, i)
+		var exists bool
+		var err error
+		
+		// 使用多桶存储（新架构）
+		if m.multiBucket != nil {
+			exists, err = m.multiBucket.ObjectExists(ctx, BucketTypeResourceChunks, chunkPath)
+		} else {
+			// 回退到旧的存储接口
+			fullPath := fmt.Sprintf("chunks/%s", chunkPath)
+			exists, err = m.storage.ObjectExists(ctx, fullPath)
+		}
+		
+		if err != nil || !exists {
+			missingChunks = append(missingChunks, i)
+		}
 	}
 
-	if len(uploadedChunks) != chunk.TotalChunks {
-		return nil, fmt.Errorf("分片未全部上传，进度：%d/%d", len(uploadedChunks), chunk.TotalChunks)
+	if len(missingChunks) > 0 {
+		m.logger.Warn("检测到缺失的分片", 
+			"uploadID", uploadID, 
+			"totalChunks", chunk.TotalChunks,
+			"missingChunks", missingChunks,
+			"missingCount", len(missingChunks),
+		)
+		// 用户友好的错误提示（不暴露技术细节）
+		return nil, fmt.Errorf("文件上传不完整，请重新上传")
 	}
 
-	// 确保文件名有扩展名（如果没有，添加默认扩展名）
-	filename := chunk.FileName
-	ext := filepath.Ext(filename)
-	if ext == "" {
-		// 没有扩展名，添加默认的.bin扩展名
-		filename = filename + ".bin"
-	}
+	m.logger.Info("所有分片验证通过", "uploadID", uploadID, "totalChunks", chunk.TotalChunks)
 
-	// 生成最终存储路径
-	now := time.Now().UTC()
-	storagePath := fmt.Sprintf("resources/%d/%02d/%s_%s", now.Year(), now.Month(), uploadID[:8], filename)
+	// 新方案：不合并分片，直接保存分片信息，由前端下载时合并
+	// 生成分片存储路径前缀
+	storagePath := fmt.Sprintf("chunks/%s", uploadID)
 
-	m.logger.Info("开始合并分片", "uploadID", uploadID, "totalChunks", chunk.TotalChunks, "storagePath", storagePath)
+	m.logger.Info("分片上传完成，保存分片信息", "uploadID", uploadID, "totalChunks", chunk.TotalChunks, "storagePath", storagePath)
 
-	// 实际合并分片文件
-	err = m.mergeChunksToStorage(ctx, uploadID, chunk.TotalChunks, storagePath, chunk.FileSize)
-	if err != nil {
-		m.logger.Error("合并分片失败", "uploadID", uploadID, "error", err.Error())
-		return nil, fmt.Errorf("合并分片失败: %v", err)
-	}
-
-	// 更新状态为已完成
+	// 更新状态为已完成，保存分片路径前缀
 	updateQuery := `UPDATE upload_chunks SET status = 1, storage_path = ?, updated_at = ? WHERE upload_id = ?`
 	_, err = m.db.DB.ExecContext(ctx, updateQuery, storagePath, time.Now().UTC(), uploadID)
 	if err != nil {
-		return nil, fmt.Errorf("更新上传状态失败")
+		m.logger.Error("更新上传状态失败", "uploadID", uploadID, "error", err.Error())
+		return nil, fmt.Errorf("文件保存失败，请稍后重试")
 	}
 
-	// 异步清理临时分片文件
-	go m.cleanupChunks(context.Background(), uploadID, chunk.TotalChunks)
+	// 不再清理分片文件，保留用于下载
+	// 构建分片基础URL（前端下载时会拼接chunk_0, chunk_1等）
+	var fileURL string
+	if m.multiBucket != nil {
+		fileURL = fmt.Sprintf("%s/%s", m.multiBucket.GetPublicBaseURL(BucketTypeResourceChunks), uploadID)
+	} else {
+		fileURL = fmt.Sprintf("%s/%s", m.storage.GetPublicBaseURL(), storagePath)
+	}
 
-	// 构建文件URL（使用公共访问URL）
-	fileURL := fmt.Sprintf("%s/%s", m.storage.GetPublicBaseURL(), storagePath)
-
-	m.logger.Info("合并分片成功", "uploadID", uploadID, "storagePath", storagePath, "fileURL", fileURL)
+	m.logger.Info("分片信息保存成功", "uploadID", uploadID, "storagePath", storagePath, "fileURL", fileURL)
 	return &models.MergeChunksResponse{
-		StoragePath: fileURL, // 返回完整的公共URL
-		FileURL:     fileURL,
+		StoragePath: storagePath,    // 返回分片路径前缀（用于数据库保存）
+		FileURL:     fileURL,         // 返回分片基础URL（前端会用这个拼接下载）
+		TotalChunks: chunk.TotalChunks, // 返回总分片数（前端需要知道要下载多少个分片）
 	}, nil
 }
 
 // mergeChunksToStorage 将所有分片合并为一个完整文件并上传到MinIO
 func (m *UploadManager) mergeChunksToStorage(ctx context.Context, uploadID string, totalChunks int, destPath string, fileSize int64) error {
+	m.logger.Info("开始合并分片到存储", "uploadID", uploadID, "totalChunks", totalChunks, "destPath", destPath, "fileSize", fileSize)
+	
 	// 使用管道实现流式合并，避免大文件占用内存
 	pr, pw := io.Pipe()
+	
+	// 用于记录合并进度
+	mergeProgress := 0
 
 	// 在goroutine中写入所有分片数据到管道
 	go func() {
@@ -237,18 +293,23 @@ func (m *UploadManager) mergeChunksToStorage(ctx context.Context, uploadID strin
 				return
 			}
 
-			m.logger.Debug("分片已合并", "uploadID", uploadID, "chunkIndex", i, "progress", fmt.Sprintf("%d/%d", i+1, totalChunks))
+			mergeProgress = i + 1
+			// 每10个分片或最后一个分片记录一次进度
+			if mergeProgress%10 == 0 || mergeProgress == totalChunks {
+				m.logger.Info("合并进度", "uploadID", uploadID, "progress", fmt.Sprintf("%d/%d", mergeProgress, totalChunks), "percentage", fmt.Sprintf("%.1f%%", float64(mergeProgress)*100/float64(totalChunks)))
+			}
 		}
 	}()
 
 	// 上传合并后的完整文件到MinIO
+	m.logger.Info("开始上传合并后的文件", "uploadID", uploadID, "destPath", destPath, "fileSize", fileSize)
 	_, err := m.storage.PutObject(ctx, destPath, "application/octet-stream", pr, fileSize)
 	if err != nil {
 		m.logger.Error("上传合并文件失败", "uploadID", uploadID, "destPath", destPath, "error", err.Error())
 		return fmt.Errorf("上传合并文件失败: %w", err)
 	}
 
-	m.logger.Info("文件合并并上传成功", "uploadID", uploadID, "destPath", destPath, "size", fileSize)
+	m.logger.Info("✅ 文件合并并上传成功", "uploadID", uploadID, "destPath", destPath, "size", fileSize)
 	return nil
 }
 

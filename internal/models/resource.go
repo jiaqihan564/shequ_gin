@@ -15,6 +15,7 @@ type Resource struct {
 	FileType      string    `json:"file_type" db:"file_type"`
 	FileExtension string    `json:"file_extension" db:"file_extension"`
 	StoragePath   string    `json:"storage_path" db:"storage_path"`
+	TotalChunks   int       `json:"total_chunks" db:"total_chunks"` // 分片总数（新方案：用于前端下载合并）
 	DownloadCount int       `json:"download_count" db:"download_count"`
 	ViewCount     int       `json:"view_count" db:"view_count"`
 	LikeCount     int       `json:"like_count" db:"like_count"`
@@ -88,8 +89,9 @@ type CreateResourceRequest struct {
 	FileSize    int64    `json:"file_size" binding:"required"`
 	FileType    string   `json:"file_type"`
 	StoragePath string   `json:"storage_path" binding:"required"`
-	ImageURLs   []string `json:"image_urls"` // 预览图URL列表
-	Tags        []string `json:"tags"`       // 标签列表
+	TotalChunks int      `json:"total_chunks"` // 分片总数（新方案）
+	ImageURLs   []string `json:"image_urls"`   // 预览图URL列表
+	Tags        []string `json:"tags"`         // 标签列表
 }
 
 // UpdateResourceRequest 更新资源请求
@@ -161,10 +163,11 @@ type MergeChunksRequest struct {
 	UploadID string `json:"upload_id" binding:"required"`
 }
 
-// MergeChunksResponse 合并分片响应
+// MergeChunksResponse 合并分片响应（新方案：不合并，返回分片信息）
 type MergeChunksResponse struct {
-	StoragePath string `json:"storage_path"`
-	FileURL     string `json:"file_url"`
+	StoragePath string `json:"storage_path"` // 分片路径前缀（用于数据库保存）
+	FileURL     string `json:"file_url"`     // 分片基础URL（前端下载时拼接）
+	TotalChunks int    `json:"total_chunks"` // 总分片数（前端需要知道下载多少个）
 }
 
 // ResourceListQuery 资源列表查询参数

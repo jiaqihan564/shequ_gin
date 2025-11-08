@@ -22,7 +22,8 @@ import (
 // UploadHandler 处理上传
 type UploadHandler struct {
 	storage            services.StorageClient
-	resourceStorage    *services.ResourceStorageService
+	multiBucket        *services.MultiBucketStorage      // 多桶存储（7桶架构）
+	resourceStorage    *services.ResourceStorageService  // 废弃，向后兼容
 	userService        services.UserServiceInterface
 	historyRepo        *services.HistoryRepository
 	logger             utils.Logger
@@ -32,9 +33,10 @@ type UploadHandler struct {
 }
 
 // NewUploadHandler 创建上传处理器
-func NewUploadHandler(storage services.StorageClient, resourceStorage *services.ResourceStorageService, userService services.UserServiceInterface, maxAvatarSizeBytes int64, maxAvatarHistory int, historyRepo *services.HistoryRepository, cfg *config.Config) *UploadHandler {
+func NewUploadHandler(storage services.StorageClient, multiBucket *services.MultiBucketStorage, resourceStorage *services.ResourceStorageService, userService services.UserServiceInterface, maxAvatarSizeBytes int64, maxAvatarHistory int, historyRepo *services.HistoryRepository, cfg *config.Config) *UploadHandler {
 	return &UploadHandler{
 		storage:            storage,
+		multiBucket:        multiBucket,
 		resourceStorage:    resourceStorage,
 		userService:        userService,
 		historyRepo:        historyRepo,
@@ -450,7 +452,7 @@ func (h *UploadHandler) validateImageFile(header *multipart.FileHeader) error {
 	return validator.Validate(header)
 }
 
-// UploadResourceImage 上传资源预览图
+// UploadResourceImage 上传资源预览图（使用7桶架构）
 func (h *UploadHandler) UploadResourceImage(c *gin.Context) {
 	_, err := utils.GetUserIDFromContext(c)
 	if err != nil {
@@ -458,8 +460,9 @@ func (h *UploadHandler) UploadResourceImage(c *gin.Context) {
 		return
 	}
 
-	if h.resourceStorage == nil {
-		utils.InternalServerErrorResponse(c, "资源存储服务未配置")
+	// 优先使用多桶存储
+	if h.multiBucket == nil && h.resourceStorage == nil {
+		utils.InternalServerErrorResponse(c, "存储服务未配置")
 		return
 	}
 
@@ -484,7 +487,17 @@ func (h *UploadHandler) UploadResourceImage(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	imageURL, err := h.resourceStorage.UploadResourceImage(ctx, file, header.Filename, header.Size)
+	var imageURL string
+	
+	// 使用多桶存储（temp-files桶临时存储）
+	if h.multiBucket != nil {
+		objectPath := fmt.Sprintf("preview_temp/%d_%s", time.Now().Unix(), header.Filename)
+		imageURL, err = h.multiBucket.PutObject(ctx, services.BucketTypeTempFiles, objectPath, "image/jpeg", file, header.Size)
+	} else {
+		// 回退到旧的资源存储服务
+		imageURL, err = h.resourceStorage.UploadResourceImage(ctx, file, header.Filename, header.Size)
+	}
+	
 	if err != nil {
 		h.logger.Error("上传资源图片失败", "error", err.Error())
 		utils.InternalServerErrorResponse(c, "上传失败")
@@ -497,7 +510,7 @@ func (h *UploadHandler) UploadResourceImage(c *gin.Context) {
 	})
 }
 
-// UploadDocumentImage 上传文档图片
+// UploadDocumentImage 上传文档图片（使用7桶架构）
 func (h *UploadHandler) UploadDocumentImage(c *gin.Context) {
 	_, err := utils.GetUserIDFromContext(c)
 	if err != nil {
@@ -505,8 +518,8 @@ func (h *UploadHandler) UploadDocumentImage(c *gin.Context) {
 		return
 	}
 
-	if h.resourceStorage == nil {
-		utils.InternalServerErrorResponse(c, "资源存储服务未配置")
+	if h.multiBucket == nil && h.resourceStorage == nil {
+		utils.InternalServerErrorResponse(c, "存储服务未配置")
 		return
 	}
 
@@ -531,7 +544,18 @@ func (h *UploadHandler) UploadDocumentImage(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	imageURL, err := h.resourceStorage.UploadDocumentImage(ctx, file, header.Filename, header.Size)
+	var imageURL string
+	
+	// 使用多桶存储（document-images桶）
+	if h.multiBucket != nil {
+		now := time.Now().UTC()
+		objectPath := fmt.Sprintf("%d/%02d/%d_%s", now.Year(), now.Month(), now.Unix(), header.Filename)
+		imageURL, err = h.multiBucket.PutObject(ctx, services.BucketTypeDocumentImages, objectPath, "image/jpeg", file, header.Size)
+	} else {
+		// 回退到旧的资源存储服务
+		imageURL, err = h.resourceStorage.UploadDocumentImage(ctx, file, header.Filename, header.Size)
+	}
+	
 	if err != nil {
 		h.logger.Error("上传文档图片失败", "error", err.Error())
 		utils.InternalServerErrorResponse(c, "上传失败")
