@@ -3,8 +3,6 @@ package handlers
 import (
 	"context"
 	"fmt"
-	"io"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -15,26 +13,23 @@ import (
 	"gin/internal/utils"
 
 	"github.com/gin-gonic/gin"
-	"github.com/minio/minio-go/v7"
 )
 
-// ResourceHandler 资源处理器
+// ResourceHandler 资源处理器（7桶架构）
 type ResourceHandler struct {
 	resourceRepo        *services.ResourceRepository
 	resourceCommentRepo *services.ResourceCommentRepository
-	resourceStorage     *services.ResourceStorageService // 废弃，向后兼容
-	resourceImageSvc    *services.ResourceImageService   // 资源图片服务（7桶架构）
+	resourceImageSvc    *services.ResourceImageService // 资源图片服务
 	userRepo            *services.UserRepository
 	logger              utils.Logger
 	config              *config.Config
 }
 
-// NewResourceHandler 创建资源处理器
-func NewResourceHandler(resourceRepo *services.ResourceRepository, resourceCommentRepo *services.ResourceCommentRepository, resourceStorage *services.ResourceStorageService, resourceImageSvc *services.ResourceImageService, userRepo *services.UserRepository, cfg *config.Config) *ResourceHandler {
+// NewResourceHandler 创建资源处理器（7桶架构）
+func NewResourceHandler(resourceRepo *services.ResourceRepository, resourceCommentRepo *services.ResourceCommentRepository, resourceImageSvc *services.ResourceImageService, userRepo *services.UserRepository, cfg *config.Config) *ResourceHandler {
 	return &ResourceHandler{
 		resourceRepo:        resourceRepo,
 		resourceCommentRepo: resourceCommentRepo,
-		resourceStorage:     resourceStorage,
 		resourceImageSvc:    resourceImageSvc,
 		userRepo:            userRepo,
 		logger:              utils.GetLogger(),
@@ -118,20 +113,10 @@ func (h *ResourceHandler) CreateResource(c *gin.Context) {
 		return
 	}
 
-	// 如果有临时图片URL，移动到正式目录（使用7桶架构）
+	// 如果有临时图片URL，移动到正式目录（7桶架构）
 	finalImageURLs := req.ImageURLs
-	if len(req.ImageURLs) > 0 {
-		var movedURLs []string
-		var err error
-
-		// 优先使用多桶架构
-		if h.resourceImageSvc != nil {
-			movedURLs, err = h.resourceImageSvc.MovePreviewImagesToFormal(ctx, req.ImageURLs, resource.ID)
-		} else if h.resourceStorage != nil {
-			// 回退到旧的资源存储服务
-			movedURLs, err = h.resourceStorage.MoveResourceImages(ctx, req.ImageURLs, resource.ID)
-		}
-
+	if len(req.ImageURLs) > 0 && h.resourceImageSvc != nil {
+		movedURLs, err := h.resourceImageSvc.MovePreviewImagesToFormal(ctx, req.ImageURLs, resource.ID)
 		if err != nil {
 			h.logger.Warn("移动资源图片失败", "resourceID", resource.ID, "error", err.Error())
 			// 不中断创建流程，使用原始URL
@@ -284,47 +269,13 @@ func (h *ResourceHandler) DeleteResource(c *gin.Context) {
 		return
 	}
 
-	// 异步删除存储文件（不阻塞响应）
-	if h.resourceStorage != nil && resource.StoragePath != "" {
+	// 异步删除存储文件（7桶架构）
+	if h.resourceImageSvc != nil {
 		go func() {
 			bgCtx := context.Background()
-
-			// 解析存储路径，提取对象路径
-			objectPath := resource.StoragePath
-			if strings.HasPrefix(objectPath, "http://") || strings.HasPrefix(objectPath, "https://") {
-				if parsedURL, err := url.Parse(objectPath); err == nil && parsedURL.Path != "" {
-					// 提取路径部分: /bucket-name/object/path -> object/path
-					pathParts := strings.SplitN(strings.TrimPrefix(parsedURL.Path, "/"), "/", 2)
-					if len(pathParts) >= 2 {
-						objectPath = pathParts[1]
-					}
-				}
-			}
-
-			// 删除主文件
-			if err := h.resourceStorage.RemoveObject(bgCtx, objectPath); err != nil {
-				h.logger.Warn("删除资源文件失败", "resourceID", resourceID, "path", objectPath, "error", err.Error())
-			} else {
-				h.logger.Info("成功删除资源文件", "resourceID", resourceID, "path", objectPath)
-			}
-
-			// 删除资源的预览图（使用7桶架构）
-			if h.resourceImageSvc != nil {
-				_ = h.resourceImageSvc.DeleteResourceImages(bgCtx, uint(resourceID))
-			} else if h.resourceStorage != nil {
-				// 回退到旧的资源存储服务
-				imagePrefix := fmt.Sprintf("images/%d/", resourceID)
-				if images, err := h.resourceStorage.ListObjectsRecursive(bgCtx, imagePrefix); err == nil {
-					for _, imgPath := range images {
-						if err := h.resourceStorage.RemoveObject(bgCtx, imgPath); err != nil {
-							h.logger.Warn("删除预览图失败", "resourceID", resourceID, "path", imgPath, "error", err.Error())
-						} else {
-							h.logger.Debug("删除预览图", "path", imgPath)
-						}
-					}
-					h.logger.Info("清理资源预览图完成", "resourceID", resourceID, "count", len(images))
-				}
-			}
+			// 删除资源的预览图
+			_ = h.resourceImageSvc.DeleteResourceImages(bgCtx, uint(resourceID))
+			// 注意：资源分片保留在resource-chunks桶中，由前端下载合并
 		}()
 	}
 
@@ -363,7 +314,7 @@ func (h *ResourceHandler) DownloadResource(c *gin.Context) {
 	})
 }
 
-// ProxyDownloadResource 代理下载资源（支持Range请求和大文件流式传输）
+// ProxyDownloadResource 代理下载资源（7桶架构：返回分片下载信息）
 func (h *ResourceHandler) ProxyDownloadResource(c *gin.Context) {
 	resourceIDStr := c.Param("id")
 	resourceID, err := strconv.ParseUint(resourceIDStr, 10, 32)
@@ -379,116 +330,17 @@ func (h *ResourceHandler) ProxyDownloadResource(c *gin.Context) {
 		return
 	}
 
-	if h.resourceStorage == nil {
-		utils.ErrorResponse(c, 500, "资源存储服务未配置")
-		return
+	// 7桶架构：返回分片信息供前端下载合并
+	uploadID := resource.StoragePath
+	if strings.HasPrefix(uploadID, "chunks/") {
+		uploadID = strings.TrimPrefix(uploadID, "chunks/")
 	}
 
-	// 性能优化：使用net/url解析URL，避免多次字符串操作
-	objectPath := resource.StoragePath
-	bucketName := ""
-
-	// 尝试解析URL提取bucket和object（仅当路径是完整URL时）
-	if strings.HasPrefix(objectPath, "http://") || strings.HasPrefix(objectPath, "https://") {
-		if parsedURL, err := url.Parse(objectPath); err == nil && parsedURL.Path != "" {
-			// 提取路径部分: /bucket-name/object/path
-			pathParts := strings.SplitN(strings.TrimPrefix(parsedURL.Path, "/"), "/", 2)
-			if len(pathParts) >= 2 {
-				bucketName = pathParts[0]
-				objectPath = pathParts[1]
-			}
-		}
-	}
-
-	// 仅在DEBUG模式记录详细日志
-	if h.logger != nil {
-		h.logger.Debug("解析存储路径", "桶", bucketName, "对象路径", objectPath)
-	}
-
-	// 获取对象信息（如果解析出了bucket，从指定bucket读取；否则使用默认bucket）
-	var objInfo minio.ObjectInfo
-	if bucketName != "" {
-		objInfo, err = h.resourceStorage.StatObjectFromBucket(ctx, bucketName, objectPath)
-	} else {
-		objInfo, err = h.resourceStorage.StatObject(ctx, objectPath)
-	}
-	if err != nil {
-		h.logger.Error("获取资源对象信息失败", "resourceID", resourceID, "bucket", bucketName, "path", objectPath, "error", err.Error())
-		utils.ErrorResponse(c, 404, "资源文件不存在")
-		return
-	}
-
-	// 解析Range请求头
-	rangeHeader := c.GetHeader("Range")
-	var start, end int64
-	var isRangeRequest bool
-
-	if rangeHeader != "" {
-		// 解析 "bytes=start-end" 或 "bytes=start-"
-		var rangeStart, rangeEnd int64 = 0, objInfo.Size - 1
-		if _, err := fmt.Sscanf(rangeHeader, "bytes=%d-%d", &rangeStart, &rangeEnd); err != nil {
-			// 尝试解析 "bytes=start-" 格式
-			if _, err := fmt.Sscanf(rangeHeader, "bytes=%d-", &rangeStart); err == nil {
-				rangeEnd = objInfo.Size - 1
-			}
-		}
-		start, end = rangeStart, rangeEnd
-		isRangeRequest = true
-		h.logger.Debug("Range请求", "range", rangeHeader, "start", start, "end", end)
-	} else {
-		start, end = 0, objInfo.Size-1
-	}
-
-	// 验证范围
-	if start < 0 || end >= objInfo.Size || start > end {
-		c.Header("Content-Range", fmt.Sprintf("bytes */%d", objInfo.Size))
-		c.Status(416) // Range Not Satisfiable
-		return
-	}
-
-	// 设置GetObject选项（支持Range）
-	opts := minio.GetObjectOptions{}
-	if isRangeRequest {
-		opts.SetRange(start, end)
-	}
-
-	// 从MinIO获取对象（使用解析出的bucket）
-	var object io.ReadCloser
-	if bucketName != "" {
-		object, err = h.resourceStorage.GetObjectFromBucket(ctx, bucketName, objectPath, opts)
-	} else {
-		object, err = h.resourceStorage.GetObject(ctx, objectPath, opts)
-	}
-	if err != nil {
-		h.logger.Error("获取资源对象失败", "resourceID", resourceID, "bucket", bucketName, "error", err.Error())
-		utils.ErrorResponse(c, 500, "读取文件失败")
-		return
-	}
-	defer object.Close()
-
-	// 设置响应头
-	contentLength := end - start + 1
-	c.Header("Content-Type", resource.FileType)
-	c.Header("Content-Disposition", utils.EncodeFileName(resource.FileName))
-	c.Header("Accept-Ranges", "bytes")
-	c.Header("Content-Length", fmt.Sprintf("%d", contentLength))
-	c.Header("Content-Encoding", "identity") // 避免压缩中间件干扰
-	c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
-	c.Header("Pragma", "no-cache")
-	c.Header("Expires", "0")
-
-	if isRangeRequest {
-		c.Header("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, objInfo.Size))
-		c.Status(206) // Partial Content
-	} else {
-		c.Status(200)
-	}
-
-	// 流式传输文件内容（避免大文件占用内存）
-	written, err := io.Copy(c.Writer, object)
-	if err != nil {
-		h.logger.Error("传输文件失败", "resourceID", resourceID, "written", written, "error", err.Error())
-		return
+	// 构建分片下载URLs
+	baseURL := h.config.BucketResourceChunks.PublicBaseURL
+	chunkURLs := make([]string, resource.TotalChunks)
+	for i := 0; i < resource.TotalChunks; i++ {
+		chunkURLs[i] = fmt.Sprintf("%s/%s/chunk_%d", baseURL, uploadID, i)
 	}
 
 	// 异步增加下载次数
@@ -497,8 +349,14 @@ func (h *ResourceHandler) ProxyDownloadResource(c *gin.Context) {
 		return h.resourceRepo.IncrementDownloadCount(taskCtx, uint(resourceID))
 	}, time.Duration(h.config.AsyncTasks.ResourceDownloadCountTimeout)*time.Second)
 
-	// 性能优化：仅在DEBUG模式记录详细信息
-	h.logger.Debug("代理下载成功", "resourceID", resourceID, "fileName", resource.FileName, "size", written, "range", isRangeRequest)
+	h.logger.Info("代理下载信息已返回", "resourceID", resourceID, "totalChunks", resource.TotalChunks)
+
+	utils.SuccessResponse(c, 200, "获取成功", gin.H{
+		"chunk_urls":   chunkURLs,
+		"total_chunks": resource.TotalChunks,
+		"file_name":    resource.FileName,
+		"file_size":    resource.FileSize,
+	})
 }
 
 // GetCategories 获取所有分类

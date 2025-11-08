@@ -19,9 +19,7 @@ type Config struct {
 	Security         SecurityConfig         `yaml:"security" json:"security"`
 	Admin            AdminConfig            `yaml:"admin" json:"admin"`
 	CORS             CORSConfig             `yaml:"cors" json:"cors"`
-	Assets           AssetsConfig           `yaml:"assets" json:"assets"`
 	MinIO            MinIOConfig            `yaml:"minio" json:"minio"`
-	ResourcesStorage ResourcesStorageConfig `yaml:"resources_storage" json:"resources_storage"`
 	// 7桶架构配置
 	BucketUserAvatars       BucketConfig                  `yaml:"bucket_user_avatars" json:"bucket_user_avatars"`
 	BucketResourceChunks    BucketConfig                  `yaml:"bucket_resource_chunks" json:"bucket_resource_chunks"`
@@ -146,30 +144,13 @@ type CORSConfig struct {
 	AllowCredentials bool     `yaml:"allow_credentials" json:"allow_credentials"`
 }
 
-// AssetsConfig 静态资源/对象存储配置
-type AssetsConfig struct {
-	// PublicBaseURL 是指向桶根目录的可公开访问的基础 URL，例如: http://192.168.200.131:9000/community-assets
-	PublicBaseURL string `yaml:"public_base_url" json:"public_base_url"`
-	// MaxAvatarSizeMB 头像上传大小上限（MB）
-	MaxAvatarSizeMB int `yaml:"max_avatar_size_mb" json:"max_avatar_size_mb"`
-	// MaxAvatarHistory 历史头像最大保留数量
-	MaxAvatarHistory int `yaml:"max_avatar_history" json:"max_avatar_history"`
-}
-
 // MinIOConfig MinIO 对象存储连接配置
 type MinIOConfig struct {
 	Endpoint         string `yaml:"endpoint" json:"endpoint"`
 	AccessKeyID      string `yaml:"access_key_id" json:"access_key_id"`
 	SecretAccessKey  string `yaml:"secret_access_key" json:"secret_access_key"`
 	UseSSL           bool   `yaml:"use_ssl" json:"use_ssl"`
-	Bucket           string `yaml:"bucket" json:"bucket"`
 	OperationTimeout int    `yaml:"operation_timeout" json:"operation_timeout"` // 操作超时（秒）
-}
-
-// ResourcesStorageConfig 资源存储配置（向后兼容，已废弃）
-type ResourcesStorageConfig struct {
-	Bucket        string `yaml:"bucket" json:"bucket"`
-	PublicBaseURL string `yaml:"public_base_url" json:"public_base_url"`
 }
 
 // BucketConfig 通用桶配置（7桶架构）
@@ -634,38 +615,12 @@ func getDefaultConfig() *Config {
 			AllowHeaders:     []string{"Origin", "Content-Type", "Content-Length", "Accept-Encoding", "X-CSRF-Token", "Authorization"},
 			AllowCredentials: true,
 		},
-		Assets: AssetsConfig{
-			PublicBaseURL: getEnv("ASSETS_PUBLIC_BASE_URL", "http://localhost:9000/community-assets"),
-			MaxAvatarSizeMB: func() int {
-				if v := getEnv("ASSETS_MAX_AVATAR_MB", ""); v != "" {
-					n := parseInt(v)
-					if n > 0 {
-						return n
-					}
-				}
-				return 5
-			}(),
-			MaxAvatarHistory: func() int {
-				if v := getEnv("ASSETS_MAX_AVATAR_HISTORY", ""); v != "" {
-					n := parseInt(v)
-					if n > 0 {
-						return n
-					}
-				}
-				return 9
-			}(),
-		},
 		MinIO: MinIOConfig{
 			Endpoint:         getEnv("MINIO_ENDPOINT", "localhost:9000"),
 			AccessKeyID:      getEnv("MINIO_ACCESS_KEY", "minioadmin"),
 			SecretAccessKey:  getEnv("MINIO_SECRET_KEY", "minioadmin"),
 			UseSSL:           strings.ToLower(getEnv("MINIO_USE_SSL", "false")) == "true" || getEnv("MINIO_USE_SSL", "false") == "1",
-			Bucket:           getEnv("MINIO_BUCKET", "community-assets"),
 			OperationTimeout: 10,
-		},
-		ResourcesStorage: ResourcesStorageConfig{
-			Bucket:        getEnv("RESOURCES_BUCKET", "community-resources"),
-			PublicBaseURL: getEnv("RESOURCES_PUBLIC_BASE_URL", "http://127.0.0.1:9000/community-resources"),
 		},
 		CodeExecutor: CodeExecutorConfig{
 			PistonAPIURL: getEnv("PISTON_API_URL", "https://emkc.org/api/v2/piston"),
@@ -1001,20 +956,11 @@ func overrideWithEnvVars(config *Config) {
 	setEnvString(&config.Log.Format, "LOG_FORMAT")
 	setEnvString(&config.Log.Output, "LOG_OUTPUT")
 
-	// 静态资源配置
-	setEnvString(&config.Assets.PublicBaseURL, "ASSETS_PUBLIC_BASE_URL")
-	setEnvInt(&config.Assets.MaxAvatarSizeMB, "ASSETS_MAX_AVATAR_MB")
-
 	// MinIO 配置
 	setEnvString(&config.MinIO.Endpoint, "MINIO_ENDPOINT")
 	setEnvString(&config.MinIO.AccessKeyID, "MINIO_ACCESS_KEY")
 	setEnvString(&config.MinIO.SecretAccessKey, "MINIO_SECRET_KEY")
 	setEnvBool(&config.MinIO.UseSSL, "MINIO_USE_SSL")
-	setEnvString(&config.MinIO.Bucket, "MINIO_BUCKET")
-
-	// 资源存储配置
-	setEnvString(&config.ResourcesStorage.Bucket, "RESOURCES_BUCKET")
-	setEnvString(&config.ResourcesStorage.PublicBaseURL, "RESOURCES_PUBLIC_BASE_URL")
 
 	// 代码执行器配置
 	setEnvString(&config.CodeExecutor.PistonAPIURL, "PISTON_API_URL")
@@ -1089,8 +1035,13 @@ func (c *Config) Validate() error {
 	if c.MinIO.SecretAccessKey == "" {
 		return fmt.Errorf("minio.secret_access_key is required")
 	}
-	if c.MinIO.Bucket == "" {
-		return fmt.Errorf("minio.bucket is required")
+
+	// 验证7桶配置
+	if c.BucketUserAvatars.Name == "" {
+		return fmt.Errorf("bucket_user_avatars.name is required")
+	}
+	if c.BucketResourceChunks.Name == "" {
+		return fmt.Errorf("bucket_resource_chunks.name is required")
 	}
 
 	return nil

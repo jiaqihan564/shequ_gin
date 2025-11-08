@@ -19,11 +19,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// UploadHandler 处理上传
+// UploadHandler 处理上传（7桶架构）
 type UploadHandler struct {
-	storage            services.StorageClient
-	multiBucket        *services.MultiBucketStorage      // 多桶存储（7桶架构）
-	resourceStorage    *services.ResourceStorageService  // 废弃，向后兼容
+	multiBucket        *services.MultiBucketStorage // 多桶存储
 	userService        services.UserServiceInterface
 	historyRepo        *services.HistoryRepository
 	logger             utils.Logger
@@ -33,11 +31,9 @@ type UploadHandler struct {
 }
 
 // NewUploadHandler 创建上传处理器
-func NewUploadHandler(storage services.StorageClient, multiBucket *services.MultiBucketStorage, resourceStorage *services.ResourceStorageService, userService services.UserServiceInterface, maxAvatarSizeBytes int64, maxAvatarHistory int, historyRepo *services.HistoryRepository, cfg *config.Config) *UploadHandler {
+func NewUploadHandler(multiBucket *services.MultiBucketStorage, userService services.UserServiceInterface, maxAvatarSizeBytes int64, maxAvatarHistory int, historyRepo *services.HistoryRepository, cfg *config.Config) *UploadHandler {
 	return &UploadHandler{
-		storage:            storage,
 		multiBucket:        multiBucket,
-		resourceStorage:    resourceStorage,
 		userService:        userService,
 		historyRepo:        historyRepo,
 		logger:             utils.GetLogger(),
@@ -47,13 +43,13 @@ func NewUploadHandler(storage services.StorageClient, multiBucket *services.Mult
 	}
 }
 
-// UploadAvatar 上传头像到对象存储
+// UploadAvatar 上传头像到对象存储（7桶架构）
 func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 	reqCtx := extractRequestContext(c)
 
 	// 检查存储服务状态
-	if h.storage == nil {
-		h.logger.Error("存储服务未初始化", "ip", reqCtx.ClientIP)
+	if h.multiBucket == nil {
+		h.logger.Error("多桶存储服务未初始化", "ip", reqCtx.ClientIP)
 		utils.CodeErrorResponse(c, http.StatusServiceUnavailable, utils.ErrCodeUploadFailed, "存储服务不可用")
 		return
 	}
@@ -79,9 +75,9 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 	}
 	defer file.Close()
 
-	// 归档旧头像（不阻塞上传流程）
+	// 上传到user-avatars桶
 	timestamp := time.Now().Unix()
-	objectKey := fmt.Sprintf("%s/avatar.png", username)
+	objectKey := fmt.Sprintf("%s/current.jpg", username)
 
 	// 获取旧头像URL（在归档之前）
 	oldProfile, _ := h.userService.GetUserProfile(c.Request.Context(), userID)
@@ -93,11 +89,11 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 		archivedAvatarURL = h.getArchivedAvatarURL(username, timestamp)
 	}
 
-	h.archiveOldAvatar(c.Request.Context(), userID, username, objectKey, timestamp)
+	h.archiveOldAvatar(c.Request.Context(), userID, username, timestamp)
 
-	// 直接上传（前端已处理好，统一为JPEG格式）
+	// 上传到user-avatars桶（前端已处理好，统一为JPEG格式）
 	contentType := "image/jpeg"
-	url, err := h.storage.PutObject(c.Request.Context(), objectKey, contentType, file, fileHeader.Size)
+	url, err := h.multiBucket.PutObject(c.Request.Context(), services.BucketTypeUserAvatars, objectKey, contentType, file, fileHeader.Size)
 	if err != nil {
 		h.logger.Error("上传到对象存储失败",
 			"userID", userID,
@@ -123,7 +119,7 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 				"error", err.Error())
 
 			// 尝试删除刚上传的文件
-			if deleteErr := h.storage.RemoveObject(c.Request.Context(), objectKey); deleteErr != nil {
+			if deleteErr := h.multiBucket.RemoveObject(c.Request.Context(), services.BucketTypeUserAvatars, objectKey); deleteErr != nil {
 				h.logger.Error("回滚失败：无法删除已上传的头像",
 					"userID", userID,
 					"objectKey", objectKey,
@@ -270,43 +266,44 @@ func (h *UploadHandler) receiveAndValidateFile(c *gin.Context, userID uint) (*mu
 	return fileHeader, nil
 }
 
-// archiveOldAvatar 归档旧头像为历史版本
-func (h *UploadHandler) archiveOldAvatar(ctx context.Context, userID uint, username, objectKey string, timestamp int64) {
-	if h.storage == nil {
+// archiveOldAvatar 归档旧头像为历史版本（7桶架构）
+func (h *UploadHandler) archiveOldAvatar(ctx context.Context, userID uint, username string, timestamp int64) {
+	if h.multiBucket == nil {
 		return
 	}
 
-	exists, err := h.storage.ObjectExists(ctx, objectKey)
+	currentKey := fmt.Sprintf("%s/current.jpg", username)
+	exists, err := h.multiBucket.ObjectExists(ctx, services.BucketTypeUserAvatars, currentKey)
 	if err != nil || !exists {
 		return
 	}
 
 	// 归档：复制为时间戳命名的历史版本
-	archiveKey := fmt.Sprintf("%s/%d.png", username, timestamp)
-	err = h.storage.CopyObject(ctx, objectKey, archiveKey)
+	archiveKey := fmt.Sprintf("%s/history/%d.jpg", username, timestamp)
+	err = h.multiBucket.CopyObject(ctx, services.BucketTypeUserAvatars, services.BucketTypeUserAvatars, currentKey, archiveKey)
 	if err != nil {
 		h.logger.Warn("归档旧头像失败（不影响上传）", "userID", userID, "error", err.Error())
 		return
 	}
 
 	// 删除旧头像
-	err = h.storage.RemoveObject(ctx, objectKey)
+	err = h.multiBucket.RemoveObject(ctx, services.BucketTypeUserAvatars, currentKey)
 	if err != nil {
 		h.logger.Warn("删除旧头像失败（不影响上传）", "userID", userID, "error", err.Error())
 	}
 }
 
-// getArchivedAvatarURL 生成归档头像的URL
+// getArchivedAvatarURL 生成归档头像的URL（7桶架构）
 func (h *UploadHandler) getArchivedAvatarURL(username string, timestamp int64) string {
-	if h.storage == nil {
+	if h.multiBucket == nil {
 		return ""
 	}
-	archiveKey := fmt.Sprintf("%s/%d.png", username, timestamp)
-	publicBase := h.config.Assets.PublicBaseURL
+	archiveKey := fmt.Sprintf("%s/history/%d.jpg", username, timestamp)
+	publicBase := h.multiBucket.GetPublicBaseURL(services.BucketTypeUserAvatars)
 	return fmt.Sprintf("%s/%s", publicBase, archiveKey)
 }
 
-// cleanupAvatarHistory 清理超出限制的历史头像
+// cleanupAvatarHistory 清理超出限制的历史头像（7桶架构）
 func (h *UploadHandler) cleanupAvatarHistory(username string) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -314,36 +311,35 @@ func (h *UploadHandler) cleanupAvatarHistory(username string) {
 		}
 	}()
 
-	if h.storage == nil {
+	if h.multiBucket == nil {
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(h.config.AsyncTasks.AvatarOperationTimeout)*time.Second)
 	defer cancel()
 
-	objects, err := h.storage.ListObjects(ctx, fmt.Sprintf("%s/", username))
+	// 列举用户的历史头像
+	historyPrefix := fmt.Sprintf("%s/history/", username)
+	objects, err := h.multiBucket.ListObjects(ctx, services.BucketTypeUserAvatars, historyPrefix)
 	if err != nil {
 		h.logger.Warn("列举历史头像失败", "username", username, "error", err.Error())
 		return
 	}
 
-	// 过滤出历史头像文件（排除当前头像 avatar.png）
-	history := h.filterHistoryAvatars(objects)
-
 	// 如果历史头像数量未超限，无需清理
-	if len(history) <= h.maxAvatarHistory {
+	if len(objects) <= h.maxAvatarHistory {
 		return
 	}
 
 	// 按时间戳降序排序（最新的在前）
-	h.sortAvatarsByTimestamp(history)
+	h.sortAvatarsByTimestamp(objects)
 
 	// 删除超出限制的旧头像
-	toDelete := history[h.maxAvatarHistory:]
+	toDelete := objects[h.maxAvatarHistory:]
 	deletedCount := 0
 
 	for _, obj := range toDelete {
-		if err := h.storage.RemoveObject(ctx, obj.Key); err != nil {
+		if err := h.multiBucket.RemoveObject(ctx, services.BucketTypeUserAvatars, obj.Key); err != nil {
 			h.logger.Warn("删除历史头像失败", "username", username, "key", obj.Key, "error", err.Error())
 		} else {
 			deletedCount++
@@ -355,21 +351,6 @@ func (h *UploadHandler) cleanupAvatarHistory(username string) {
 	}
 }
 
-// filterHistoryAvatars 过滤出历史头像文件
-func (h *UploadHandler) filterHistoryAvatars(objects []services.ObjectInfo) []services.ObjectInfo {
-	history := make([]services.ObjectInfo, 0, len(objects))
-	for _, obj := range objects {
-		base := path.Base(obj.Key)
-		if strings.EqualFold(base, "avatar.png") {
-			continue
-		}
-		if strings.ToLower(path.Ext(base)) != ".png" {
-			continue
-		}
-		history = append(history, obj)
-	}
-	return history
-}
 
 // sortAvatarsByTimestamp 按时间戳降序排序头像列表
 func (h *UploadHandler) sortAvatarsByTimestamp(avatars []services.ObjectInfo) {
@@ -392,9 +373,9 @@ func (h *UploadHandler) sortAvatarsByTimestamp(avatars []services.ObjectInfo) {
 	})
 }
 
-// ListAvatarHistory 获取历史头像列表
+// ListAvatarHistory 获取历史头像列表（7桶架构）
 func (h *UploadHandler) ListAvatarHistory(c *gin.Context) {
-	if h.storage == nil {
+	if h.multiBucket == nil {
 		utils.CodeErrorResponse(c, http.StatusServiceUnavailable, utils.ErrCodeUploadFailed, "服务不可用")
 		return
 	}
@@ -412,20 +393,20 @@ func (h *UploadHandler) ListAvatarHistory(c *gin.Context) {
 		return
 	}
 
-	objects, err := h.storage.ListObjects(c.Request.Context(), fmt.Sprintf("%s/", username))
+	// 列举历史头像（在history目录下）
+	historyPrefix := fmt.Sprintf("%s/history/", username)
+	objects, err := h.multiBucket.ListObjects(c.Request.Context(), services.BucketTypeUserAvatars, historyPrefix)
 	if err != nil {
 		utils.InternalServerErrorResponse(c, "列举历史头像失败")
 		return
 	}
 
-	baseURL := h.storage.GetPublicBaseURL()
+	baseURL := h.multiBucket.GetPublicBaseURL(services.BucketTypeUserAvatars)
 	items := make([]gin.H, 0, len(objects))
-	count := 0
 
-	for _, obj := range objects {
-		base := path.Base(obj.Key)
-		if strings.EqualFold(base, "avatar.png") || strings.ToLower(path.Ext(base)) != ".png" {
-			continue
+	for i, obj := range objects {
+		if i >= h.config.Pagination.AvatarHistoryMaxList {
+			break
 		}
 		url := fmt.Sprintf("%s/%s", baseURL, obj.Key)
 		items = append(items, gin.H{
@@ -434,10 +415,6 @@ func (h *UploadHandler) ListAvatarHistory(c *gin.Context) {
 			"size":          obj.Size,
 			"last_modified": obj.LastModified.Unix(),
 		})
-		count++
-		if count >= h.config.Pagination.AvatarHistoryMaxList {
-			break
-		}
 	}
 
 	utils.SuccessResponse(c, 200, "OK", gin.H{"items": items})
@@ -452,7 +429,7 @@ func (h *UploadHandler) validateImageFile(header *multipart.FileHeader) error {
 	return validator.Validate(header)
 }
 
-// UploadResourceImage 上传资源预览图（使用7桶架构）
+// UploadResourceImage 上传资源预览图（7桶架构）
 func (h *UploadHandler) UploadResourceImage(c *gin.Context) {
 	_, err := utils.GetUserIDFromContext(c)
 	if err != nil {
@@ -460,8 +437,7 @@ func (h *UploadHandler) UploadResourceImage(c *gin.Context) {
 		return
 	}
 
-	// 优先使用多桶存储
-	if h.multiBucket == nil && h.resourceStorage == nil {
+	if h.multiBucket == nil {
 		utils.InternalServerErrorResponse(c, "存储服务未配置")
 		return
 	}
@@ -486,18 +462,10 @@ func (h *UploadHandler) UploadResourceImage(c *gin.Context) {
 		return
 	}
 
+	// 上传到temp-files桶临时存储
 	ctx := c.Request.Context()
-	var imageURL string
-	
-	// 使用多桶存储（temp-files桶临时存储）
-	if h.multiBucket != nil {
-		objectPath := fmt.Sprintf("preview_temp/%d_%s", time.Now().Unix(), header.Filename)
-		imageURL, err = h.multiBucket.PutObject(ctx, services.BucketTypeTempFiles, objectPath, "image/jpeg", file, header.Size)
-	} else {
-		// 回退到旧的资源存储服务
-		imageURL, err = h.resourceStorage.UploadResourceImage(ctx, file, header.Filename, header.Size)
-	}
-	
+	objectPath := fmt.Sprintf("preview_temp/%d_%s", time.Now().Unix(), header.Filename)
+	imageURL, err := h.multiBucket.PutObject(ctx, services.BucketTypeTempFiles, objectPath, "image/jpeg", file, header.Size)
 	if err != nil {
 		h.logger.Error("上传资源图片失败", "error", err.Error())
 		utils.InternalServerErrorResponse(c, "上传失败")
@@ -510,7 +478,7 @@ func (h *UploadHandler) UploadResourceImage(c *gin.Context) {
 	})
 }
 
-// UploadDocumentImage 上传文档图片（使用7桶架构）
+// UploadDocumentImage 上传文档图片（7桶架构）
 func (h *UploadHandler) UploadDocumentImage(c *gin.Context) {
 	_, err := utils.GetUserIDFromContext(c)
 	if err != nil {
@@ -518,7 +486,7 @@ func (h *UploadHandler) UploadDocumentImage(c *gin.Context) {
 		return
 	}
 
-	if h.multiBucket == nil && h.resourceStorage == nil {
+	if h.multiBucket == nil {
 		utils.InternalServerErrorResponse(c, "存储服务未配置")
 		return
 	}
@@ -543,19 +511,11 @@ func (h *UploadHandler) UploadDocumentImage(c *gin.Context) {
 		return
 	}
 
+	// 上传到document-images桶
 	ctx := c.Request.Context()
-	var imageURL string
-	
-	// 使用多桶存储（document-images桶）
-	if h.multiBucket != nil {
-		now := time.Now().UTC()
-		objectPath := fmt.Sprintf("%d/%02d/%d_%s", now.Year(), now.Month(), now.Unix(), header.Filename)
-		imageURL, err = h.multiBucket.PutObject(ctx, services.BucketTypeDocumentImages, objectPath, "image/jpeg", file, header.Size)
-	} else {
-		// 回退到旧的资源存储服务
-		imageURL, err = h.resourceStorage.UploadDocumentImage(ctx, file, header.Filename, header.Size)
-	}
-	
+	now := time.Now().UTC()
+	objectPath := fmt.Sprintf("%d/%02d/%d_%s", now.Year(), now.Month(), now.Unix(), header.Filename)
+	imageURL, err := h.multiBucket.PutObject(ctx, services.BucketTypeDocumentImages, objectPath, "image/jpeg", file, header.Size)
 	if err != nil {
 		h.logger.Error("上传文档图片失败", "error", err.Error())
 		utils.InternalServerErrorResponse(c, "上传失败")

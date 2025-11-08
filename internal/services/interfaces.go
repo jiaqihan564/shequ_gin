@@ -25,17 +25,6 @@ type UserServiceInterface interface {
 	UpdateUserAvatar(ctx context.Context, profile *models.UserExtraProfile) error
 }
 
-// StorageClient 存储客户端接口（用于头像上传等场景）
-type StorageClient interface {
-	PutObject(ctx context.Context, objectPath string, contentType string, reader io.Reader, size int64) (string, error)
-	GetObject(ctx context.Context, objectPath string, opts interface{}) (io.ReadCloser, error)
-	ObjectExists(ctx context.Context, objectPath string) (bool, error)
-	CopyObject(ctx context.Context, srcPath, dstPath string) error
-	RemoveObject(ctx context.Context, objectPath string) error
-	ListObjects(ctx context.Context, prefix string) ([]ObjectInfo, error)
-	GetPublicBaseURL() string
-}
-
 // ObjectInfo 对象元信息（用于列举）
 type ObjectInfo struct {
 	Key          string

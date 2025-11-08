@@ -35,22 +35,22 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 	r.Use(middleware.StatisticsMiddleware(ctn.StatsRepo, ctn.CumulativeRepo))                        // 11. 统计中间件（自动收集数据）
 
 	// 初始化处理器
-	// 头像大小限制：从配置读取（5KB = 0.005MB）
-	uploadMaxBytes := int64(cfg.Assets.MaxAvatarSizeMB * 1024 * 1024)
+	// 头像大小限制：从7桶配置读取
+	uploadMaxBytes := int64(cfg.BucketUserAvatars.MaxAvatarSizeMB * 1024 * 1024)
 	if uploadMaxBytes <= 0 {
 		uploadMaxBytes = 5 * 1024 // 默认5KB
 	}
 	authHandler := handlers.NewAuthHandler(ctn.Auth, cfg)
 	userHandler := handlers.NewUserHandler(ctn.UserSvc, ctn.HistoryRepo, cfg)
 	healthHandler := handlers.NewHealthHandler(ctn.DB)
-	uploadHandler := handlers.NewUploadHandler(ctn.Storage, ctn.MultiBucket, ctn.ResourceStorage, ctn.UserSvc, uploadMaxBytes, cfg.Assets.MaxAvatarHistory, ctn.HistoryRepo, cfg)
+	uploadHandler := handlers.NewUploadHandler(ctn.MultiBucket, ctn.UserSvc, uploadMaxBytes, cfg.BucketUserAvatars.MaxHistory, ctn.HistoryRepo, cfg)
 	statsHandler := handlers.NewStatisticsHandler(ctn.StatsRepo, cfg)
 	historyHandler := handlers.NewHistoryHandler(ctn.HistoryRepo, cfg)
 	cumulativeHandler := handlers.NewCumulativeStatsHandler(ctn.CumulativeRepo)
 	chatHandler := handlers.NewChatHandler(ctn.ChatRepo, ctn.UserRepo, cfg)
 	articleHandler := handlers.NewArticleHandler(ctn.ArticleRepo, ctn.UserRepo, ctn.CacheSvc, cfg)
 	privateMsgHandler := handlers.NewPrivateMessageHandler(ctn.PrivateMsgRepo, ctn.UserRepo, cfg)
-	resourceHandler := handlers.NewResourceHandler(ctn.ResourceRepo, ctn.ResourceCommentRepo, ctn.ResourceStorage, ctn.ResourceImageSvc, ctn.UserRepo, cfg)
+	resourceHandler := handlers.NewResourceHandler(ctn.ResourceRepo, ctn.ResourceCommentRepo, ctn.ResourceImageSvc, ctn.UserRepo, cfg)
 	chunkUploadHandler := handlers.NewChunkUploadHandler(ctn.UploadMgr)
 	codeHandler := handlers.NewCodeHandler(ctn.CodeRepo, ctn.CodeExecutor, cfg)
 

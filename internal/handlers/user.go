@@ -365,9 +365,9 @@ func (h *UserHandler) GetUserByID(c *gin.Context) {
 	utils.SuccessResponse(c, 200, "获取用户信息成功", response)
 }
 
-// buildAvatarURL 构建带时间戳的头像URL（防止浏览器缓存）
+// buildAvatarURL 构建带时间戳的头像URL（7桶架构）
 func (h *UserHandler) buildAvatarURL(username string) string {
-	base := h.config.Assets.PublicBaseURL
+	base := h.config.BucketUserAvatars.PublicBaseURL
 	if base == "" {
 		return ""
 	}
@@ -376,13 +376,13 @@ func (h *UserHandler) buildAvatarURL(username string) string {
 		base = base[:len(base)-1]
 	}
 	// 添加时间戳参数，确保每次都能获取最新头像
-	return fmt.Sprintf("%s/%s/avatar.png?t=%d", base, username, time.Now().Unix())
+	return fmt.Sprintf("%s/%s/current.jpg?t=%d", base, username, time.Now().Unix())
 }
 
-// fixAvatarURL 修正头像URL中的IP地址（处理配置变更）
+// fixAvatarURL 修正头像URL中的IP地址（7桶架构）
 func (h *UserHandler) fixAvatarURL(oldURL, username string) string {
 	// 如果数据库中的URL使用了错误的IP，重新构建正确的URL
-	currentBase := h.config.Assets.PublicBaseURL
+	currentBase := h.config.BucketUserAvatars.PublicBaseURL
 	if currentBase == "" {
 		return oldURL
 	}
@@ -392,6 +392,6 @@ func (h *UserHandler) fixAvatarURL(oldURL, username string) string {
 		currentBase = currentBase[:len(currentBase)-1]
 	}
 
-	// 重新构建正确的URL（不带时间戳）
-	return fmt.Sprintf("%s/%s/avatar.png", currentBase, username)
+	// 重新构建正确的URL（不带时间戳，7桶架构使用current.jpg）
+	return fmt.Sprintf("%s/%s/current.jpg", currentBase, username)
 }
