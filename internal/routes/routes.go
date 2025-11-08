@@ -135,8 +135,6 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 		// 用户认证相关路由（使用专门的限流）
 		api.POST("/auth/register", middleware.RegisterRateLimitMiddleware(), authHandler.Register)
 		api.POST("/auth/login", middleware.LoginRateLimitMiddleware(), authHandler.Login)
-		api.POST("/auth/forgot-password", authHandler.ForgotPassword) // 忘记密码
-		api.POST("/auth/reset-password", authHandler.ResetPassword)   // 重置密码
 
 		// 需要认证的路由
 		auth := api.Group("/")

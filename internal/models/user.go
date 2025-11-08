@@ -90,37 +90,6 @@ type ChangePasswordRequest struct {
 	NewPassword     string `json:"newPassword" binding:"required"`
 }
 
-// ForgotPasswordRequest 忘记密码请求结构体
-type ForgotPasswordRequest struct {
-	Email string `json:"email" binding:"required,email"`
-}
-
-// ResetPasswordRequest 重置密码请求结构体
-type ResetPasswordRequest struct {
-	Token       string `json:"token" binding:"required"`
-	NewPassword string `json:"newPassword" binding:"required"`
-}
-
-// PasswordResetToken 密码重置token结构体
-type PasswordResetToken struct {
-	ID        uint      `json:"id" db:"id"`
-	Email     string    `json:"email" db:"email"`
-	Token     string    `json:"token" db:"token"`
-	ExpiresAt time.Time `json:"expires_at" db:"expires_at"`
-	Used      bool      `json:"used" db:"used"`
-	CreatedAt time.Time `json:"created_at" db:"created_at"`
-}
-
-// IsExpired 检查token是否过期
-func (t *PasswordResetToken) IsExpired() bool {
-	return time.Now().After(t.ExpiresAt)
-}
-
-// IsValid 检查token是否有效
-func (t *PasswordResetToken) IsValid() bool {
-	return !t.Used && !t.IsExpired()
-}
-
 // Validate 验证用户数据
 func (u *User) Validate() error {
 	if u.Username == "" {
