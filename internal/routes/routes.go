@@ -155,7 +155,7 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 			// 退出登录（JWT无状态，主要用于客户端清除token）
 			auth.POST("/auth/logout", authHandler.Logout)
 
-		// 用户信息接口
+			// 用户信息接口
 			auth.GET("/user/:id", userHandler.GetUserByID)
 			auth.GET("/user/avatar/history", uploadHandler.ListAvatarHistory)
 

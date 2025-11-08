@@ -196,6 +196,73 @@ func SanitizeFilename(filename string) string {
 	return result
 }
 
+// GenerateURLSafeFilename 生成URL安全的文件名
+// 将空格、中文和特殊字符替换为安全字符，确保在URL中可以正常使用
+// 优化：移除路径分隔符，清理连续下划线，限制长度
+func GenerateURLSafeFilename(filename string) string {
+	if filename == "" {
+		return "file"
+	}
+
+	// 先清理路径分隔符（安全检查）
+	filename = strings.ReplaceAll(filename, "/", "_")
+	filename = strings.ReplaceAll(filename, "\\", "_")
+	filename = strings.ReplaceAll(filename, "..", "_")
+
+	// 提取文件扩展名
+	ext := ""
+	if idx := strings.LastIndex(filename, "."); idx != -1 && idx > 0 {
+		ext = filename[idx:]
+		filename = filename[:idx]
+	}
+
+	// 使用strings.Builder提高性能
+	var sb strings.Builder
+	sb.Grow(len(filename) + len(ext))
+
+	// 处理每个字符
+	for _, r := range filename {
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9'):
+			// 保留字母和数字
+			sb.WriteRune(r)
+		case r == '-' || r == '_':
+			// 保留连字符和下划线
+			sb.WriteRune(r)
+		case r == ' ':
+			// 空格替换为下划线
+			sb.WriteRune('_')
+		default:
+			// 所有其他字符（包括中文、特殊符号等）替换为下划线
+			sb.WriteRune('_')
+		}
+	}
+
+	result := sb.String()
+
+	// 清理连续的下划线（优化：使用更高效的方式）
+	for strings.Contains(result, "__") {
+		result = strings.ReplaceAll(result, "__", "_")
+	}
+
+	// 移除首尾下划线
+	result = strings.Trim(result, "_")
+
+	// 如果清理后为空，使用默认名称
+	if result == "" {
+		result = "file"
+	}
+
+	// 限制文件名长度（不包括扩展名），避免URL过长
+	if len(result) > 200 {
+		result = result[:200]
+		result = strings.TrimRight(result, "_")
+	}
+
+	// 添加扩展名
+	return result + ext
+}
+
 // ValidateContentLength 已移至 helpers.go
 var (
 	ErrContentTooShort = NewAppError(ErrInvalidParameter, "内容太短", 400)

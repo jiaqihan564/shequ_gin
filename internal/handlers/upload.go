@@ -351,7 +351,6 @@ func (h *UploadHandler) cleanupAvatarHistory(username string) {
 	}
 }
 
-
 // sortAvatarsByTimestamp 按时间戳降序排序头像列表
 func (h *UploadHandler) sortAvatarsByTimestamp(avatars []services.ObjectInfo) {
 	parseTimestamp := func(key string, fallback time.Time) int64 {
@@ -429,29 +428,31 @@ func (h *UploadHandler) validateImageFile(header *multipart.FileHeader) error {
 	return validator.Validate(header)
 }
 
-// UploadResourceImage 上传资源预览图（7桶架构）
-func (h *UploadHandler) UploadResourceImage(c *gin.Context) {
-	_, err := utils.GetUserIDFromContext(c)
+// uploadImageCommon 通用图片上传处理（减少重复代码）
+func (h *UploadHandler) uploadImageCommon(c *gin.Context) (file multipart.File, header *multipart.FileHeader, err error) {
+	// 验证用户登录
+	_, err = utils.GetUserIDFromContext(c)
 	if err != nil {
 		utils.UnauthorizedResponse(c, "未登录")
-		return
+		return nil, nil, err
 	}
 
+	// 检查存储服务
 	if h.multiBucket == nil {
 		utils.InternalServerErrorResponse(c, "存储服务未配置")
-		return
+		return nil, nil, fmt.Errorf("storage service not available")
 	}
 
-	file, header, err := c.Request.FormFile("file")
+	// 解析上传文件
+	file, header, err = c.Request.FormFile("file")
 	if err != nil {
 		h.logger.Warn("解析上传文件失败", "error", err.Error())
 		utils.BadRequestResponse(c, "未找到上传文件")
-		return
+		return nil, nil, err
 	}
-	defer file.Close()
 
 	// 验证图片文件
-	if err := h.validateImageFile(header); err != nil {
+	if err = h.validateImageFile(header); err != nil {
 		h.logger.Warn("文件验证失败", "filename", header.Filename, "error", err.Error())
 		statusCode := utils.GetHTTPStatusCode(err)
 		if statusCode == 413 {
@@ -459,12 +460,27 @@ func (h *UploadHandler) UploadResourceImage(c *gin.Context) {
 		} else {
 			utils.BadRequestResponse(c, "只能上传PNG、JPEG、GIF或WebP格式的图片")
 		}
-		return
+		return nil, nil, err
 	}
+
+	return file, header, nil
+}
+
+// UploadResourceImage 上传资源预览图（7桶架构）
+func (h *UploadHandler) UploadResourceImage(c *gin.Context) {
+	// 通用上传预处理
+	file, header, err := h.uploadImageCommon(c)
+	if err != nil {
+		return // 错误已在 uploadImageCommon 中处理
+	}
+	defer file.Close()
+
+	// 生成URL安全的文件名
+	safeFilename := utils.GenerateURLSafeFilename(header.Filename)
+	objectPath := fmt.Sprintf("preview_temp/%d_%s", time.Now().Unix(), safeFilename)
 
 	// 上传到temp-files桶临时存储
 	ctx := c.Request.Context()
-	objectPath := fmt.Sprintf("preview_temp/%d_%s", time.Now().Unix(), header.Filename)
 	imageURL, err := h.multiBucket.PutObject(ctx, services.BucketTypeTempFiles, objectPath, "image/jpeg", file, header.Size)
 	if err != nil {
 		h.logger.Error("上传资源图片失败", "error", err.Error())
@@ -480,41 +496,20 @@ func (h *UploadHandler) UploadResourceImage(c *gin.Context) {
 
 // UploadDocumentImage 上传文档图片（7桶架构）
 func (h *UploadHandler) UploadDocumentImage(c *gin.Context) {
-	_, err := utils.GetUserIDFromContext(c)
+	// 通用上传预处理
+	file, header, err := h.uploadImageCommon(c)
 	if err != nil {
-		utils.UnauthorizedResponse(c, "未登录")
-		return
-	}
-
-	if h.multiBucket == nil {
-		utils.InternalServerErrorResponse(c, "存储服务未配置")
-		return
-	}
-
-	file, header, err := c.Request.FormFile("file")
-	if err != nil {
-		h.logger.Warn("解析上传文件失败", "error", err.Error())
-		utils.BadRequestResponse(c, "未找到上传文件")
-		return
+		return // 错误已在 uploadImageCommon 中处理
 	}
 	defer file.Close()
 
-	// 验证图片文件
-	if err := h.validateImageFile(header); err != nil {
-		h.logger.Warn("文件验证失败", "filename", header.Filename, "error", err.Error())
-		statusCode := utils.GetHTTPStatusCode(err)
-		if statusCode == 413 {
-			utils.BadRequestResponse(c, fmt.Sprintf("图片大小不能超过%dMB", h.config.ImageUpload.MaxSizeMB))
-		} else {
-			utils.BadRequestResponse(c, "只能上传PNG、JPEG、GIF或WebP格式的图片")
-		}
-		return
-	}
+	// 生成URL安全的文件名
+	now := time.Now().UTC()
+	safeFilename := utils.GenerateURLSafeFilename(header.Filename)
+	objectPath := fmt.Sprintf("%d/%02d/%d_%s", now.Year(), now.Month(), now.Unix(), safeFilename)
 
 	// 上传到document-images桶
 	ctx := c.Request.Context()
-	now := time.Now().UTC()
-	objectPath := fmt.Sprintf("%d/%02d/%d_%s", now.Year(), now.Month(), now.Unix(), header.Filename)
 	imageURL, err := h.multiBucket.PutObject(ctx, services.BucketTypeDocumentImages, objectPath, "image/jpeg", file, header.Size)
 	if err != nil {
 		h.logger.Error("上传文档图片失败", "error", err.Error())
