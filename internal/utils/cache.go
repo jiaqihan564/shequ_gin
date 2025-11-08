@@ -318,12 +318,12 @@ func estimateSize(value interface{}) int64 {
 	}
 }
 
-// MemoryCache 原有接口的兼容包装
+// MemoryCache 内存缓存包装
 type MemoryCache struct {
 	cache *LRUCache
 }
 
-// NewMemoryCache 创建内存缓存（兼容旧接口）
+// NewMemoryCache 创建内存缓存
 func NewMemoryCache(defaultTTL time.Duration) *MemoryCache {
 	return &MemoryCache{
 		cache: NewLRUCache(LRUCacheConfig{

@@ -146,19 +146,3 @@ func (h *ChatHandler) DeleteMessage(c *gin.Context) {
 	utils.SuccessResponse(c, 200, "删除成功", nil)
 }
 
-// GetOnlineCount - DEPRECATED: Use WebSocket ConnectionHub instead
-// Kept for backward compatibility with old clients
-func (h *ChatHandler) GetOnlineCount(c *gin.Context) {
-	h.logger.Warn("DEPRECATED: GetOnlineCount called, use WebSocket instead")
-	// Return 0 as this is deprecated
-	utils.SuccessResponse(c, 200, "Use WebSocket for real-time online count", models.OnlineCountResponse{
-		Count: 0,
-	})
-}
-
-// UserOffline - DEPRECATED: WebSocket automatically handles disconnections
-// Kept for backward compatibility with old clients
-func (h *ChatHandler) UserOffline(c *gin.Context) {
-	h.logger.Warn("DEPRECATED: UserOffline called, WebSocket handles disconnections automatically")
-	utils.SuccessResponse(c, 200, "WebSocket handles disconnections automatically", nil)
-}

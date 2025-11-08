@@ -155,16 +155,9 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 			// 退出登录（JWT无状态，主要用于客户端清除token）
 			auth.POST("/auth/logout", authHandler.Logout)
 
-			// 保留的原有接口（向后兼容）
-			auth.GET("/user/profile", userHandler.GetProfile)
-			auth.PUT("/user/profile", userHandler.UpdateProfile)
+		// 用户信息接口
 			auth.GET("/user/:id", userHandler.GetUserByID)
-			auth.POST("/files/upload", middleware.UploadRateLimitMiddleware(), uploadHandler.UploadAvatar)
 			auth.GET("/user/avatar/history", uploadHandler.ListAvatarHistory)
-			auth.GET("/avatar/history", uploadHandler.ListAvatarHistory)
-
-			// 临时兼容旧的头像更新接口
-			auth.PUT("/auth/me/avatar", userHandler.UpdateMe)
 
 			// 历史记录接口（用户查看自己的历史）
 			auth.GET("/history/login", historyHandler.GetLoginHistory)
@@ -179,7 +172,6 @@ func SetupRoutes(cfg *config.Config, ctn *bootstrap.Container) *gin.Engine {
 			auth.DELETE("/chat/messages/:id", chatHandler.DeleteMessage) // 删除消息
 			auth.GET("/chat/online-count", chatHandler.GetOnlineCountWS) // 获取在线用户数（优先使用 WebSocket）
 			auth.GET("/chat/online-users", chatHandler.GetOnlineUsersWS) // 获取在线用户列表
-			// Deprecated: auth.POST("/chat/offline") - WebSocket handles disconnections automatically
 
 			// 文章相关接口
 			auth.POST("/articles", articleHandler.CreateArticle)              // 创建文章

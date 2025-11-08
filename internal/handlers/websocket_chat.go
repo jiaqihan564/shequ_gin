@@ -812,8 +812,7 @@ func (h *ChatHandler) HandleWebSocket(c *gin.Context) {
 // GetOnlineCountWS returns online count from WebSocket hub (HTTP fallback)
 func (h *ChatHandler) GetOnlineCountWS(c *gin.Context) {
 	if globalHub == nil {
-		// Fallback to database method
-		h.GetOnlineCount(c)
+		utils.ErrorResponse(c, 500, "WebSocket未初始化")
 		return
 	}
 

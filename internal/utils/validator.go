@@ -179,48 +179,6 @@ func ValidateURL(url string) bool {
 	return (len(url) >= 7 && url[:7] == "http://") || (len(url) >= 8 && url[:8] == "https://")
 }
 
-// ValidatePhoneNumber 验证手机号码（中国）（使用默认配置）
-func ValidatePhoneNumber(phone string) bool {
-	if len(phone) != 11 {
-		return false
-	}
-	// 简单验证：以1开头，第二位是3-9，后面9位是数字
-	if phone[0] != '1' {
-		return false
-	}
-	secondDigit := phone[1]
-	if secondDigit < '3' || secondDigit > '9' {
-		return false
-	}
-	for _, c := range phone[2:] {
-		if !unicode.IsDigit(c) {
-			return false
-		}
-	}
-	return true
-}
-
-// ValidatePhoneNumberWithConfig 验证手机号码（使用配置）
-func ValidatePhoneNumberWithConfig(phone string, cfg *config.ValidationPhoneConfig) bool {
-	if len(phone) != cfg.Length {
-		return false
-	}
-	// 简单验证：以1开头，第二位是3-9，后面9位是数字
-	if phone[0] != '1' {
-		return false
-	}
-	secondDigit := phone[1]
-	if secondDigit < '3' || secondDigit > '9' {
-		return false
-	}
-	for _, c := range phone[2:] {
-		if !unicode.IsDigit(c) {
-			return false
-		}
-	}
-	return true
-}
-
 // ValidatePositiveInt 验证正整数
 func ValidatePositiveInt(n int) bool {
 	return n > 0

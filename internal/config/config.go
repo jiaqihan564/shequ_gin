@@ -11,15 +11,15 @@ import (
 
 // Config 应用配置结构体
 type Config struct {
-	App              AppConfig              `yaml:"app" json:"app"`
-	Server           ServerConfig           `yaml:"server" json:"server"`
-	JWT              JWTConfig              `yaml:"jwt" json:"jwt"`
-	Database         DatabaseConfig         `yaml:"database" json:"database"`
-	Log              LogConfig              `yaml:"log" json:"log"`
-	Security         SecurityConfig         `yaml:"security" json:"security"`
-	Admin            AdminConfig            `yaml:"admin" json:"admin"`
-	CORS             CORSConfig             `yaml:"cors" json:"cors"`
-	MinIO            MinIOConfig            `yaml:"minio" json:"minio"`
+	App      AppConfig      `yaml:"app" json:"app"`
+	Server   ServerConfig   `yaml:"server" json:"server"`
+	JWT      JWTConfig      `yaml:"jwt" json:"jwt"`
+	Database DatabaseConfig `yaml:"database" json:"database"`
+	Log      LogConfig      `yaml:"log" json:"log"`
+	Security SecurityConfig `yaml:"security" json:"security"`
+	Admin    AdminConfig    `yaml:"admin" json:"admin"`
+	CORS     CORSConfig     `yaml:"cors" json:"cors"`
+	MinIO    MinIOConfig    `yaml:"minio" json:"minio"`
 	// 7桶架构配置
 	BucketUserAvatars       BucketConfig                  `yaml:"bucket_user_avatars" json:"bucket_user_avatars"`
 	BucketResourceChunks    BucketConfig                  `yaml:"bucket_resource_chunks" json:"bucket_resource_chunks"`
@@ -250,18 +250,12 @@ type ValidationBioConfig struct {
 	MaxLength int `yaml:"max_length" json:"max_length"` // 最大长度
 }
 
-// ValidationPhoneConfig 手机号验证配置
-type ValidationPhoneConfig struct {
-	Length int `yaml:"length" json:"length"` // 手机号长度
-}
-
 // ValidationConfig 验证规则配置
 type ValidationConfig struct {
 	Username ValidationUsernameConfig `yaml:"username" json:"username"` // 用户名验证
 	Password ValidationPasswordConfig `yaml:"password" json:"password"` // 密码验证
 	Nickname ValidationNicknameConfig `yaml:"nickname" json:"nickname"` // 昵称验证
 	Bio      ValidationBioConfig      `yaml:"bio" json:"bio"`           // 简介验证
-	Phone    ValidationPhoneConfig    `yaml:"phone" json:"phone"`       // 手机号验证
 }
 
 // DatabaseTimeoutsConfig 数据库超时配置
@@ -721,9 +715,6 @@ func getDefaultConfig() *Config {
 			},
 			Bio: ValidationBioConfig{
 				MaxLength: 500,
-			},
-			Phone: ValidationPhoneConfig{
-				Length: 11,
 			},
 		},
 		DatabaseTimeouts: DatabaseTimeoutsConfig{

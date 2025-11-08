@@ -35,17 +35,6 @@ var (
 )
 
 // handleInternalError 处理内部错误，记录详细信息到日志，返回用户友好消息
-//
-// 参数:
-//   - c: Gin上下文
-//   - friendlyError: 用户友好错误
-//   - actualErr: 实际的错误对象（用于日志）
-//   - logger: 日志记录器
-//   - logFields: 额外的日志字段（可变参数，成对出现：key, value）
-//
-// 示例:
-//
-//	handleInternalError(c, ErrExecutionFailed, err, h.logger, "userID", userID, "language", req.Language)
 func handleInternalError(c *gin.Context, friendlyError UserFriendlyError, actualErr error, logger utils.Logger, logFields ...interface{}) {
 	// 准备日志字段
 	fields := []interface{}{
@@ -66,8 +55,6 @@ func handleInternalError(c *gin.Context, friendlyError UserFriendlyError, actual
 
 // logNonBlockingError 记录非阻塞错误（不影响主流程的错误）
 // 这类错误只记录日志，不返回给用户
-//
-// 示例: 保存执行记录失败，但不影响代码执行结果返回
 func logNonBlockingError(logger utils.Logger, operation string, err error, logFields ...interface{}) {
 	fields := []interface{}{
 		"operation", operation,
@@ -76,3 +63,4 @@ func logNonBlockingError(logger utils.Logger, operation string, err error, logFi
 	fields = append(fields, logFields...)
 	logger.Warn("非关键操作失败", fields...)
 }
+

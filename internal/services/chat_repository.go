@@ -170,9 +170,3 @@ func (r *ChatRepository) DeleteMessage(messageID, userID uint) error {
 	return nil
 }
 
-// Legacy online user management methods removed - now handled by WebSocket ConnectionHub
-// The following methods are no longer needed:
-// - UpdateOnlineUser: Online status managed in memory by WebSocket
-// - GetOnlineCount: Replaced by ConnectionHub.GetOnlineCount()
-// - CleanOldOnlineUsers: WebSocket automatically handles disconnections
-// - RemoveOnlineUser: WebSocket handles connection cleanup
