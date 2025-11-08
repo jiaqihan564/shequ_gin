@@ -762,12 +762,49 @@ DROP PROCEDURE IF EXISTS CreateIndexIfNotExists;
 -- 全文搜索索引（优化LIKE查询）
 -- =====================================================
 
+-- 创建全文索引的存储过程（安全创建，避免重复）
+DELIMITER $$
+
+DROP PROCEDURE IF EXISTS create_fulltext_index_if_not_exists$$
+CREATE PROCEDURE create_fulltext_index_if_not_exists(
+    IN p_table_name VARCHAR(128),
+    IN p_index_name VARCHAR(128),
+    IN p_columns VARCHAR(512)
+)
+BEGIN
+    DECLARE index_exists INT DEFAULT 0;
+    
+    -- 检查全文索引是否已存在
+    SELECT COUNT(*) INTO index_exists 
+    FROM information_schema.statistics 
+    WHERE table_schema = DATABASE() 
+      AND table_name = p_table_name
+      AND index_name = p_index_name
+      AND index_type = 'FULLTEXT';
+    
+    -- 如果不存在，则创建
+    IF index_exists = 0 THEN
+        SET @sql = CONCAT('ALTER TABLE `', p_table_name, '` ADD FULLTEXT INDEX `', p_index_name, '` (', p_columns, ') WITH PARSER ngram');
+        PREPARE stmt FROM @sql;
+        EXECUTE stmt;
+        DEALLOCATE PREPARE stmt;
+        SELECT CONCAT('✓ 创建全文索引: ', p_index_name, ' on ', p_table_name) AS Info;
+    ELSE
+        SELECT CONCAT('√ 全文索引已存在: ', p_index_name, ' on ', p_table_name) AS Info;
+    END IF;
+END$$
+
+DELIMITER ;
+
 -- 文章全文搜索索引（title, description支持中文搜索）
 -- 注意：content字段过大，不建议建立全文索引
-ALTER TABLE `articles` ADD FULLTEXT INDEX `ft_articles_search` (`title`, `description`) WITH PARSER ngram;
+CALL create_fulltext_index_if_not_exists('articles', 'ft_articles_search', '`title`, `description`');
 
 -- 资源全文搜索索引
-ALTER TABLE `resources` ADD FULLTEXT INDEX `ft_resources_search` (`title`, `description`) WITH PARSER ngram;
+CALL create_fulltext_index_if_not_exists('resources', 'ft_resources_search', '`title`, `description`');
+
+-- 清理存储过程
+DROP PROCEDURE IF EXISTS create_fulltext_index_if_not_exists;
 
 -- =====================================================
 -- 第十部分：初始化数据
