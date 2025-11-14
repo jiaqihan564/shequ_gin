@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	"gin/internal/config"
@@ -187,8 +188,22 @@ func (r *StatisticsRepository) GetApiStatistics(startDate, endDate string) ([]mo
 }
 
 // GetEndpointRanking 获取接口调用排行
-func (r *StatisticsRepository) GetEndpointRanking(startDate, endDate string, limit int) ([]models.EndpointRanking, error) {
-	query := `SELECT 
+func (r *StatisticsRepository) GetEndpointRanking(startDate, endDate string, sortBy, order string, limit int) ([]models.EndpointRanking, error) {
+	// 构建排序子句
+	var orderBy string
+	switch sortBy {
+	case "success_rate":
+		orderBy = "success_rate " + order
+	case "avg_latency_ms":
+		orderBy = "avg_latency_ms " + order
+	default:
+		orderBy = "total_count " + order
+	}
+	
+	// 构建查询，如果limit为-1表示无限制
+	var query string
+	if limit == -1 {
+		query = `SELECT 
 				endpoint, 
 				method, 
 				SUM(total_count) as total_count,
@@ -199,17 +214,42 @@ func (r *StatisticsRepository) GetEndpointRanking(startDate, endDate string, lim
 			  FROM api_statistics 
 			  WHERE date >= ? AND date <= ?
 			  GROUP BY endpoint, method
-			  ORDER BY total_count DESC
+			  ORDER BY ` + orderBy
+	} else {
+		query = `SELECT 
+				endpoint, 
+				method, 
+				SUM(total_count) as total_count,
+				SUM(success_count) as success_count,
+				SUM(error_count) as error_count,
+				ROUND(SUM(success_count) * 100.0 / NULLIF(SUM(total_count), 0), 2) as success_rate,
+				ROUND(AVG(avg_latency_ms), 2) as avg_latency_ms
+			  FROM api_statistics 
+			  WHERE date >= ? AND date <= ?
+			  GROUP BY endpoint, method
+			  ORDER BY ` + orderBy + `
 			  LIMIT ?`
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetUpdateTimeout())
 	defer cancel()
 
-	rows, err := r.db.DB.QueryContext(ctx, query, startDate, endDate, limit)
+	var rows *sql.Rows
+	var err error
+	
+	if limit == -1 {
+		rows, err = r.db.DB.QueryContext(ctx, query, startDate, endDate)
+	} else {
+		rows, err = r.db.DB.QueryContext(ctx, query, startDate, endDate, limit)
+	}
+	
 	if err != nil {
 		r.logger.Error("查询接口排行失败",
 			"startDate", startDate,
 			"endDate", endDate,
+			"sortBy", sortBy,
+			"order", order,
+			"limit", limit,
 			"error", err.Error())
 		return nil, utils.ErrDatabaseQuery
 	}

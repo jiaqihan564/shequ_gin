@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"strconv"
 	"time"
 
 	"gin/internal/config"
@@ -131,13 +132,43 @@ func (h *StatisticsHandler) GetEndpointRanking(c *gin.Context) {
 	defaultDays := h.config.StatisticsQueryExtended.DefaultDateRangeDays
 	endDate := c.DefaultQuery("end", now.Format(dateFormat))
 	startDate := c.DefaultQuery("start", now.AddDate(0, 0, -defaultDays).Format(dateFormat))
-	limit := h.config.StatisticsQuery.ApiRankingDefault // 从配置读取默认值
+	
+	// 获取排序和数量参数
+	sortBy := c.DefaultQuery("sort_by", "total_count") // 默认按调用次数排序
+	order := c.DefaultQuery("order", "desc")           // 默认降序
+	limitStr := c.Query("limit")                       // 不设置默认值，支持"全部"选项
+	
+	// 验证排序参数
+	validSorts := map[string]bool{
+		"total_count": true,
+		"success_rate": true,
+		"avg_latency_ms": true,
+	}
+	if !validSorts[sortBy] {
+		sortBy = "total_count"
+	}
+	
+	// 验证排序方向
+	if order != "asc" && order != "desc" {
+		order = "desc"
+	}
+	
+	// 转换limit参数，如果未提供或为"all"则设为-1表示无限制
+	limit := -1 // 默认无限制
+	if limitStr != "" && limitStr != "all" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 {
+			limit = l
+		}
+	}
 
-	rankings, err := h.statsRepo.GetEndpointRanking(startDate, endDate, limit)
+	rankings, err := h.statsRepo.GetEndpointRanking(startDate, endDate, sortBy, order, limit)
 	if err != nil {
 		h.logger.Error("获取接口排行失败",
 			"startDate", startDate,
 			"endDate", endDate,
+			"sortBy", sortBy,
+			"order", order,
+			"limit", limit,
 			"error", err.Error())
 		utils.ErrorResponse(c, 500, "获取接口排行失败")
 		return

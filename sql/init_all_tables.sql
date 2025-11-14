@@ -722,6 +722,8 @@ CALL CreateIndexIfNotExists('password_reset_tokens', 'idx_password_reset_token_u
 -- 统计系统优化索引
 CALL CreateIndexIfNotExists('user_statistics', 'idx_user_statistics_date', 'date DESC');
 CALL CreateIndexIfNotExists('api_statistics', 'idx_api_statistics_date_count', 'date DESC, total_count DESC');
+CALL CreateIndexIfNotExists('api_statistics', 'idx_api_statistics_date_rate', 'date DESC, success_rate DESC');
+CALL CreateIndexIfNotExists('api_statistics', 'idx_api_statistics_date_latency', 'date DESC, avg_latency_ms ASC');
 
 -- 历史记录优化索引（复合索引，包含ORDER BY字段）
 CALL CreateIndexIfNotExists('user_login_history', 'idx_login_user_time', 'user_id, login_time DESC');

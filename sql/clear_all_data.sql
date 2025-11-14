@@ -159,6 +159,12 @@ INSERT INTO `realtime_metrics` (`metric_key`, `metric_value`, `metric_desc`) VAL
 ('system_memory', '0.0', '系统内存使用率（百分比）')
 ON DUPLICATE KEY UPDATE `metric_value` = VALUES(`metric_value`);
 
+-- 统计系统优化索引
+CALL CreateIndexIfNotExists('user_statistics', 'idx_user_statistics_date', 'date DESC');
+CALL CreateIndexIfNotExists('api_statistics', 'idx_api_statistics_date_count', 'date DESC, total_count DESC');
+CALL CreateIndexIfNotExists('api_statistics', 'idx_api_statistics_date_rate', 'date DESC, success_rate DESC');
+CALL CreateIndexIfNotExists('api_statistics', 'idx_api_statistics_date_latency', 'date DESC, avg_latency_ms ASC');
+
 -- =====================================================
 -- 清空完成
 -- =====================================================
