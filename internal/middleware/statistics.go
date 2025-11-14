@@ -53,7 +53,8 @@ func StatisticsMiddleware(statsRepo *services.StatisticsRepository, cumulativeRe
 		// 使用Worker Pool记录统计数据（避免goroutine泄漏）
 		taskID := "stats_" + path + "_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 		_ = utils.SubmitTask(taskID, func(ctx context.Context) error {
-			date := time.Now().Format("2006-01-02")
+			// 使用UTC确保与所有写入/读取每日指标的逻辑一致，防止跨时区日期不一致
+			date := time.Now().UTC().Format("2006-01-02")
 
 			// 判断请求状态
 			isSuccess := status >= 200 && status < 300

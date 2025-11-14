@@ -1333,60 +1333,103 @@ func generateLoginHistory(db *sql.DB) {
 }
 
 func generateStatistics(db *sql.DB) {
-	fmt.Println("\n开始生成统计数据...")
-	startTime := time.Now()
+    fmt.Println("\n开始生成统计数据...")
+    startTime := time.Now()
 
-	userStatStmt, err := db.Prepare(`INSERT INTO user_statistics (date, login_count, register_count, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?)`)
-	if err != nil {
-		log.Fatalf("准备用户统计语句失败: %v", err)
-	}
-	defer userStatStmt.Close()
+    userStatStmt, err := db.Prepare(`INSERT INTO user_statistics (date, login_count, register_count, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)`)
+    if err != nil {
+        log.Fatalf("准备用户统计语句失败: %v", err)
+    }
+    defer userStatStmt.Close()
 
-	apiStatStmt, err := db.Prepare(`INSERT INTO api_statistics (date, endpoint, method, success_count, error_count, total_count, avg_latency_ms, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-	if err != nil {
-		log.Fatal("准备 API 统计语句失败:", err)
-	}
-	defer apiStatStmt.Close()
+    apiStatStmt, err := db.Prepare(`INSERT INTO api_statistics (date, endpoint, method, success_count, error_count, total_count, avg_latency_ms, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    if err != nil {
+        log.Fatal("准备 API 统计语句失败:", err)
+    }
+    defer apiStatStmt.Close()
 
-	endpoints := []string{
-		"/api/users/login",
-		"/api/users/register",
-		"/api/articles",
-		"/api/articles/{id}",
-		"/api/resources",
-		"/api/resources/{id}",
-		"/api/chat/messages",
-		"/api/comments",
-	}
-	methods := []string{"GET", "POST", "PUT", "DELETE"}
+    dailyMetricStmt, err := db.Prepare(`INSERT INTO daily_metrics 
+        (date, active_users, avg_response_time, success_rate, peak_concurrent, most_popular_endpoint, new_users, total_requests, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+            active_users = VALUES(active_users),
+            avg_response_time = VALUES(avg_response_time),
+            success_rate = VALUES(success_rate),
+            peak_concurrent = VALUES(peak_concurrent),
+            most_popular_endpoint = VALUES(most_popular_endpoint),
+            new_users = VALUES(new_users),
+            total_requests = VALUES(total_requests),
+            updated_at = VALUES(updated_at)`)
+    if err != nil {
+        log.Fatal("准备每日指标语句失败:", err)
+    }
+    defer dailyMetricStmt.Close()
 
-	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+    endpoints := []string{
+        "/api/users/login",
+        "/api/users/register",
+        "/api/articles",
+        "/api/articles/{id}",
+        "/api/resources",
+        "/api/resources/{id}",
+        "/api/chat/messages",
+        "/api/comments",
+    }
+    methods := []string{"GET", "POST", "PUT", "DELETE"}
 
-	for i := 0; i < STATISTICS_COUNT; i++ {
-		day := time.Now().AddDate(0, 0, -i)
-		date := day.Format("2006-01-02")
-		loginCount := 250 + rnd.Intn(250)
-		registerCount := 15 + rnd.Intn(40)
-		createdAt := day
+    rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+    dailyMetricsCount := 0
 
-		if _, err := userStatStmt.Exec(date, loginCount, registerCount, createdAt, createdAt); err != nil {
-			log.Fatalf("插入用户统计失败: %v", err)
-		}
+    for i := 0; i < STATISTICS_COUNT; i++ {
+        day := time.Now().AddDate(0, 0, -i)
+        date := day.Format("2006-01-02")
+        loginCount := 250 + rnd.Intn(250)
+        registerCount := 15 + rnd.Intn(40)
+        createdAt := day
 
-		for j, endpoint := range endpoints {
-			method := methods[(i+j)%len(methods)]
-			successCount := 400 + rnd.Intn(900)
-			errorCount := rnd.Intn(30)
-			totalCount := successCount + errorCount
-			avgLatency := 50 + rnd.Float64()*420
+        if _, err := userStatStmt.Exec(date, loginCount, registerCount, createdAt, createdAt); err != nil {
+            log.Fatalf("写入用户统计失败: %v", err)
+        }
 
-			if _, err := apiStatStmt.Exec(date, endpoint, method, successCount, errorCount, totalCount, avgLatency, createdAt, createdAt); err != nil {
-				log.Fatalf("插入 API 统计失败: %v", err)
-			}
-		}
-	}
+        for j, endpoint := range endpoints {
+            method := methods[(i+j)%len(methods)]
+            successCount := 400 + rnd.Intn(900)
+            errorCount := rnd.Intn(30)
+            totalCount := successCount + errorCount
+            avgLatency := 50 + rnd.Float64()*420
 
-	fmt.Printf("✓ 统计数据生成完成，共 %d 天的数据，耗时: %v\n", STATISTICS_COUNT, time.Since(startTime))
+            if _, err := apiStatStmt.Exec(date, endpoint, method, successCount, errorCount, totalCount, avgLatency, createdAt, createdAt); err != nil {
+                log.Fatalf("写入 API 统计失败: %v", err)
+            }
+        }
+
+        activeUsers := 300 + rnd.Intn(9500)
+        avgResponseTime := 50 + rnd.Float64()*450
+        successRate := 90 + rnd.Float64()*9.5
+        peakConcurrent := 20 + rnd.Intn(1200)
+        mostPopularEndpoint := endpoints[rnd.Intn(len(endpoints))]
+        newUsers := 5 + rnd.Intn(200)
+        totalRequests := 2000 + rnd.Intn(50000)
+
+        if _, err := dailyMetricStmt.Exec(
+            date,
+            activeUsers,
+            avgResponseTime,
+            successRate,
+            peakConcurrent,
+            mostPopularEndpoint,
+            newUsers,
+            totalRequests,
+            day,
+            day,
+        ); err != nil {
+            log.Fatalf("写入每日指标失败: %v", err)
+        }
+        dailyMetricsCount++
+    }
+
+    fmt.Printf("✓ 统计数据生成完成，共 %d 条记录，包含 %d 天每日指标，耗时: %v\n", STATISTICS_COUNT, dailyMetricsCount, time.Since(startTime))
 }
+
