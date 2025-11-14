@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"strconv"
+	"strings"
 	"time"
 
 	"gin/internal/config"
@@ -18,6 +19,102 @@ type CumulativeStatsRepository struct {
 	config *config.Config
 }
 
+type statDefinition struct {
+	Description string
+	Category    string
+}
+
+var cumulativeStatDefinitions = map[string]statDefinition{
+	"total_users": {
+		Description: "总用户数",
+		Category:    "user",
+	},
+	"total_logins": {
+		Description: "总登录次数",
+		Category:    "user",
+	},
+	"total_registrations": {
+		Description: "总注册用户数",
+		Category:    "user",
+	},
+	"active_users_today": {
+		Description: "今日活跃用户数",
+		Category:    "user",
+	},
+	"total_api_calls": {
+		Description: "API调用总次数",
+		Category:    "api",
+	},
+	"total_errors": {
+		Description: "API错误次数",
+		Category:    "api",
+	},
+	"total_api_errors": {
+		Description: "API错误次数",
+		Category:    "api",
+	},
+	"total_uploads": {
+		Description: "上传总次数",
+		Category:    "api",
+	},
+	"avg_response_time": {
+		Description: "平均响应时间（毫秒）",
+		Category:    "api",
+	},
+	"failed_login_attempts": {
+		Description: "失败登录尝试次数",
+		Category:    "security",
+	},
+	"blocked_ips": {
+		Description: "被封禁IP数",
+		Category:    "security",
+	},
+	"security_alerts": {
+		Description: "安全告警次数",
+		Category:    "security",
+	},
+	"total_password_changes": {
+		Description: "修改密码次数",
+		Category:    "security",
+	},
+	"total_password_resets": {
+		Description: "重置密码次数",
+		Category:    "security",
+	},
+	"total_articles": {
+		Description: "文章总数",
+		Category:    "content",
+	},
+	"total_code_snippets": {
+		Description: "代码片段总数",
+		Category:    "content",
+	},
+	"total_resources": {
+		Description: "资源总数",
+		Category:    "content",
+	},
+	"total_comments": {
+		Description: "评论总数",
+		Category:    "content",
+	},
+	"total_chat_messages": {
+		Description: "聊天消息总数",
+		Category:    "content",
+	},
+}
+
+func resolveStatDefinition(statKey string) statDefinition {
+	if def, ok := cumulativeStatDefinitions[statKey]; ok {
+		return def
+	}
+
+	description := strings.ReplaceAll(statKey, "_", " ")
+	return statDefinition{
+		Description: description,
+		Category:    "general",
+	}
+}
+
 // NewCumulativeStatsRepository 创建累计统计数据访问层
 func NewCumulativeStatsRepository(db *Database, cfg *config.Config) *CumulativeStatsRepository {
 	return &CumulativeStatsRepository{
@@ -27,27 +124,32 @@ func NewCumulativeStatsRepository(db *Database, cfg *config.Config) *CumulativeS
 	}
 }
 
-// IncrementCumulativeStat 递增累计统计
+// IncrementCumulativeStat �����ۼ�ͳ��
 func (r *CumulativeStatsRepository) IncrementCumulativeStat(statKey string, increment int64) error {
-	query := `UPDATE cumulative_statistics SET stat_value = stat_value + ? WHERE stat_key = ?`
+	definition := resolveStatDefinition(statKey)
+	query := `INSERT INTO cumulative_statistics (stat_key, stat_value, stat_desc, category)
+	      VALUES (?, ?, ?, ?)
+	      ON DUPLICATE KEY UPDATE
+		stat_value = stat_value + ?`
 
 	ctx, cancel := context.WithTimeout(context.Background(), r.db.GetQueryTimeout())
 	defer cancel()
 
-	result, err := r.db.DB.ExecContext(ctx, query, increment, statKey)
+	_, err := r.db.DB.ExecContext(
+		ctx,
+		query,
+		statKey,
+		increment,
+		definition.Description,
+		definition.Category,
+		increment,
+	)
 	if err != nil {
-		r.logger.Error("递增累计统计失败",
+		r.logger.Error("�����ۼ�ͳ��ʧ��",
 			"statKey", statKey,
 			"increment", increment,
 			"error", err.Error())
 		return err
-	}
-
-	rowsAffected, _ := result.RowsAffected()
-	if rowsAffected == 0 {
-		r.logger.Warn("累计统计项不存在或未更新",
-			"statKey", statKey,
-			"increment", increment)
 	}
 
 	return nil
