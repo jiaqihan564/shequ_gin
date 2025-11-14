@@ -115,10 +115,6 @@ func (r *CumulativeStatsRepository) refreshCumulativeStatsFromSources() {
 	failedLoginAttempts := r.queryInt64(`SELECT COALESCE(SUM(failed_login_count), 0) FROM user_auth`)
 	r.updateCumulativeStat("failed_login_attempts", failedLoginAttempts)
 
-	// blocked_ips 与 security_alerts 当前没有持久化来源，这里保持为 0（仅确保记录存在）
-	r.updateCumulativeStat("blocked_ips", 0)
-	r.updateCumulativeStat("security_alerts", 0)
-
 	// total_password_changes / total_password_resets 继续沿用增量统计，避免与未来逻辑冲突
 
 	// 4. 内容相关

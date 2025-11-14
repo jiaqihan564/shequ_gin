@@ -864,8 +864,6 @@ INSERT INTO `cumulative_statistics` (`stat_key`, `stat_value`, `stat_desc`, `cat
 ('total_uploads', 0, '总上传次数', 'api'),
 ('avg_response_time', 0, '平均响应时间（毫秒）', 'api'),
 ('failed_login_attempts', 0, '失败登录尝试次数', 'security'),
-('blocked_ips', 0, '被封禁IP数', 'security'),
-('security_alerts', 0, '安全告警次数', 'security'),
 ('total_password_changes', 0, '修改密码次数', 'security'),
 ('total_password_resets', 0, '重置密码次数', 'security'),
 ('total_articles', 0, '总文章数', 'content'),
