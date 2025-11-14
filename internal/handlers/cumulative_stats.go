@@ -10,13 +10,13 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// CumulativeStatsHandler 累计统计处理器
+// CumulativeStatsHandler �ۼ�ͳ�ƴ�����
 type CumulativeStatsHandler struct {
 	cumulativeRepo *services.CumulativeStatsRepository
 	logger         utils.Logger
 }
 
-// NewCumulativeStatsHandler 创建累计统计处理器
+// NewCumulativeStatsHandler �����ۼ�ͳ�ƴ�����
 func NewCumulativeStatsHandler(cumulativeRepo *services.CumulativeStatsRepository) *CumulativeStatsHandler {
 	return &CumulativeStatsHandler{
 		cumulativeRepo: cumulativeRepo,
@@ -24,65 +24,70 @@ func NewCumulativeStatsHandler(cumulativeRepo *services.CumulativeStatsRepositor
 	}
 }
 
-// GetCumulativeStats 获取累计统计数据
+// GetCumulativeStats ��ȡ�ۼ�ͳ������
 func (h *CumulativeStatsHandler) GetCumulativeStats(c *gin.Context) {
+	// ���ڼ���֮ǰ����̨ʵ�����ݸ���һ�εۼ�ͳ������
+	if h.cumulativeRepo != nil {
+		h.cumulativeRepo.RefreshFromSources()
+	}
+
 	data, err := h.cumulativeRepo.GetAllCumulativeStats()
 	if err != nil {
-		h.logger.Error("获取累计统计失败", "error", err.Error())
-		utils.ErrorResponse(c, 500, "获取累计统计失败")
+		h.logger.Error("��ȡ�ۼ�ͳ��ʧ��", "error", err.Error())
+		utils.ErrorResponse(c, 500, "��ȡ�ۼ�ͳ��ʧ��")
 		return
 	}
 
-	utils.SuccessResponse(c, 200, "获取成功", data)
+	utils.SuccessResponse(c, 200, "��ȡ�ɹ�", data)
 }
 
-// GetDailyMetrics 获取每日指标
+// GetDailyMetrics ��ȡÿ��ָ��
 func (h *CumulativeStatsHandler) GetDailyMetrics(c *gin.Context) {
-	// 获取日期范围，默认最近30天（优化：缓存time.Now()调用）
+	// ��ȡ���ڷ�Χ��Ĭ�����30�죨�Ż�������time.Now()���ã�
 	now := time.Now()
 	endDate := c.DefaultQuery("end", now.Format("2006-01-02"))
 	startDate := c.DefaultQuery("start", now.AddDate(0, 0, -30).Format("2006-01-02"))
 
-	// 获取趋势数据
+	// ��ȡ��������
 	trend, err := h.cumulativeRepo.GetDailyMetrics(startDate, endDate)
 	if err != nil {
-		h.logger.Error("获取每日指标趋势失败",
+		h.logger.Error("��ȡÿ��ָ������ʧ��",
 			"startDate", startDate,
 			"endDate", endDate,
 			"error", err.Error())
-		utils.ErrorResponse(c, 500, "获取每日指标失败")
+		utils.ErrorResponse(c, 500, "��ȡÿ��ָ��ʧ��")
 		return
 	}
 
-	// 获取今日数据
+	// ��ȡ��������
 	today, err := h.cumulativeRepo.GetTodayDailyMetric()
 	if err != nil {
-		h.logger.Error("获取今日指标失败", "error", err.Error())
-		utils.ErrorResponse(c, 500, "获取今日指标失败")
+		h.logger.Error("��ȡ����ָ��ʧ��", "error", err.Error())
+		utils.ErrorResponse(c, 500, "��ȡ����ָ��ʧ��")
 		return
 	}
 
-	// 如果trend是空的，至少包含今天的数据
+	// ���trend�ǿյģ����ٰ������������
 	if len(trend) == 0 && today != nil {
 		trend = []models.DailyMetrics{*today}
 	}
 
-	// 计算汇总统计
+	// �������ͳ��
 	summary := calculateDailySummary(trend)
 
-	utils.SuccessResponse(c, 200, "获取成功", gin.H{
+	utils.SuccessResponse(c, 200, "��ȡ�ɹ�", gin.H{
 		"today":   today,
 		"trend":   trend,
 		"summary": summary,
 	})
 }
 
-// GetRealtimeMetrics 获取实时指标
+// GetRealtimeMetrics ��ȡʵʱָ��
 func (h *CumulativeStatsHandler) GetRealtimeMetrics(c *gin.Context) {
-	// 从实时管理器获取最新数据
+	// ��ʵʱ��������ȡ��������
 	realtimeMgr := services.GetRealtimeMetricsManager()
 
-	// 使用WebSocket连接数统计在线用户（每个登录用户都会建立全局WS连接）
+	// ʹ��WebSocket������ͳ�������û���ÿ����¼�û����Ὠ��ȫ��WS���ӣ�
 	onlineUsers := GetWebSocketOnlineCount()
 
 	currentQPS := realtimeMgr.GetCurrentQPS()
@@ -95,20 +100,20 @@ func (h *CumulativeStatsHandler) GetRealtimeMetrics(c *gin.Context) {
 		"system_memory": memoryPercent,
 	}
 
-	utils.SuccessResponse(c, 200, "获取成功", data)
+	utils.SuccessResponse(c, 200, "��ȡ�ɹ�", data)
 }
 
-// GetWebSocketOnlineCount 获取WebSocket在线人数（精确统计）
+// GetWebSocketOnlineCount ��ȡWebSocket������������ȷͳ�ƣ�
 func GetWebSocketOnlineCount() int {
-	// 从websocket_chat.go中定义的全局hub获取在线人数
+	// ��websocket_chat.go�ж����ȫ��hub��ȡ��������
 	if globalHub != nil {
 		return globalHub.GetOnlineCount()
 	}
-	// 如果WebSocket hub未初始化，返回0
+	// ���WebSocket hubδ��ʼ��������0
 	return 0
 }
 
-// calculateDailySummary 计算每日指标汇总
+// calculateDailySummary ����ÿ��ָ�����
 func calculateDailySummary(metrics []models.DailyMetrics) models.DailyMetricsStats {
 	if len(metrics) == 0 {
 		return models.DailyMetricsStats{}
@@ -137,3 +142,4 @@ func calculateDailySummary(metrics []models.DailyMetrics) models.DailyMetricsSta
 		TotalNewUsers:     totalNewUsers,
 	}
 }
+
