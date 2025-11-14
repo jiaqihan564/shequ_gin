@@ -590,7 +590,7 @@ func determineWorkerCount() int {
 		}
 	}
 
-	workers := base * 64
+	workers := base * 8
 	if workers < 8 {
 		workers = 8
 	}

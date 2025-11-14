@@ -29,8 +29,8 @@ database:
   password: "tKnrfzLkDe5nKbYP"
   database: "hub"
   charset: "utf8mb4"
-  max_open_conns: 150      # 优化: 从100增加到150，提升并发能力
-  max_idle_conns: 50       # 优化: 从25增加到50，减少连接创建开销
+  max_open_conns: 500      # 优化: 从100增加到150，提升并发能力
+  max_idle_conns: 200       # 优化: 从25增加到50，减少连接创建开销
   conn_max_lifetime: "30m" # 优化: 从1h调整为30m，更快释放长时间空闲连接
   conn_max_idle_time: "5m" # 空闲连接最大存活时间
 
