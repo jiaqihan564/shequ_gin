@@ -65,14 +65,6 @@ var cumulativeStatDefinitions = map[string]statDefinition{
 		Description: "失败登录尝试次数",
 		Category:    "security",
 	},
-	"blocked_ips": {
-		Description: "被封禁IP数",
-		Category:    "security",
-	},
-	"security_alerts": {
-		Description: "安全告警次数",
-		Category:    "security",
-	},
 	"total_password_changes": {
 		Description: "修改密码次数",
 		Category:    "security",
