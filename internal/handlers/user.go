@@ -267,20 +267,6 @@ func (h *UserHandler) GetUserByID(c *gin.Context) {
 	utils.SuccessResponse(c, 200, "获取用户信息成功", response)
 }
 
-// buildAvatarURL 构建带时间戳的头像URL（7桶架构）
-func (h *UserHandler) buildAvatarURL(username string) string {
-	base := h.config.BucketUserAvatars.PublicBaseURL
-	if base == "" {
-		return ""
-	}
-	// 移除末尾斜杠
-	if base[len(base)-1] == '/' {
-		base = base[:len(base)-1]
-	}
-	// 添加时间戳参数，确保每次都能获取最新头像
-	return fmt.Sprintf("%s/%s/current.jpg?t=%d", base, username, time.Now().Unix())
-}
-
 // fixAvatarURL 修正头像URL中的IP地址（7桶架构）
 func (h *UserHandler) fixAvatarURL(oldURL, username string) string {
 	// 如果数据库中的URL使用了错误的IP，重新构建正确的URL
