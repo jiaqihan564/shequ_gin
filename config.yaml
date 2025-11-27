@@ -22,11 +22,12 @@ server:
 
 # 数据库配置
 database:
-  host: "43.138.113.105"        # 公网ip
+  # host: "43.138.113.105"        # 公网ip
+  host: "192.168.137.129"        # 虚拟机ip
   # host: "10.2.0.11"        # 内网ip
-  port: "13306"
+  port: "3306"
   username: "root"
-  password: "tKnrfzLkDe5nKbYP"
+  password: "mysql_tmh8mY"
   database: "hub"
   charset: "utf8mb4"
   max_open_conns: 500      # 优化: 从100增加到150，提升并发能力
@@ -75,17 +76,17 @@ cors:
   # 生产环境必须改为实际域名！["*"] 配合 allow_credentials 是严重安全风险
   # 示例：allow_origins: ["https://yourdomain.com", "https://www.yourdomain.com"]
   # 可通过环境变量 CORS_ORIGINS 覆盖（逗号分隔）
-  allow_origins: ["*"]  # ⚠️ 部署前务必修改为实际域名
+  allow_origins: ["*"]
   allow_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
   allow_headers: ["Origin", "Content-Type", "Content-Length", "Accept-Encoding", "X-CSRF-Token", "Authorization", "X-Request-ID"]
   allow_credentials: true
 
 # MinIO 对象存储配置（基础配置）
 minio:
-  endpoint: "43.138.113.105:19000"        # 公网ip
+  endpoint: "192.168.137.129:1900"        # 公网ip
   # endpoint: "10.2.0.11:19000"        # 内网ip
-  access_key_id: "minio"
-  secret_access_key: "pmZMGPzY4ANyB6nn"
+  access_key_id: "minio_YYsEdt"
+  secret_access_key: "minio_M8N4Gx"
   use_ssl: false
   operation_timeout: 600  # MinIO操作超时（秒） - 10分钟，支持大文件上传和合并
 
@@ -96,7 +97,7 @@ minio:
 # 1. 用户头像桶（极高频访问）
 bucket_user_avatars:
   name: "user-avatars"
-  public_base_url: "http://43.138.113.105:19000/user-avatars"
+  public_base_url: "http://192.168.137.129:1900/user-avatars"
   max_avatar_size_mb: 0.005  # 5KB
   max_history: 9  # 最多保留9个历史版本
   auto_cleanup: true
@@ -105,7 +106,7 @@ bucket_user_avatars:
 # 2. 资源文件分片桶（低频访问，大文件）
 bucket_resource_chunks:
   name: "resource-chunks"
-  public_base_url: "http://43.138.113.105:19000/resource-chunks"
+  public_base_url: "http://192.168.137.129:1900/resource-chunks"
   chunk_size_mb: 5
   auto_cleanup: false  # 不自动清理（关联到资源）
   cache_control: "public, max-age=31536000"  # 1年缓存（不可变）
@@ -113,7 +114,7 @@ bucket_resource_chunks:
 # 3. 资源预览图桶（高频访问）
 bucket_resource_previews:
   name: "resource-previews"
-  public_base_url: "http://43.138.113.105:19000/resource-previews"
+  public_base_url: "http://192.168.137.129:1900/resource-previews"
   max_image_size_kb: 150
   max_images_per_resource: 5
   cache_control: "public, max-age=604800"  # 7天缓存
@@ -121,7 +122,7 @@ bucket_resource_previews:
 # 4. 文档图片桶（中频访问）
 bucket_document_images:
   name: "document-images"
-  public_base_url: "http://43.138.113.105:19000/document-images"
+  public_base_url: "http://192.168.137.129:1900/document-images"
   max_image_size_kb: 150
   archive_after_days: 365  # 1年后可转冷存储
   cache_control: "public, max-age=2592000"  # 30天缓存
@@ -129,7 +130,7 @@ bucket_document_images:
 # 5. 文章图片桶（中频访问）
 bucket_article_images:
   name: "article-images"
-  public_base_url: "http://43.138.113.105:19000/article-images"
+  public_base_url: "http://192.168.137.129:1900/article-images"
   max_image_size_kb: 200
   archive_after_days: 180  # 半年后可转冷存储
   cache_control: "public, max-age=1209600"  # 14天缓存
@@ -137,7 +138,7 @@ bucket_article_images:
 # 6. 临时文件桶（内部使用）
 bucket_temp_files:
   name: "temp-files"
-  public_base_url: "http://43.138.113.105:19000/temp-files"
+  public_base_url: "http://192.168.137.129:1900/temp-files"
   auto_expire_hours: 48  # 48小时后自动清理
   public_read: false  # 私有桶（不公开）
   cache_control: "no-cache, no-store"
@@ -145,7 +146,7 @@ bucket_temp_files:
 # 7. 系统静态资源桶（极高频访问）
 bucket_system_assets:
   name: "system-assets"
-  public_base_url: "http://43.138.113.105:19000/system-assets"
+  public_base_url: "http://192.168.137.129:1900/system-assets"
   cache_control: "public, max-age=31536000, immutable"  # 永久缓存（不可变）
 
 # 代码执行器配置
