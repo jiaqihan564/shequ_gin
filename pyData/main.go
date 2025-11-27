@@ -17,19 +17,19 @@ import (
 )
 
 const (
-	DB_HOST     = "43.138.113.105"
-	DB_PORT     = 13306
+	DB_HOST     = "192.168.137.129"
+	DB_PORT     = 3306
 	DB_USER     = "root"
-	DB_PASSWORD = "tKnrfzLkDe5nKbYP"
+	DB_PASSWORD = "mysql_tmh8mY"
 	DB_NAME     = "hub"
 )
 
 var (
 	USER_COUNT          = 120000 // 用户数量
-	ARTICLE_COUNT       = 24000  // 文章数量
-	RESOURCE_COUNT      = 15000  // 资源数量
-	COMMENT_COUNT       = 320000 // 评论数量
-	CHAT_MESSAGE_COUNT  = 450000 // 聊天信息数量
+	ARTICLE_COUNT       = 20000  // 文章数量
+	RESOURCE_COUNT      = 5000   // 资源数量
+	COMMENT_COUNT       = 50000  // 评论数量
+	CHAT_MESSAGE_COUNT  = 5000   // 聊天信息数量
 	LIKE_COUNT          = 600000 // 点赞数量
 	LOGIN_HISTORY_COUNT = 180000 // 登录历史数量
 	STATISTICS_COUNT    = 3650   // 统计数据天数
